@@ -53,6 +53,9 @@ jobs:
       - name: Preauthorize Linux system trust
         if: runner.os == 'Linux'
         run: sudo -v
+      - name: Install HAProxy for macOS local ingress
+        if: runner.os == 'macOS'
+        run: brew install haproxy
       - name: Build mm
         run: cargo build --features unstable --locked
       - name: Exercise actual store and system curl
