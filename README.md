@@ -90,7 +90,7 @@ walks through that step.
 ## Contribute
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, the code map, and checks.
-The Rust application is in `core/` (Rust 1.98.0, pinned in
+The Rust application is in `core/` (Rust 1.99.1, pinned in
 `rust-toolchain.toml`) and the web dashboard in `core/ui/`. The documentation
 is Markdown in `docs/`; the website in `site/` renders it, using the UI
 components in `packages/ui/`.

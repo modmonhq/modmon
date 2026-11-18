@@ -1,11 +1,11 @@
 ---
 title: Laravel and Rust example
-description: Run image reuse, two stacks, native schedules, a gate, Mailpit, and Rust 1.98.
+description: Run image reuse, two stacks, native schedules, a gate, Mailpit, and Rust 1.99.
 ---
 
 `examples/laravel-rust` separates data and application stacks while joining both
 to one mm-managed network. Laravel web and queue reuse one image; Rust pricing
-uses its own Rust 1.98 build.
+uses its own Rust 1.99 build.
 
 ```text
 Laravel web -> pricing -> Valkey

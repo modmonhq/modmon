@@ -61,14 +61,14 @@ jobs:
         run: |
           rustc --version --verbose
           cargo --version
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: . -> target
       - run: cargo metadata --format-version 1 --all-features --locked > dependency-inventory.json
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       - run: cargo check --workspace --all-targets --all-features --locked
-      - run: cargo test --workspace --all-targets --all-features --locked
+      - run: cargo test --workspace --all-targets --all-features --locked --no-fail-fast
       - run: cargo doc --workspace --no-deps --locked
         env:
           RUSTDOCFLAGS: -D warnings
@@ -93,7 +93,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
-          rust-version: "1.98.0"
+          rust-version: "1.99.1"
           manifest-path: ${{ matrix.manifest }}
           command: check
 
@@ -119,7 +119,7 @@ jobs:
         run: |
           rustc --version --verbose
           cargo --version
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: . -> target
       - run: cargo test --workspace --all-targets --all-features --locked --no-fail-fast

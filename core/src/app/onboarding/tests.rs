@@ -114,6 +114,12 @@ fn canonical_diffs_and_journey_guidance_are_complete() {
     assert!(changed.contains("-old\n+new\n"));
     let added = canonical_diff("", "new\n");
     assert!(added.contains("+new\n"));
+    let ignore = canonical_diff_for_ignore(&crate::domain::onboarding::InitializationFileChange {
+        path: std::path::PathBuf::from("/project/.gitignore"),
+        before: None,
+        after: "/.config/mm.overrides.yaml\n".to_owned(),
+    });
+    assert!(ignore.starts_with("--- a/.gitignore\n+++ b/.gitignore\n"));
 
     for journey in [
         GuidedJourney::GlobalSetup,

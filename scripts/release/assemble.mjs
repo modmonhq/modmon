@@ -49,7 +49,7 @@ const provenance = {
     buildDefinition: {
       buildType: `${repository}/blob/${options.tag}/.github/workflows/release.yml`,
       externalParameters: { tag: options.tag, targets },
-      internalParameters: { rust_toolchain: "1.98.0", source_date_epoch: epoch },
+      internalParameters: { rust_toolchain: "1.99.1", source_date_epoch: epoch },
       resolvedDependencies: [{ uri: `git+${process.env.GITHUB_REPOSITORY ? `https://github.com/${process.env.GITHUB_REPOSITORY}` : repository}@${options.commit}`, digest: { gitCommit: options.commit } }],
     },
     runDetails: {
@@ -68,7 +68,7 @@ const certificate = {
   commit: options.commit,
   source_date_epoch: epoch,
   generated_at: new Date(epoch * 1000).toISOString(),
-  rust_toolchain: "1.98.0",
+  rust_toolchain: "1.99.1",
   supported_targets: targets,
   reproducibility: {
     archives: "normalized order, permissions, source-commit timestamps, locale, and owner/group metadata",

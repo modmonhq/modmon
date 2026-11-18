@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 env:
-  MM_RUST_IMAGE: rust:1.98-bookworm@sha256:e70e2eec3d495fd5c8e0be74adda86507dfac7f51a724fbf9813ff59b2b247c7
+  MM_RUST_IMAGE: rust:1.99-bookworm@sha256:e6f2cff35d0f309acf8433b4f05878ed77092602c5065cc81801177da0bb3a9c
 
 jobs:
   binaries:
@@ -27,7 +27,7 @@ jobs:
           mkdir -p /tmp/opencode
           docker run --rm --cpus=1 --memory=2g --pids-limit=256 \
             --user "$(id -u):$(id -g)" -e HOME=/tmp -e CARGO_HOME=/tmp/cargo \
-            -e CARGO_BUILD_JOBS=1 -e RUST_TEST_THREADS=1 -e RUSTUP_TOOLCHAIN=1.98.0 \
+            -e CARGO_BUILD_JOBS=1 -e RUST_TEST_THREADS=1 -e RUSTUP_TOOLCHAIN=1.99.1 \
             -v "$PWD:/workspace" -w /workspace "$MM_RUST_IMAGE" \
             cargo build --package mm --bins --all-features --locked --jobs 1 \
             >/tmp/opencode/live-build.log 2>&1

@@ -69,7 +69,7 @@ else
     --user "$(id -u):$(id -g)" -e HOME=/tmp -e CARGO_HOME=/tmp/cargo \
     -e CARGO_TARGET_DIR=/build -e CARGO_BUILD_JOBS=1 -e CARGO_PROFILE_DEV_DEBUG=0 \
     -v "$ROOT:/workspace:ro" -v "$TMP/build:/build" -w /workspace \
-    mm-rust:1.98.0 cargo build --locked --all-features --bin mm --bin mmd
+    mm-rust:1.99.1 cargo build --locked --all-features --bin mm --bin mmd
   BIN_DIR="$TMP/build/debug"
 fi
 

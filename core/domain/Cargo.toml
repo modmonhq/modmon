@@ -2,7 +2,7 @@
 name = "mm-domain"
 version = "0.1.1"
 edition = "2024"
-rust-version = "1.98"
+rust-version = "1.99"
 license = "MIT"
 repository = "https://github.com/modmonhq/modmon"
 homepage = "https://modmon.dev"

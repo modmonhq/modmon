@@ -305,7 +305,11 @@ impl OnboardingService {
 fn canonical_diff_for_ignore(
     change: &crate::domain::onboarding::InitializationFileChange,
 ) -> String {
-    canonical_diff(change.before.as_deref().unwrap_or(""), &change.after)
+    canonical_diff_for(
+        ".gitignore",
+        change.before.as_deref().unwrap_or(""),
+        &change.after,
+    )
 }
 
 pub fn transition(

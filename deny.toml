@@ -9,6 +9,8 @@ ignore = [
     { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml is unmaintained; reached only through serde_yaml_ng, which has no release without it" },
     { id = "RUSTSEC-2026-0374", reason = "basic-toml is unmaintained; reached only through age's i18n-embed, and age has no newer release" },
     { id = "RUSTSEC-2026-0387", reason = "crypto-bigint 0.5 has no fixed release; it backs age's p256 recipients, and mm uses only X25519 identities" },
+    { id = "RUSTSEC-2026-0543", reason = "chrono is unmaintained with no replacement release; moving mm and mm-domain to jiff or time is its own change" },
+    { id = "RUSTSEC-2026-0555", reason = "chrono-tz is unmaintained with no replacement release; it goes with chrono" },
 ]
 
 [licenses]
@@ -36,6 +38,7 @@ confidence-threshold = 0.8
 # changes; grouped weekly updates revisit them. Owner: maintainers; review by 2026-11-22.
 multiple-versions = "warn"
 wildcards = "deny"
+allow-wildcard-paths = true
 
 [sources]
 unknown-registry = "deny"

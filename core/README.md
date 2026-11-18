@@ -8,7 +8,7 @@ Run package and workspace commands from the repository root:
 ```sh
 docker run --rm --cpus=2 --memory=4g --pids-limit=512 \
   -e CARGO_BUILD_JOBS=2 -e RUST_TEST_THREADS=2 \
-  -v "$PWD:/workspace" -w /workspace mm-rust:1.98.0 \
+  -v "$PWD:/workspace" -w /workspace mm-rust:1.99.1 \
   cargo test --workspace --all-targets --all-features --locked
 ```
 
@@ -21,7 +21,7 @@ those internal modules, so source builds select that feature explicitly:
 ```sh
 docker run --rm --cpus=2 --memory=4g --pids-limit=512 \
   -e CARGO_BUILD_JOBS=2 -v "$PWD:/workspace" -w /workspace \
-  mm-rust:1.98.0 cargo run -p mm --features unstable -- --help
+  mm-rust:1.99.1 cargo run -p mm --features unstable -- --help
 ```
 
 This boundary changes Rust source visibility only. It does not change project

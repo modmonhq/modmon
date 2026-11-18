@@ -48,7 +48,7 @@ write(path.join(repo, 'packaging/local/Dockerfile'), read(path.join(root, 'packa
 for (const file of ['packaging/mm-relay-shell', 'packaging/sshd/90-mm-relay.conf', 'packaging/systemd/mmd.service', 'packaging/systemd/mm-mesh.service', 'packaging/systemd/mm-network.service']) write(path.join(repo, file), 'embedded packaging');
 write(path.join(repo, 'scripts/install/workstation.sh'), '#!/bin/bash\nprintf "%s\\n" "$1" >> "$FIX_SETUP_TRACE"\n[[ ${FIX_SETUP_FAIL:-0} != 1 ]]\n');
 for (const file of ['Cargo.toml', 'Cargo.lock', 'core/Cargo.toml']) write(path.join(repo, file), 'fixture');
-write(path.join(repo, 'rust-toolchain.toml'), '[toolchain]\nchannel = "1.98.0"\n');
+write(path.join(repo, 'rust-toolchain.toml'), '[toolchain]\nchannel = "1.99.1"\n');
 write(path.join(repo, 'core/src/lib.rs'), 'first');
 write(path.join(repo, 'core/src/main.rs'), 'fixture');
 write(path.join(repo, 'core/src/domain/target/mod.rs'), 'source, not build output');

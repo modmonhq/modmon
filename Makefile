@@ -6,7 +6,7 @@ dashboard-assets:
 	npm --prefix core/ui run build
 
 rust: dashboard-assets
-	docker run --rm --cpus=1 --memory=4g --memory-swap=4g --pids-limit=512 -e CARGO_BUILD_JOBS=1 -e RUST_TEST_THREADS=1 -v "$$PWD:/workspace" -w /workspace mm-rust:1.98.0 sh -c "cargo fmt --all -- --check && cargo clippy --workspace --all-targets --all-features --locked -- -D warnings && cargo check --workspace --all-targets --all-features --locked && cargo test --workspace --all-targets --all-features --locked && RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked"
+	docker run --rm --cpus=1 --memory=4g --memory-swap=4g --pids-limit=512 -e CARGO_BUILD_JOBS=1 -e RUST_TEST_THREADS=1 -v "$$PWD:/workspace" -w /workspace mm-rust:1.99.1 sh -c "cargo fmt --all -- --check && cargo clippy --workspace --all-targets --all-features --locked -- -D warnings && cargo check --workspace --all-targets --all-features --locked && cargo test --workspace --all-targets --all-features --locked && RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked"
 
 deny:
 	./scripts/cargo-deny.sh

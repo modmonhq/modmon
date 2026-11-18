@@ -40,11 +40,11 @@
 #           whole analysed crate. Runs of one tree differ by about 20 MiB, so
 #           compare this number between two commits.
 #
-# Needs the `mm-rust:1.98.0` image (see CONTRIBUTING.md) and control groups v2.
+# Needs the `mm-rust:1.99.1` image (see CONTRIBUTING.md) and control groups v2.
 set -euo pipefail
 
 root=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-image=mm-rust:1.98.0
+image=mm-rust:1.99.1
 limit=${MM_BUILD_MEMORY:-4g}
 
 target='test'

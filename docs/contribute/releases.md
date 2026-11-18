@@ -66,7 +66,7 @@ The workflow depends on no earlier workflow run. Its jobs:
 2. **build-linux**: `scripts/release/build-linux.sh`, which builds `mm`, `mmd`,
    and `mm-ingress-helper` for `x86_64-unknown-linux-gnu` and
    `aarch64-unknown-linux-gnu` from `git archive` of the tag in pinned
-   containers (the Rust 1.98.0 image pinned by digest, with the ARM64 cross
+   containers (the Rust 1.99.1 image pinned by digest, with the ARM64 cross
    compiler and QEMU from a dated Debian snapshot), checks every binary's
    `--version`, packages them with every file dated from the tagged commit,
    and makes the source archive. Then the installer's tests run.

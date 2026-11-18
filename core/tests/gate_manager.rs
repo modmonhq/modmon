@@ -182,7 +182,7 @@ impl GateRepository for FakeRepository {
             .cloned();
         let delayed_bump = self
             .policy_lookups_before_bump
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |remaining| {
+            .try_update(Ordering::SeqCst, Ordering::SeqCst, |remaining| {
                 (remaining >= 0).then_some(remaining - 1)
             })
             .is_ok_and(|remaining| remaining == 0);

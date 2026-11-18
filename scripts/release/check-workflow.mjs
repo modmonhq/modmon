@@ -14,8 +14,9 @@ for (const prohibited of ["a" + "ws-actions", "a" + "ws cli", "s3." + "amazonaws
 }
 const job = (name) => source.split(new RegExp(`^  ${name}:`, "m"))[1]?.split(/^  [a-z0-9-]+:$/m)[0] ?? "";
 if (/unknown-linux-gnu/.test(job("build-macos"))) throw new Error("the macOS job builds a Linux target; Linux packages come from scripts/release/build-linux.sh");
-if (!/\.\/scripts\/release\/build-linux\.sh "\$RELEASE_TAG" packages/.test(job("build-linux"))) throw new Error("the build-linux job does not run scripts/release/build-linux.sh");
+if (!/\.\/scripts\/release\/build-linux\.sh "\$RELEASE_TAG" "target\/dist\/\$RELEASE_TAG"/.test(job("build-linux"))) throw new Error("the build-linux job does not run scripts/release/build-linux.sh");
 if (!/scripts\/release\/package-unix\.sh/.test(job("build-macos"))) throw new Error("the macOS job does not package with scripts/release/package-unix.sh");
+if (/(?:^|\s)packages(?:\/|\s|$)/m.test(job("build-linux") + job("build-macos"))) throw new Error("a build writes into packages/, which holds the repository's own packages");
 for (const name of ["validate", "build-linux", "build-macos", "assemble"]) {
   if (/contents: write|id-token: write|attestations: write/.test(job(name))) throw new Error(`job ${name} can write; only publish may`);
 }

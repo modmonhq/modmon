@@ -50,14 +50,14 @@
   "provenance": [
     {
       "path": "releases/v0.1.0/provenance/build.intoto.jsonl",
-      "sha256": "0aee7cfeb6141f3f4a90fcb2dad544d7f0cb50c649069e117bfd8c74232ff338",
+      "sha256": "ab2a8428ff3d420307037e65331f23ef0b1addb6989e914ece1759c4405960cd",
       "size": 1543
     }
   ],
   "published_at": "2026-08-24T00:00:00Z",
   "release_certificate": {
     "path": "releases/v0.1.0/release-certificate.json",
-    "sha256": "d5346b06c23441e9a3cffbe7d6f42015b7aa0a7a97046850a5917ffee5abfbf3",
+    "sha256": "2c2bba9701335c9e17b1698981962bfdedfdd776830e1a0e30e400ba45952b59",
     "size": 2085
   },
   "sbom": {

@@ -330,8 +330,8 @@ function onKeydown(event: KeyboardEvent) {
             :class="{ 'is-stderr': line.stderr }"
             :data-tone="line.tone"
           >
-            <span v-if="panel.times" class="t-muted tui-line__time">{{ line.time }}</span
-            ><template v-if="line.node"
+            <span v-if="panel.times" class="t-muted tui-line__time">{{ line.time }}</span><template
+              v-if="line.node"
               ><span :class="sourceTone(panel.nodes, line.node)">{{ line.node.padEnd(6) }}</span
               ><span class="t-muted hide-sm">{{ line.container }}</span
               ><span class="t-border tui-line__rule">│</span></template
@@ -994,8 +994,7 @@ function onKeydown(event: KeyboardEvent) {
                 :key="key"
                 class="l"
               >
-                <b class="t-key i2">{{ key }}</b
-                ><span class="g2">{{ label }}</span>
+                <b class="t-key i2">{{ key }}</b><span class="g2">{{ label }}</span>
               </div>
             </MmCard>
           </template>
@@ -1062,8 +1061,7 @@ function onKeydown(event: KeyboardEvent) {
           <template #meta>esc close</template>
           <div class="l t-section">Navigation</div>
           <div v-for="[key, label] in helpRows" :key="key" class="l kv kv--16">
-            <b class="t-key i2">{{ key }}</b
-            ><span class="t-soft">{{ label }}</span>
+            <b class="t-key i2">{{ key }}</b><span class="t-soft">{{ label }}</span>
           </div>
           <div class="l" />
           <div class="l t-section">General</div>
@@ -1128,8 +1126,7 @@ function onKeydown(event: KeyboardEvent) {
           >
             <span class="tui-field__label">{{ fieldLabel(field) }}</span>
             <template v-if="field === 'name' || field === 'key'">
-              <span>{{ editor[field] }}</span
-              ><span v-if="index === editor.focus" class="tui-cursor" />
+              <span>{{ editor[field] }}</span><span v-if="index === editor.focus" class="tui-cursor" />
             </template>
             <template v-else>
               <span class="t-muted">{{ index === editor.focus ? "‹ " : "  " }}</span>
