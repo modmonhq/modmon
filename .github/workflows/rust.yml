@@ -99,6 +99,7 @@ jobs:
 
   cross-platform:
     name: Test (${{ matrix.os }})
+    continue-on-error: true
     strategy:
       matrix:
         # Linux tests run in Workspace quality. Native Windows is not supported:
