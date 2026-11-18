@@ -1,0 +1,19 @@
+# /etc/mm/host.yaml — root-owned, mode 0600. The host's limits on every
+# project; users come from each project's committed users file.
+schema-version: 2
+break-glass:
+  # Admin on every enrolled project. Keep the private key offline.
+  - name: ops-recovery
+    key: ssh-ed25519 REPLACE_WITH_PUBLIC_KEY ops@offline
+projects:
+  # The project's id from its .config/mm.yaml.
+  00000000-0000-0000-0000-000000000000:
+    name: example
+    origin: git@github.com:example/example.git
+    # The git host's SSH public key, pinned for fetches.
+    origin-host-key: ssh-ed25519 REPLACE_WITH_GIT_HOST_KEY
+    environments: [staging, production]
+    initial-deploy-from:
+      production: [main]
+    ceiling:
+      production: { level: deploy }

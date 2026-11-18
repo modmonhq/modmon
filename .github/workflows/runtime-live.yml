@@ -1,0 +1,78 @@
+name: Runtime live conformance
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "core/src/adapters/runtime/**"
+      - "core/src/app/deployment*"
+      - "core/src/app/observability.rs"
+      - "core/src/app/ports/observability.rs"
+      - "core/src/app/ports/process.rs"
+      - "core/src/app/ports/runtime.rs"
+      - "core/src/adapters/process/tokio_runner.rs"
+      - "core/src/domain/**"
+      - "core/tests/runtime_conformance.rs"
+      - "core/tests/runtime_observability.rs"
+      - "core/tests/fixtures/runtime-conformance/**"
+      - "scripts/live-runtime-conformance.sh"
+      - ".github/workflows/runtime-live.yml"
+  push:
+    branches: [main, master]
+    tags: ["v*-rc*", "v*-beta*", "v*-alpha*"]
+    paths:
+      - "core/src/adapters/runtime/**"
+      - "core/src/app/deployment*"
+      - "core/src/app/observability.rs"
+      - "core/src/app/ports/observability.rs"
+      - "core/src/app/ports/process.rs"
+      - "core/src/app/ports/runtime.rs"
+      - "core/src/adapters/process/tokio_runner.rs"
+      - "core/src/domain/**"
+      - "core/tests/runtime_conformance.rs"
+      - "core/tests/runtime_observability.rs"
+      - "core/tests/fixtures/runtime-conformance/**"
+      - "scripts/live-runtime-conformance.sh"
+      - ".github/workflows/runtime-live.yml"
+  release:
+    types: [prereleased]
+
+permissions:
+  contents: read
+
+jobs:
+  live-docker-compose:
+    name: live-docker-compose
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Run Docker Compose lifecycle and observability checks
+        run: ./scripts/live-runtime-conformance.sh docker-compose 2>&1 | tee docker-compose.log
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: runtime-live-docker-compose
+          path: docker-compose.log
+          if-no-files-found: error
+          retention-days: 30
+
+  live-podman-compose:
+    name: live-podman-compose
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Podman Compose provider
+        run: sudo apt-get update && sudo apt-get install --yes podman podman-compose
+      - name: Assert rootless engine
+        run: test "$(podman info --format '{{.Host.Security.Rootless}}')" = true
+      - name: Run Podman Compose lifecycle and observability checks
+        run: ./scripts/live-runtime-conformance.sh podman-compose 2>&1 | tee podman-compose.log
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: runtime-live-podman-compose
+          path: podman-compose.log
+          if-no-files-found: error
+          retention-days: 30

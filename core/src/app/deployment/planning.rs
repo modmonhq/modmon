@@ -1,0 +1,543 @@
+use super::*;
+
+struct DeploymentPreparation {
+    environment_review: crate::domain::environment::EnvironmentReview,
+    compiled: crate::app::stacks::DeploymentStackCompilation,
+    runtime_secret_items: Vec<crate::domain::runtime_secret::RuntimeSecretPlanItem>,
+    target_fingerprint: String,
+    current: crate::domain::ingress::IngressRouteSet,
+    previous_dynamic_config: crate::domain::traefik_dynamic::PreparedTraefikDynamicConfig,
+}
+
+struct DeploymentRoutePlanning {
+    previous_owner_claims: Vec<IngressRouteClaim>,
+    desired_route_claims: Vec<IngressRouteClaim>,
+    complete_route_claims: Vec<IngressRouteClaim>,
+    desired_middlewares: BTreeMap<String, crate::domain::ingress::CanonicalMiddleware>,
+    previous_deployment: Option<DeploymentPlan>,
+    route_state_changed: bool,
+    local_certificates: Vec<crate::domain::ca::IssuedCertificate>,
+    dynamic_config: crate::domain::traefik_dynamic::PreparedTraefikDynamicConfig,
+    static_ingress: Option<crate::domain::target_ingress::TargetIngressPlan>,
+}
+
+struct DeploymentRemovals {
+    removed_stacks: Vec<DeploymentStackPlan>,
+    removed_ingress: Option<crate::domain::target_ingress::TargetIngressPlan>,
+    preserved_volumes: Vec<crate::domain::development_mount::PreservedVolumeManifest>,
+    removed_preserved_volumes: Vec<crate::domain::development_mount::PreservedVolumeManifest>,
+}
+
+impl DeploymentManager {
+    pub async fn plan(&self, selection: &WorkspaceSelection) -> Result<DeploymentPlan, MmError> {
+        let mut preparation = self.prepare_deployment(selection).await?;
+        let routes = self
+            .plan_deployment_routes(
+                &preparation.compiled,
+                &preparation.current,
+                &mut preparation.runtime_secret_items,
+            )
+            .await?;
+        let registries = self.environments.registries(selection)?;
+        let mut placement = std::mem::take(&mut preparation.compiled.placement);
+        // The plan's own part of the notes stays with the compilation.
+        preparation.compiled.placement.config_files = config_files_since(
+            std::mem::take(&mut placement.config_files),
+            routes.previous_deployment.as_ref(),
+        );
+        preparation.compiled.placement.user_ids = std::mem::take(&mut placement.user_ids);
+        // A service a host policy no longer puts under a runtime moves
+        // without anything else in the plan saying so.
+        let previous_stacks = routes
+            .previous_deployment
+            .as_ref()
+            .map(|previous| previous.stacks.clone())
+            .unwrap_or_default();
+        let mut plan = self.finish_deployment_plan(preparation, routes)?;
+        plan.runtime_changes =
+            crate::domain::hardening::runtime_changes(&previous_stacks, &plan.stacks);
+        plan.registries = registries;
+        let tunnel = self.environments.environment_tunnel(selection)?;
+        if let Some(scope) = &selection.node {
+            let certificate = self.environments.environment_tls(selection)?;
+            let mut node = self
+                .node_project(scope, &plan, placement, certificate)
+                .await?;
+            if let (Some(ingress), Some(tunnel)) = (node.ingress.as_mut(), tunnel) {
+                ingress.tunnel = Some(self.node_tunnel(selection, tunnel).await?);
+            }
+            plan.node = Some(node);
+        } else if selection.host_values && tunnel.is_some() {
+            return Err(MmError::Environment {
+                message: "ingress.type cloudflared applies on a cluster target, one that lists `nodes:`; a target of one host takes its routes on ports 80 and 443. Remove `type: cloudflared` from this environment, or list the host under `nodes:`".to_owned(),
+            });
+        }
+        if !plan.registries.is_empty() || plan.node.is_some() {
+            plan.plan_hash = plan
+                .canonical_hash()
+                .map_err(|message| MmError::Security { message })?;
+        }
+        Ok(plan)
+    }
+
+    async fn prepare_deployment(
+        &self,
+        selection: &WorkspaceSelection,
+    ) -> Result<DeploymentPreparation, MmError> {
+        let compiled = self.stacks.compile_for_deployment(
+            selection,
+            self.state.as_ref(),
+            self.receipt.as_ref().map(|promoted| &promoted.receipt),
+        )?;
+        let environment_review = self
+            .environments
+            .review_for_deployment(
+                &selection.with_release(compiled.release.clone()),
+                &compiled.target,
+            )
+            .await?;
+        let runtime_secret_items = self.environments.validate_secret_delivery(
+            selection,
+            compiled.selection.runtime,
+            &environment_review.secret_revisions,
+        )?;
+        if let Some(required) = environment_review
+            .delivery
+            .mode
+            .required_runtime_capability()
+        {
+            let probe = self.runtime.probe().await;
+            if probe.kind != compiled.selection.runtime {
+                return Err(MmError::Security {
+                    message: "the runtime adapter does not match direct-delivery planning"
+                        .to_owned(),
+                });
+            }
+            probe.require_capabilities(
+                "direct_environment_delivery",
+                &[required],
+                Some(&compiled.selection.target),
+            )?;
+        }
+        let target = &compiled.target;
+        if target.definition.transport != TargetTransport::Local {
+            return Err(MmError::Target {
+                message: format!(
+                    "target '{}' is not local; remote deployment planning is not implemented",
+                    target.name
+                ),
+            });
+        }
+        let target_fingerprint = target.definition.canonical_fingerprint();
+        if target.fingerprint != target_fingerprint {
+            return Err(MmError::Security {
+                message: "resolved deployment target fingerprint does not match its definition"
+                    .to_owned(),
+            });
+        }
+        let current = self.routes.route_set(target.definition.id)?;
+        if current.target_id != target.definition.id {
+            return Err(MmError::State {
+                message: format!(
+                    "ingress route registry returned target '{}' while planning target '{}'",
+                    current.target_id.0, target.definition.id.0
+                ),
+            });
+        }
+        let previous_local_hosts = local_tls_hosts(&current.claims);
+        if !previous_local_hosts.is_empty() {
+            self.local_ca.issue(&previous_local_hosts)?;
+        }
+        let previous_rendered = crate::app::render_traefik_dynamic_routes(
+            target.definition.id,
+            &current.claims,
+            &current.middlewares,
+            &previous_local_hosts,
+        )
+        .map_err(|error| MmError::State {
+            message: format!("could not render the currently claimed target routes: {error}"),
+        })?;
+        if let Some(expected_digest) = &current.config_digest
+            && expected_digest != &previous_rendered.manifest.digest
+        {
+            return Err(MmError::State {
+                message: "stored ingress route digest does not match the current claims; recover the target before deploying"
+                    .to_owned(),
+            });
+        }
+        let previous_dynamic_config = self
+            .dynamic_configs
+            .publish(target.definition.id, &previous_rendered)?;
+        Ok(DeploymentPreparation {
+            environment_review,
+            compiled,
+            runtime_secret_items,
+            target_fingerprint,
+            current,
+            previous_dynamic_config,
+        })
+    }
+
+    async fn plan_deployment_routes(
+        &self,
+        compiled: &crate::app::stacks::DeploymentStackCompilation,
+        current: &crate::domain::ingress::IngressRouteSet,
+        runtime_secret_items: &mut [crate::domain::runtime_secret::RuntimeSecretPlanItem],
+    ) -> Result<DeploymentRoutePlanning, MmError> {
+        let target = &compiled.target;
+        let mut desired_route_claims = compiled.route_claims.clone();
+        let mut desired_middlewares = compiled.middlewares.clone();
+        desired_route_claims.sort_by(canonical_claim_order);
+        validate_desired_claims(
+            target.definition.id,
+            compiled.project_id,
+            &compiled.environment,
+            &desired_route_claims,
+        )?;
+
+        let mut previous_owner_claims = Vec::new();
+        let mut complete_route_claims =
+            Vec::with_capacity(current.claims.len() + desired_route_claims.len());
+        for claim in current.claims.iter().cloned() {
+            if claim.project_id == compiled.project_id && claim.environment == compiled.environment
+            {
+                previous_owner_claims.push(claim);
+            } else {
+                complete_route_claims.push(claim);
+            }
+        }
+        preserve_gate_attachments(
+            &previous_owner_claims,
+            &current.middlewares,
+            &mut desired_route_claims,
+            &mut desired_middlewares,
+        )?;
+        complete_route_claims.extend(desired_route_claims.iter().cloned());
+        complete_route_claims.sort_by(canonical_claim_order);
+        previous_owner_claims.sort_by(canonical_claim_order);
+        let previous_deployment = self.previous_deployment(
+            compiled,
+            current,
+            &previous_owner_claims,
+            runtime_secret_items,
+        )?;
+        let complete_middlewares = merge_middlewares(
+            &current.middlewares,
+            &complete_route_claims,
+            &desired_middlewares,
+        );
+        let previous_owner_middlewares =
+            owner_middlewares(&previous_owner_claims, &current.middlewares);
+        let route_state_changed = previous_owner_claims != desired_route_claims
+            || previous_owner_middlewares != desired_middlewares;
+        reject_route_conflicts(&complete_route_claims)?;
+
+        let local_hosts = local_tls_hosts(&complete_route_claims);
+        let local_certificates = if local_hosts.is_empty() {
+            Vec::new()
+        } else {
+            self.local_ca.issue(&local_hosts)?
+        };
+        let rendered = crate::app::render_traefik_dynamic_routes(
+            target.definition.id,
+            &complete_route_claims,
+            &complete_middlewares,
+            &local_hosts,
+        )
+        .map_err(|error| MmError::Target {
+            message: format!("could not render complete target routes: {error}"),
+        })?;
+        let dynamic_config = self
+            .dynamic_configs
+            .publish(target.definition.id, &rendered)?;
+
+        let static_ingress = if complete_route_claims.is_empty() {
+            None
+        } else {
+            Some(
+                self.target_ingress
+                    .plan_resolved_for_runtime(target, compiled.selection.runtime)?,
+            )
+        };
+
+        Ok(DeploymentRoutePlanning {
+            previous_owner_claims,
+            desired_route_claims,
+            complete_route_claims,
+            desired_middlewares,
+            previous_deployment,
+            route_state_changed,
+            local_certificates,
+            dynamic_config,
+            static_ingress,
+        })
+    }
+
+    fn finish_deployment_plan(
+        &self,
+        preparation: DeploymentPreparation,
+        routes: DeploymentRoutePlanning,
+    ) -> Result<DeploymentPlan, MmError> {
+        let DeploymentPreparation {
+            environment_review,
+            compiled,
+            runtime_secret_items,
+            target_fingerprint,
+            current,
+            previous_dynamic_config,
+        } = preparation;
+        let DeploymentRoutePlanning {
+            previous_owner_claims,
+            desired_route_claims,
+            complete_route_claims,
+            desired_middlewares,
+            previous_deployment,
+            route_state_changed,
+            local_certificates,
+            dynamic_config,
+            static_ingress,
+        } = routes;
+        let target = compiled.target.clone();
+        let runtime_secret_plan = runtime_secret_plan(&compiled, runtime_secret_items)?;
+        let stacks = deployment_stacks(
+            compiled.project_id,
+            &compiled.project_name,
+            target.definition.id,
+            &target.name,
+            &compiled.environment,
+            compiled.stacks,
+            compiled.project_directories,
+        )?;
+        let DeploymentRemovals {
+            removed_stacks,
+            removed_ingress,
+            preserved_volumes,
+            removed_preserved_volumes,
+        } = deployment_removals(
+            (&stacks, &compiled.excluded_services),
+            previous_deployment.as_ref(),
+            complete_route_claims.is_empty()
+                && !self.installation_owns_ingress(target.definition.id)?,
+        );
+        let route_diff = route_diff(&previous_owner_claims, &desired_route_claims)?;
+        let mut plan = DeploymentPlan {
+            excluded_services: compiled.excluded_services,
+            schema: crate::domain::deployment::DEPLOYMENT_PLAN_SCHEMA.to_owned(),
+            project_id: compiled.project_id,
+            project_name: compiled.project_name,
+            target_name: target.name.clone(),
+            target_id: target.definition.id,
+            target_fingerprint,
+            environment: compiled.environment,
+            runtime: Some(compiled.selection.runtime),
+            runtime_source: Some(compiled.selection.runtime_source.as_str().to_owned()),
+            workload_intent_hash: Some(compiled.workload_intent_hash.clone()),
+            networks: compiled.networks.clone(),
+            expected_route_generation: current.generation,
+            expected_route_config_digest: current.config_digest,
+            expected_previous_plan_hash: previous_deployment
+                .as_ref()
+                .map(|previous| previous.plan_hash.clone()),
+            stacks,
+            removed_stacks,
+            preserved_volumes,
+            removed_preserved_volumes,
+            previous_owner_claims,
+            desired_route_claims,
+            complete_route_claims,
+            desired_middlewares,
+            environment_review,
+            runtime_secret_plan,
+            scheduler_reconciliation: None,
+            environment_bundle_root: None,
+            previous_dynamic_config,
+            dynamic_config,
+            local_certificates,
+            static_ingress,
+            removed_ingress,
+            route_diff,
+            ingress: compiled.ingress,
+            route_state_changed,
+            build_receipt: self.receipt.as_ref().map(|receipt| receipt.origin.clone()),
+            registries: BTreeMap::new(),
+            node: None,
+            rollout: compiled.rollout,
+            config_files: compiled.placement.config_files,
+            runtime_changes: Vec::new(),
+            release: compiled.release,
+            plan_hash: String::new(),
+        };
+        plan.plan_hash = plan
+            .canonical_hash()
+            .map_err(|message| MmError::Security { message })?;
+        Ok(plan)
+    }
+    fn previous_deployment(
+        &self,
+        compiled: &crate::app::stacks::DeploymentStackCompilation,
+        current: &crate::domain::ingress::IngressRouteSet,
+        previous_owner_claims: &[IngressRouteClaim],
+        runtime_secret_items: &mut [crate::domain::runtime_secret::RuntimeSecretPlanItem],
+    ) -> Result<Option<DeploymentPlan>, MmError> {
+        let target = &compiled.target;
+        let snapshot_owner_claims =
+            claims_without_gate_attachments(previous_owner_claims, &current.middlewares);
+        let candidates = self.state.deployment_candidates_for_owner(
+            compiled.project_id,
+            &compiled.environment,
+            target.definition.id,
+        )?;
+        let mut previous_deployment = None;
+        for (state, previous) in candidates {
+            let identity_matches = previous.project_id == compiled.project_id
+                && previous.target_id == target.definition.id
+                && previous.environment == compiled.environment;
+            let canonical = previous
+                .canonical_hash()
+                .map_err(|message| MmError::State { message })?;
+            let snapshot_is_canonical = canonical == previous.plan_hash;
+            let owner_matches = previous.desired_route_claims == snapshot_owner_claims;
+            let running_commit_matches = state == OperationState::Running
+                && previous.route_state_changed
+                && previous.complete_route_claims == current.claims
+                && current.config_digest.as_deref()
+                    == Some(previous.dynamic_config.manifest.digest.as_str());
+            if identity_matches
+                && snapshot_is_canonical
+                && ((state == OperationState::Succeeded && owner_matches) || running_commit_matches)
+            {
+                previous_deployment = Some(previous);
+                break;
+            }
+        }
+        if let Some(previous) = &previous_deployment
+            && let Some(previous_secrets) = &previous.runtime_secret_plan
+        {
+            for item in runtime_secret_items.iter_mut() {
+                item.previous_source_revision = previous_secrets
+                    .items
+                    .iter()
+                    .find(|previous| previous.logical_name == item.logical_name)
+                    .map(|previous| previous.source_revision.clone())
+                    .filter(|revision| revision != &item.source_revision);
+            }
+        }
+        if previous_deployment.is_none() && !previous_owner_claims.is_empty() {
+            return Err(MmError::State {
+                message: "existing route ownership has no successful deployment snapshot; recover the target before deploying"
+                    .to_owned(),
+            });
+        }
+        Ok(previous_deployment)
+    }
+}
+
+/// The plan's config files, each with the version the last finished
+/// deployment mounted at the same path of the same service.
+fn config_files_since(
+    mut files: Vec<crate::domain::config_file::ConfigFileUse>,
+    previous: Option<&DeploymentPlan>,
+) -> Vec<crate::domain::config_file::ConfigFileUse> {
+    for file in &mut files {
+        file.previous = previous
+            .into_iter()
+            .flat_map(|plan| &plan.config_files)
+            .find(|earlier| earlier.same_mount(file))
+            .map(|earlier| earlier.version.clone());
+    }
+    files.sort();
+    files
+}
+
+fn runtime_secret_plan(
+    compiled: &crate::app::stacks::DeploymentStackCompilation,
+    items: Vec<crate::domain::runtime_secret::RuntimeSecretPlanItem>,
+) -> Result<Option<crate::domain::runtime_secret::RuntimeSecretPlan>, MmError> {
+    if items.is_empty() {
+        return Ok(None);
+    }
+    let first_host_ids = compiled
+        .placement
+        .user_ids
+        .iter()
+        .map(|(service, ids)| (service.clone(), ids.first))
+        .collect();
+    crate::domain::runtime_secret::RuntimeSecretPlan::new(
+        compiled.project_id.0.to_string(),
+        compiled.target.definition.id.0.to_string(),
+        compiled.environment.clone(),
+        compiled.selection.runtime,
+        items,
+    )
+    .and_then(|plan| plan.with_first_host_ids(&first_host_ids))
+    .map(Some)
+    .map_err(|message| MmError::Secret { message })
+}
+
+/// What the previous deployment had and this one does not. The preserved
+/// volumes of a module that `development:` turned off stay for its return.
+fn deployment_removals(
+    (stacks, excluded): (
+        &[DeploymentStackPlan],
+        &[crate::domain::stack::ExcludedService],
+    ),
+    previous: Option<&DeploymentPlan>,
+    remove_ingress: bool,
+) -> DeploymentRemovals {
+    let mut removed_stacks = previous
+        .map(|previous| {
+            previous
+                .stacks
+                .iter()
+                .filter(|old| {
+                    !stacks
+                        .iter()
+                        .any(|desired| desired.compose_project_name == old.compose_project_name)
+                })
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    removed_stacks.sort_by(|left, right| {
+        left.stack
+            .cmp(&right.stack)
+            .then_with(|| left.compose_project_name.cmp(&right.compose_project_name))
+    });
+    let removed_ingress = if remove_ingress {
+        previous.and_then(|plan| plan.static_ingress.clone())
+    } else {
+        None
+    };
+    let mut preserved_volumes = stacks
+        .iter()
+        .flat_map(|stack| stack.artifact.manifest.preserved_volumes.iter().cloned())
+        .collect::<Vec<_>>();
+    preserved_volumes.sort_by(|left, right| left.physical_name.cmp(&right.physical_name));
+    preserved_volumes.dedup_by(|left, right| left.physical_name == right.physical_name);
+    let desired = preserved_volumes
+        .iter()
+        .map(|volume| volume.physical_name.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    let kept = excluded
+        .iter()
+        .filter(|service| service.off_locally.is_some())
+        .map(|service| service.module.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut removed_preserved_volumes = previous
+        .into_iter()
+        .flat_map(|plan| plan.preserved_volumes.iter())
+        .filter(|volume| {
+            !desired.contains(volume.physical_name.as_str())
+                && !kept.contains(volume.module.as_str())
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    removed_preserved_volumes.sort_by(|left, right| left.physical_name.cmp(&right.physical_name));
+    removed_preserved_volumes.dedup_by(|left, right| left.physical_name == right.physical_name);
+    DeploymentRemovals {
+        removed_stacks,
+        removed_ingress,
+        preserved_volumes,
+        removed_preserved_volumes,
+    }
+}

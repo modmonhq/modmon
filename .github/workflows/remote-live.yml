@@ -1,0 +1,66 @@
+name: Remote relay live
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "core/src/adapters/remote/**"
+      - "core/src/app/targets.rs"
+      - "core/src/app/ports/remote.rs"
+      - "core/src/composition.rs"
+      - "core/src/bin/mmd.rs"
+      - "core/src/domain/remote.rs"
+      - "core/src/domain/access.rs"
+      - "core/src/domain/host_policy.rs"
+      - "core/src/domain/users.rs"
+      - "core/src/domain/target.rs"
+      - "core/src/presentation/cli.rs"
+      - "core/tests/remote_protocol.rs"
+      - "packaging/**"
+      - "scripts/live-remote-relay.sh"
+      - "scripts/live-remote-access.sh"
+      - ".github/workflows/remote-live.yml"
+  push:
+    branches: [main, master]
+    paths:
+      - "core/src/adapters/remote/**"
+      - "core/src/app/targets.rs"
+      - "core/src/app/ports/remote.rs"
+      - "core/src/composition.rs"
+      - "core/src/bin/mmd.rs"
+      - "core/src/domain/remote.rs"
+      - "core/src/domain/access.rs"
+      - "core/src/domain/host_policy.rs"
+      - "core/src/domain/users.rs"
+      - "core/src/domain/target.rs"
+      - "core/src/presentation/cli.rs"
+      - "core/tests/remote_protocol.rs"
+      - "packaging/**"
+      - "scripts/live-remote-relay.sh"
+      - "scripts/live-remote-access.sh"
+      - ".github/workflows/remote-live.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    name: real-openssh-relay
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build the pinned constrained Cargo image
+        run: docker build --memory=4g --cpu-quota=200000 --cpu-period=100000 -t mm-rust:1.98 -f Dockerfile.cargo .
+      - name: Run authenticated relay, protocol, and privilege evidence
+        run: ./scripts/live-remote-relay.sh 2>&1 | tee remote-relay-live.log
+      - name: Clean build resources
+        if: always()
+        run: docker image rm mm-rust:1.98 >/dev/null 2>&1 || true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: remote-relay-live
+          path: remote-relay-live.log
+          if-no-files-found: error
+          retention-days: 30

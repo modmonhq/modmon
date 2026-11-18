@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "mm configuration: development-mail",
+  "$comment": "The value of top-level 'development-mail', for .config/mm/development-mail.yaml. Generated from MmConfig; run ./scripts/generate-artifacts.sh. Do not edit.",
+  "$ref": "#/$defs/DevelopmentMailPolicy",
+  "$defs": {
+    "DevelopmentMailPolicy": {
+      "type": "object",
+      "properties": {
+        "bindings": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/DevelopmentMailValue"
+          }
+        },
+        "enabled": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "DevelopmentMailValue": {
+      "type": "string",
+      "enum": [
+        "smtp-host",
+        "smtp-port",
+        "smtp-url",
+        "ui-url"
+      ]
+    }
+  }
+}

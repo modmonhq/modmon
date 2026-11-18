@@ -1,0 +1,77 @@
+{
+  "artifacts": {
+    "aarch64-apple-darwin": {
+      "binaries": [
+        "mm",
+        "mmd"
+      ],
+      "format": "tar.gz",
+      "path": "releases/v0.1.0/mm-v0.1.0-aarch64-apple-darwin.tar.gz",
+      "sha256": "1f4287d4313a873981078de230203bc30404871e7a9dee0d773ca9f7bc4ea324",
+      "size": 36
+    },
+    "aarch64-unknown-linux-gnu": {
+      "binaries": [
+        "mm",
+        "mmd",
+        "mm-ingress-helper"
+      ],
+      "format": "tar.gz",
+      "path": "releases/v0.1.0/mm-v0.1.0-aarch64-unknown-linux-gnu.tar.gz",
+      "sha256": "eedab5e6a20ef9dc17366f19c2f86fc4f55b5cdbc46778510bc5cebf7a8ee285",
+      "size": 41
+    },
+    "x86_64-apple-darwin": {
+      "binaries": [
+        "mm",
+        "mmd"
+      ],
+      "format": "tar.gz",
+      "path": "releases/v0.1.0/mm-v0.1.0-x86_64-apple-darwin.tar.gz",
+      "sha256": "f32e20c97d99fe173d603ad0fc840d4be515777e9001e3b710385f3ba29efb4c",
+      "size": 35
+    },
+    "x86_64-unknown-linux-gnu": {
+      "binaries": [
+        "mm",
+        "mmd",
+        "mm-ingress-helper"
+      ],
+      "format": "tar.gz",
+      "path": "releases/v0.1.0/mm-v0.1.0-x86_64-unknown-linux-gnu.tar.gz",
+      "sha256": "1abacb2133a50d98bc2d6e87002dfde8697dbd9d4af3f084390195abc1057e32",
+      "size": 40
+    }
+  },
+  "channel": "stable",
+  "commit": "1111111111111111111111111111111111111111",
+  "minimum_installer_schema": 1,
+  "product": "mm",
+  "provenance": [
+    {
+      "path": "releases/v0.1.0/provenance/build.intoto.jsonl",
+      "sha256": "0aee7cfeb6141f3f4a90fcb2dad544d7f0cb50c649069e117bfd8c74232ff338",
+      "size": 1543
+    }
+  ],
+  "published_at": "2026-08-24T00:00:00Z",
+  "release_certificate": {
+    "path": "releases/v0.1.0/release-certificate.json",
+    "sha256": "d5346b06c23441e9a3cffbe7d6f42015b7aa0a7a97046850a5917ffee5abfbf3",
+    "size": 2085
+  },
+  "sbom": {
+    "path": "releases/v0.1.0/sbom.spdx.json",
+    "sha256": "d322733c930262669b296aa17019f9710e598fda38738dfb30243351195cb1ef",
+    "size": 863
+  },
+  "schema_version": 1,
+  "source": {
+    "path": "releases/v0.1.0/mm-v0.1.0-source.tar.gz",
+    "sha256": "a66eab7258e409382edb7f6704e37d65bd23e032281a54f3d0a4fe833a3a87cb",
+    "size": 15
+  },
+  "source_date_epoch": 1787529600,
+  "tag": "v0.1.0",
+  "version": "0.1.0"
+}

@@ -1,0 +1,186 @@
+---
+- name: Bootstrap an mm workload host
+  hosts: mm_targets
+  become: true
+  gather_facts: true
+  vars:
+    mm_install_haproxy: false
+  pre_tasks:
+    - name: Validate the reviewed runtime selection
+      ansible.builtin.assert:
+        that:
+          - mm_runtime in ['docker-compose', 'podman-compose']
+          - mm_runtime_rootless | type_debug == 'bool'
+          - (mm_runtime == 'docker-compose' and not mm_runtime_rootless) or mm_runtime == 'podman-compose'
+        fail_msg: The bootstrap plan must select rootful Docker Compose or Podman Compose.
+
+  tasks:
+    - name: Install Docker repository prerequisites
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - python3-debian
+        state: present
+        update_cache: true
+      when: mm_runtime == 'docker-compose'
+
+    - name: Configure the supported Debian Docker repository
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: [deb]
+        uris: https://download.docker.com/linux/debian
+        suites: "{{ ansible_distribution_release }}"
+        components: [stable]
+        architectures: "{{ {'x86_64':'amd64','aarch64':'arm64'}[ansible_architecture] }}"
+        signed_by: https://download.docker.com/linux/debian/gpg
+        state: present
+      when:
+        - mm_runtime == 'docker-compose'
+        - ansible_distribution == 'Debian'
+
+    - name: Configure the supported Ubuntu Docker repository
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: [deb]
+        uris: https://download.docker.com/linux/ubuntu
+        suites: "{{ ansible_distribution_release }}"
+        components: [stable]
+        architectures: "{{ {'x86_64':'amd64','aarch64':'arm64'}[ansible_architecture] }}"
+        signed_by: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+      when:
+        - mm_runtime == 'docker-compose'
+        - ansible_distribution == 'Ubuntu'
+
+    - name: Reject unsupported Docker distributions before package mutation
+      ansible.builtin.assert:
+        that: ansible_distribution in ['Debian', 'Ubuntu']
+        fail_msg: Docker bootstrap supports the official Debian and Ubuntu repositories only.
+      when: mm_runtime == 'docker-compose'
+
+    - name: Install Docker Engine and the Compose plugin
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: true
+      when: mm_runtime == 'docker-compose'
+
+    - name: Install Podman and its Compose provider
+      ansible.builtin.package:
+        name:
+          - podman
+          - podman-compose
+        state: present
+      when: mm_runtime == 'podman-compose' and mm_runtime_rootless
+
+    - name: Reject unsupported rootful Podman distributions before package mutation
+      ansible.builtin.assert:
+        that: ansible_distribution in ['Debian', 'Ubuntu']
+        fail_msg: Rootful Podman bootstrap supports Debian and Ubuntu only.
+      when: mm_runtime == 'podman-compose' and not mm_runtime_rootless
+
+    # mm's daemon drives rootful Podman through Docker Compose, which talks
+    # to Podman's API socket; netavark keeps its rules with nftables.
+    - name: Install rootful Podman, Docker Compose, and nftables on Debian
+      ansible.builtin.apt:
+        name: [podman, docker-compose, nftables]
+        state: present
+        update_cache: true
+      when:
+        - mm_runtime == 'podman-compose' and not mm_runtime_rootless
+        - ansible_distribution == 'Debian'
+
+    - name: Install rootful Podman, Docker Compose, and nftables on Ubuntu
+      ansible.builtin.apt:
+        name: [podman, docker-compose-v2, nftables]
+        state: present
+        update_cache: true
+      when:
+        - mm_runtime == 'podman-compose' and not mm_runtime_rootless
+        - ansible_distribution == 'Ubuntu'
+
+    - name: Install the host ingress proxy
+      ansible.builtin.package:
+        name: haproxy
+        state: present
+      when: mm_install_haproxy
+
+    - name: Create the stable mm host layout
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+      loop:
+        # Not /run/mm: mmd's unit owns it (RuntimeDirectory, group mm-relay
+        # so the relay can reach the socket). Resetting it to root:root here
+        # cut every remote client off a running manager until mmd restarted.
+        - {path: /etc/mm, mode: '0700'}
+        - {path: /srv/mm, mode: '0755'}
+        - {path: /srv/mm/projects, mode: '0755'}
+        - {path: /var/lib/mm, mode: '0700'}
+        - {path: /var/lib/mm-home, mode: '0700'}
+
+    - name: Enable rootless user services after logout
+      ansible.builtin.command:
+        argv:
+          - loginctl
+          - enable-linger
+          - "{{ ansible_user }}"
+      changed_when: false
+      when: mm_runtime == 'podman-compose' and mm_runtime_rootless
+
+    - name: Verify Python
+      ansible.builtin.command:
+        argv: [python3, --version]
+      changed_when: false
+
+    - name: Verify Docker Engine
+      ansible.builtin.command:
+        argv: [docker, info]
+      changed_when: false
+      when: mm_runtime == 'docker-compose'
+
+    - name: Verify the Docker Compose plugin
+      ansible.builtin.command:
+        argv: [docker, compose, version]
+      changed_when: false
+      when: mm_runtime == 'docker-compose'
+
+    - name: Verify rootless Podman
+      become_user: "{{ ansible_user }}"
+      ansible.builtin.command:
+        argv: [podman, unshare, 'true']
+      changed_when: false
+      when: mm_runtime == 'podman-compose' and mm_runtime_rootless
+
+    - name: Verify rootful Podman
+      ansible.builtin.command:
+        argv: [podman, info]
+      changed_when: false
+      when: mm_runtime == 'podman-compose' and not mm_runtime_rootless
+
+    - name: Verify the Podman Compose provider
+      become_user: "{{ ansible_user }}"
+      ansible.builtin.command:
+        argv: [podman, compose, version]
+      changed_when: false
+      when: mm_runtime == 'podman-compose' and mm_runtime_rootless
+
+    - name: Verify rootful Podman's Compose provider
+      ansible.builtin.command:
+        argv: [podman, compose, version]
+      changed_when: false
+      when: mm_runtime == 'podman-compose' and not mm_runtime_rootless
+
+    - name: Verify HAProxy
+      ansible.builtin.command:
+        argv: [haproxy, -v]
+      changed_when: false
+      when: mm_install_haproxy

@@ -1,0 +1,5 @@
+services:
+  api:
+    image: docker.io/library/alpine:3.22
+  worker:
+    image: docker.io/library/alpine:3.22

@@ -1,0 +1,56 @@
+[Unit]
+Description=mm cluster networks (routes, firewall chains, bridge settings)
+Documentation=https://mm.local/docs/remote-daemon
+# After the engine, whose bridges this unit configures, and restarted with
+# it. The firewall chains alone are loaded earlier, by mm-mesh.service, so
+# no container ever starts without them.
+After=network-online.target mm-mesh.service docker.service podman.service
+PartOf=docker.service podman.service
+# A host that holds no network spanning a cluster skips this unit.
+ConditionPathExists=/var/lib/mm/networks/networks.json
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Brings the host to what mmd stored at the last reviewed deployment: each
+# other node's addresses routed through the mesh, the chains MM-CLUSTER and
+# MM-CLUSTER-NAT, and each network's bridge answering for the members on
+# other nodes. mmd restarts this unit when it applies a deployment.
+ExecStart=/usr/libexec/mmd --config /etc/mm/mmd.json network up
+ExecReload=/usr/libexec/mmd --config /etc/mm/mmd.json network up
+# Once the engine is up its chain for the host's rules exists: make sure the
+# chains that keep containers away from shared storage are entered from it.
+ExecStart=/usr/libexec/mmd --config /etc/mm/mmd.json storage up
+ExecReload=/usr/libexec/mmd --config /etc/mm/mmd.json storage up
+Restart=on-failure
+RestartSec=15s
+User=root
+UMask=0077
+
+# Routes, packet filter rules, and per-interface settings are all this unit
+# may change. The settings live under /proc/sys/net, so kernel tunables are
+# not read-only here as they are for mmd itself.
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RemoveIPC=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+ReadOnlyPaths=/etc/mm /var/lib/mm
+
+[Install]
+WantedBy=multi-user.target docker.service podman.service

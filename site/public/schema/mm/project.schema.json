@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "mm configuration: project",
+  "$comment": "The value of top-level 'project', for .config/mm/project.yaml. Generated from MmConfig; run ./scripts/generate-artifacts.sh. Do not edit.",
+  "$ref": "#/$defs/ProjectConfig",
+  "$defs": {
+    "ProjectConfig": {
+      "type": "object",
+      "properties": {
+        "development-environment": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name"
+      ]
+    }
+  }
+}

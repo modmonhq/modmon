@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "mm configuration: release-inputs",
+  "description": "Values `mm deploy plan --release-input NAME=VALUE` supplies per\ndeployment, read as `RELEASE.<NAME>`.",
+  "type": "object",
+  "$comment": "The value of top-level 'release-inputs', for .config/mm/release-inputs.yaml. Generated from MmConfig; run ./scripts/generate-artifacts.sh. Do not edit.",
+  "additionalProperties": {
+    "$ref": "#/$defs/ReleaseInputConfig"
+  },
+  "$defs": {
+    "ReleaseInputConfig": {
+      "description": "One value under `release-inputs:` that `mm deploy plan` takes with\n`--release-input NAME=VALUE`.",
+      "type": "object",
+      "properties": {
+        "pattern": {
+          "description": "A regular expression the whole value has to match, such as\n`^[A-Za-z0-9._-]+$`. Without one, any value of printable text is\naccepted.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

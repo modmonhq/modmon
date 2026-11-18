@@ -1,0 +1,153 @@
+---
+- name: Enroll the complete trusted mm project inventory
+  hosts: mm_targets
+  become: true
+  gather_facts: true
+  serial: 1
+  vars:
+    mm_project_roots: []
+    mm_runtime: ''
+    mm_runtime_rootless: false
+    mm_runtime_user: root
+    mm_project_inventory_path: /etc/mm/projects.json
+    mm_manage_mmd: true
+
+  pre_tasks:
+    - name: Validate the complete host inventory
+      ansible.builtin.assert:
+        that:
+          - mm_runtime in ['docker-compose', 'podman-compose']
+          - mm_runtime_rootless | type_debug == 'bool'
+          - (mm_runtime == 'docker-compose' and not mm_runtime_rootless) or (mm_runtime == 'podman-compose' and mm_runtime_rootless)
+          - mm_project_roots | type_debug == 'list'
+          - mm_project_roots | length > 0
+        fail_msg: Runtime mode and the complete trusted project inventory must be explicit.
+
+    - name: Validate each project declaration
+      ansible.builtin.assert:
+        that:
+          - item.project_id is match('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+          - item.root == '/srv/mm/projects/' + item.project_id
+          - item.owner is match('^[a-z_][a-z0-9_-]{0,31}$')
+          - item.group is match('^[a-z_][a-z0-9_-]{0,31}$')
+          - item.mode | default('0750') in ['0700', '0750']
+          - item.state | default('present') in ['present', 'absent']
+        fail_msg: Project roots must use their UUID path and explicit safe ownership.
+      loop: "{{ mm_project_roots }}"
+      loop_control:
+        label: "{{ item.project_id | default('invalid') }}"
+
+  tasks:
+    - name: Ensure the daemon relay socket group exists
+      ansible.builtin.group:
+        name: mm-relay
+        system: true
+        state: present
+
+    - name: Create the stable target layout
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner }}"
+        group: "{{ item.group }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - {path: /etc/mm, owner: root, group: root, mode: '0700'}
+        - {path: /run/mm, owner: root, group: mm-relay, mode: '0750'}
+        - {path: /srv/mm/projects, owner: root, group: root, mode: '0755'}
+        - {path: /var/lib/mm, owner: root, group: root, mode: '0700'}
+        - {path: /var/lib/mm-home, owner: "{{ mm_runtime_user }}", group: "{{ mm_runtime_user }}", mode: '0700'}
+
+    - name: Inspect project roots without following links
+      ansible.builtin.stat:
+        path: "{{ item.root }}"
+        follow: false
+      register: mm_root_stats
+      loop: "{{ mm_project_roots }}"
+      loop_control:
+        label: "{{ item.project_id }}"
+
+    - name: Reject replaced or symlinked enrolled roots
+      ansible.builtin.assert:
+        that:
+          - not item.stat.exists or item.stat.isdir
+          - not item.stat.exists or not item.stat.islnk
+        fail_msg: An enrolled project root was replaced by a non-directory or symlink.
+      loop: "{{ mm_root_stats.results }}"
+      loop_control:
+        label: "{{ item.item.project_id }}"
+
+    - name: Create present project roots with exact ownership
+      ansible.builtin.file:
+        path: "{{ item.root }}"
+        state: directory
+        owner: "{{ item.owner }}"
+        group: "{{ item.group }}"
+        mode: "{{ item.mode | default('0750') }}"
+      loop: "{{ mm_project_roots }}"
+      loop_control:
+        label: "{{ item.project_id }}"
+      when: item.state | default('present') == 'present'
+
+    - name: Resolve canonical project roots
+      ansible.builtin.command:
+        argv: [realpath, -e, "{{ item.root }}"]
+      register: mm_canonical_roots
+      changed_when: false
+      loop: "{{ mm_project_roots }}"
+      loop_control:
+        label: "{{ item.project_id }}"
+      when: item.state | default('present') == 'present'
+
+    - name: Require exact canonical UUID roots
+      ansible.builtin.assert:
+        that:
+          - item.stdout == item.item.root
+        fail_msg: Project policy roots must store the canonical path, never an alias.
+      loop: "{{ mm_canonical_roots.results }}"
+      loop_control:
+        label: "{{ item.item.project_id }}"
+      when: not item.skipped | default(false)
+
+    - name: Read each enrolled project identity
+      ansible.builtin.slurp:
+        src: "{{ item.root }}/.config/mm.yaml"
+      register: mm_project_configs
+      loop: "{{ mm_project_roots }}"
+      loop_control:
+        label: "{{ item.project_id }}"
+      when: item.state | default('present') == 'present'
+
+    - name: Match mm.yaml identity to its enrolled UUID
+      ansible.builtin.assert:
+        that:
+          - ((item.content | b64decode | from_yaml).project.id | string) == item.item.project_id
+        fail_msg: The project identity in mm.yaml does not match the enrolled root.
+      loop: "{{ mm_project_configs.results }}"
+      loop_control:
+        label: "{{ item.item.project_id }}"
+      when: not item.skipped | default(false)
+
+    - name: Publish the canonical enrollment inventory atomically
+      ansible.builtin.copy:
+        dest: "{{ mm_project_inventory_path }}"
+        owner: root
+        group: root
+        mode: "0600"
+        content: >-
+          {{ {'schema_version': 1, 'runtime': mm_runtime, 'rootless': mm_runtime_rootless,
+              'projects': mm_project_roots | selectattr('state', 'undefined') | list
+                + mm_project_roots | selectattr('state', 'defined') | rejectattr('state', 'equalto', 'absent') | list}
+             | to_nice_json(indent=2, sort_keys=true) }}
+
+    - name: Verify selected runtime capability
+      ansible.builtin.command:
+        argv: "{{ ['docker', 'compose', 'version'] if mm_runtime == 'docker-compose' else ['runuser', '-u', mm_runtime_user, '--', 'podman', 'compose', 'version'] }}"
+      changed_when: false
+
+    - name: Verify the single daemon service
+      ansible.builtin.systemd_service:
+        name: mmd
+        enabled: true
+        state: started
+      when: mm_manage_mmd | bool

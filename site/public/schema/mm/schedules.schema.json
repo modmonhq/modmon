@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "mm configuration: schedules",
+  "type": "object",
+  "$comment": "The value of top-level 'schedules', for .config/mm/schedules.yaml. Generated from MmConfig; run ./scripts/generate-artifacts.sh. Do not edit.",
+  "additionalProperties": {
+    "$ref": "#/$defs/ScheduleConfig"
+  },
+  "$defs": {
+    "MisfirePolicy": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "skip",
+            "run-once"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "bounded-catch-up": {
+              "type": "object",
+              "properties": {
+                "maximum": {
+                  "type": "integer",
+                  "format": "uint16",
+                  "maximum": 65535,
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "maximum"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "bounded-catch-up"
+          ]
+        }
+      ]
+    },
+    "RetryPolicyConfig": {
+      "type": "object",
+      "properties": {
+        "attempts": {
+          "type": "integer",
+          "format": "uint16",
+          "default": 1,
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "backoff": {
+          "type": "string",
+          "default": "5s"
+        },
+        "max-backoff": {
+          "type": "string",
+          "default": "5m"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ScheduleConcurrency": {
+      "type": "string",
+      "enum": [
+        "allow",
+        "forbid",
+        "replace"
+      ]
+    },
+    "ScheduleConfig": {
+      "type": "object",
+      "properties": {
+        "concurrency": {
+          "$ref": "#/$defs/ScheduleConcurrency",
+          "default": "forbid"
+        },
+        "cron": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "ends-at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "jitter": {
+          "type": "string",
+          "default": "0s"
+        },
+        "job": {
+          "type": "string"
+        },
+        "misfire": {
+          "$ref": "#/$defs/MisfirePolicy",
+          "default": "run-once"
+        },
+        "retry": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RetryPolicyConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "starts-at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timeout": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timezone": {
+          "type": "string",
+          "default": "UTC"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "job",
+        "cron"
+      ]
+    }
+  }
+}

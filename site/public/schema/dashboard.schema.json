@@ -1,0 +1,851 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DashboardContract",
+  "type": "object",
+  "properties": {
+    "dashboard": {
+      "$ref": "#/$defs/DashboardResponse"
+    },
+    "event": {
+      "$ref": "#/$defs/DashboardEvent"
+    }
+  },
+  "$comment": "Generated from DashboardContract; run ./scripts/generate-artifacts.sh. Do not edit.",
+  "additionalProperties": false,
+  "required": [
+    "dashboard",
+    "event"
+  ],
+  "$defs": {
+    "DashboardApiVersion": {
+      "type": "string",
+      "enum": [
+        "1"
+      ]
+    },
+    "DashboardComponent": {
+      "type": "object",
+      "properties": {
+        "healthy": {
+          "type": "boolean"
+        },
+        "kind": {
+          "$ref": "#/$defs/ServiceComponentKind"
+        },
+        "running": {
+          "type": "boolean"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "version",
+        "running",
+        "healthy"
+      ]
+    },
+    "DashboardDiagnostic": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "suggested_action": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "severity",
+        "summary"
+      ]
+    },
+    "DashboardEvent": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "api_version": {
+              "$ref": "#/$defs/DashboardApiVersion"
+            },
+            "sequence": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0
+            },
+            "type": {
+              "type": "string",
+              "const": "connected"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "api_version",
+            "sequence"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "occurred_at_unix_ms": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "sequence": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0
+            },
+            "type": {
+              "type": "string",
+              "const": "refresh"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "sequence",
+            "occurred_at_unix_ms"
+          ]
+        }
+      ]
+    },
+    "DashboardHealth": {
+      "type": "string",
+      "enum": [
+        "healthy",
+        "degraded",
+        "stopped",
+        "unknown"
+      ]
+    },
+    "DashboardJob": {
+      "type": "object",
+      "properties": {
+        "maximum_attempts": {
+          "type": "integer",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "module": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "service": {
+          "type": "string"
+        },
+        "timeout": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "module",
+        "service",
+        "timeout",
+        "maximum_attempts"
+      ]
+    },
+    "DashboardJobRun": {
+      "type": "object",
+      "properties": {
+        "attempt": {
+          "type": "integer",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "error_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "exit_code": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32"
+        },
+        "finished_at_unix_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "job": {
+          "type": "string"
+        },
+        "output_truncated": {
+          "type": "boolean"
+        },
+        "requested_at_unix_ms": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "schedule": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/JobRunState"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "job",
+        "state",
+        "attempt",
+        "requested_at_unix_ms",
+        "output_truncated"
+      ]
+    },
+    "DashboardOperation": {
+      "type": "object",
+      "properties": {
+        "error_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "finished_at_unix_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "kind": {
+          "$ref": "#/$defs/OperationKind"
+        },
+        "requested_at_unix_ms": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "state": {
+          "$ref": "#/$defs/OperationState"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "state",
+        "requested_at_unix_ms"
+      ]
+    },
+    "DashboardProjectSummary": {
+      "type": "object",
+      "properties": {
+        "dashboard_url": {
+          "type": "string"
+        },
+        "environment": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "project_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "slug": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "project_id",
+        "name",
+        "slug",
+        "dashboard_url",
+        "environment"
+      ]
+    },
+    "DashboardResource": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/DashboardResourceKind"
+        },
+        "logical_name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "logical_name"
+      ]
+    },
+    "DashboardResourceKind": {
+      "type": "string",
+      "enum": [
+        "network",
+        "volume"
+      ]
+    },
+    "DashboardResponse": {
+      "type": "object",
+      "properties": {
+        "api_version": {
+          "$ref": "#/$defs/DashboardApiVersion"
+        },
+        "generated_at_unix_ms": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "installation": {
+          "$ref": "#/$defs/InstallationDashboard"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProjectDashboard"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DashboardProjectSummary"
+          }
+        },
+        "scope": {
+          "$ref": "#/$defs/DashboardScopeDto"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "api_version",
+        "generated_at_unix_ms",
+        "scope",
+        "installation",
+        "projects"
+      ]
+    },
+    "DashboardRoute": {
+      "type": "object",
+      "properties": {
+        "provenance": {
+          "$ref": "#/$defs/IngressRouteProvenance"
+        },
+        "secure": {
+          "type": "boolean"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "url",
+        "secure",
+        "provenance"
+      ]
+    },
+    "DashboardSchedule": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "job": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "next_due_at_unix_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "retired": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "job",
+        "enabled",
+        "retired"
+      ]
+    },
+    "DashboardScopeDto": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "installation"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "project"
+            },
+            "slug": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "slug"
+          ]
+        }
+      ]
+    },
+    "DashboardService": {
+      "type": "object",
+      "properties": {
+        "app": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "desired_count": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "diagnostic_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "exit_code": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32"
+        },
+        "health": {
+          "$ref": "#/$defs/DashboardHealth"
+        },
+        "healthy_count": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "image": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "restart_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "revision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "routes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DashboardRoute"
+          }
+        },
+        "running_count": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "stack": {
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/ServiceState"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "stack",
+        "state",
+        "health",
+        "desired_count",
+        "running_count",
+        "healthy_count",
+        "routes"
+      ]
+    },
+    "EnvironmentDeliveryMode": {
+      "type": "string",
+      "enum": [
+        "direct",
+        "env-file"
+      ]
+    },
+    "EnvironmentDeliveryProvenance": {
+      "type": "string",
+      "enum": [
+        "environment-override",
+        "development-default",
+        "policy-default",
+        "built-in-default"
+      ]
+    },
+    "IngressRouteProvenance": {
+      "type": "string",
+      "enum": [
+        "explicit_config",
+        "automatic_convention",
+        "mm_managed_service"
+      ]
+    },
+    "InstallationDashboard": {
+      "type": "object",
+      "properties": {
+        "components": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DashboardComponent"
+          }
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DashboardDiagnostic"
+          }
+        },
+        "installed": {
+          "type": "boolean"
+        },
+        "route": {
+          "type": "string"
+        },
+        "runtime": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RuntimeKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stack_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "installed",
+        "route",
+        "components",
+        "diagnostics"
+      ]
+    },
+    "JobRunState": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "launching",
+        "running",
+        "retry_wait",
+        "cancelling",
+        "succeeded",
+        "failed",
+        "timed_out",
+        "cancelled",
+        "unknown"
+      ]
+    },
+    "OperationKind": {
+      "type": "string",
+      "enum": [
+        "build",
+        "bootstrap",
+        "deploy",
+        "down",
+        "reconcile",
+        "rollback",
+        "job"
+      ]
+    },
+    "OperationState": {
+      "type": "string",
+      "enum": [
+        "planned",
+        "running",
+        "succeeded",
+        "failed",
+        "cancelled",
+        "interrupted"
+      ]
+    },
+    "OptionalUnit": {
+      "description": "A module, service or job that is `development: optional`, and whether it\nruns on this machine.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Whether `.config/mm.overrides.yaml` turns it on.",
+          "type": "boolean"
+        },
+        "jobs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "kind": {
+          "$ref": "#/$defs/UnitKind"
+        },
+        "name": {
+          "description": "The name `mm dev enable` and `mm dev disable` take.",
+          "type": "string"
+        },
+        "on": {
+          "description": "Whether it runs in the development environment on this machine.",
+          "type": "boolean"
+        },
+        "services": {
+          "description": "Its services as `module/service`.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "this_run": {
+          "description": "Whether `mm dev up --with` turns it on for this run only.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "on",
+        "enabled"
+      ]
+    },
+    "ProjectDashboard": {
+      "type": "object",
+      "properties": {
+        "config_revision": {
+          "type": "string"
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DashboardDiagnostic"
+          }
+        },
+        "environment": {
+          "type": "string"
+        },
+        "environment_delivery": {
+          "$ref": "#/$defs/ResolvedEnvironmentDelivery"
+        },
+        "job_runs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DashboardJobRun"
+          }
+        },
+        "jobs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DashboardJob"
+          }
+        },
+        "name": {
+          "type": "string"
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DashboardOperation"
+          }
+        },
+        "optional": {
+          "description": "The `development: optional` units; the dashboard greys out those\nthat are off on this machine.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OptionalUnit"
+          }
+        },
+        "project_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "resources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DashboardResource"
+          }
+        },
+        "runtime": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RuntimeKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "runtime_available": {
+          "type": "boolean"
+        },
+        "schedules": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DashboardSchedule"
+          }
+        },
+        "services": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DashboardService"
+          }
+        },
+        "slug": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "project_id",
+        "name",
+        "slug",
+        "environment",
+        "target",
+        "runtime_available",
+        "config_revision",
+        "environment_delivery",
+        "services",
+        "resources",
+        "operations",
+        "jobs",
+        "schedules",
+        "job_runs",
+        "diagnostics"
+      ]
+    },
+    "ResolvedEnvironmentDelivery": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "$ref": "#/$defs/EnvironmentDeliveryMode"
+        },
+        "provenance": {
+          "$ref": "#/$defs/EnvironmentDeliveryProvenance"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "provenance"
+      ]
+    },
+    "RuntimeKind": {
+      "type": "string",
+      "enum": [
+        "podman-compose",
+        "docker-compose"
+      ]
+    },
+    "ServiceComponentKind": {
+      "type": "string",
+      "enum": [
+        "local_ingress",
+        "mm_control_api",
+        "mailpit",
+        "cap",
+        "cap_valkey"
+      ]
+    },
+    "ServiceState": {
+      "type": "string",
+      "enum": [
+        "missing",
+        "running",
+        "degraded",
+        "stopped",
+        "unknown",
+        "job_only"
+      ]
+    },
+    "Severity": {
+      "type": "string",
+      "enum": [
+        "info",
+        "warning",
+        "error"
+      ]
+    },
+    "UnitKind": {
+      "type": "string",
+      "enum": [
+        "module",
+        "service",
+        "job"
+      ]
+    }
+  }
+}

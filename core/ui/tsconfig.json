@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "useDefineForClassFields": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "jsx": "preserve",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["node", "vitest/globals"],
+    "skipLibCheck": true,
+    "allowArbitraryExtensions": true,
+    "paths": {
+      "@mm/ui/*": ["../../packages/ui/src/*"],
+      "vue": ["./node_modules/vue"],
+      "reka-ui": ["./node_modules/reka-ui"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.vue", "vite.config.ts", "playwright.config.ts"]
+}

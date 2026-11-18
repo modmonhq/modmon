@@ -1,0 +1,2 @@
+# Keys that sign mm releases, read by: ssh-keygen -Y verify -n mm-release
+# One line per key: PRINCIPAL namespaces="mm-release" KEY_TYPE BASE64_KEY

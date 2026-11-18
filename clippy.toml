@@ -1,0 +1,10 @@
+# A blocking file lock on a thread of an async runtime wedged mmd.
+# File locks are waited for in core/src/adapters/file_lock.rs only, where
+# every wait has a deadline. core/tests/source_quality.rs checks the
+# spelled-out forms and that these entries stay.
+disallowed-methods = [
+    { path = "std::fs::File::lock", reason = "waits for the lock without a bound; use crate::adapters::file_lock" },
+    { path = "std::fs::File::lock_shared", reason = "waits for the lock without a bound; use crate::adapters::file_lock" },
+    { path = "fs4::FileExt::lock", reason = "waits for the lock without a bound; use crate::adapters::file_lock" },
+    { path = "fs4::FileExt::lock_shared", reason = "waits for the lock without a bound; use crate::adapters::file_lock" },
+]

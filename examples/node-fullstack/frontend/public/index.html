@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mm Notes</title>
+  <style>
+    body { max-width: 44rem; margin: 4rem auto; padding: 0 1rem; font: 16px/1.5 system-ui, sans-serif; }
+    form { display: flex; gap: .5rem; }
+    input { flex: 1; padding: .65rem; }
+    button { padding: .65rem 1rem; }
+    li { margin: .5rem 0; }
+  </style>
+</head>
+<body>
+  <h1>Notes</h1>
+  <form id="note-form">
+    <input id="note" name="note" autocomplete="off" placeholder="Write a note" required>
+    <button type="submit">Add</button>
+  </form>
+  <ul id="notes"></ul>
+  <script>
+    const apiUrl = __API_URL__;
+    const list = document.querySelector('#notes');
+    const form = document.querySelector('#note-form');
+
+    async function refresh() {
+      const response = await fetch(`${apiUrl}/api/notes`);
+      const notes = await response.json();
+      list.replaceChildren(...notes.map(({ text }) => {
+        const item = document.createElement('li');
+        item.textContent = text;
+        return item;
+      }));
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const input = document.querySelector('#note');
+      await fetch(`${apiUrl}/api/notes`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: input.value })
+      });
+      input.value = '';
+      await refresh();
+    });
+
+    refresh().catch(console.error);
+  </script>
+</body>
+</html>

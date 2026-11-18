@@ -1,0 +1,76 @@
+name: Local checkout installer
+
+on:
+  pull_request:
+    paths: ['install.sh', 'scripts/install/**', 'packaging/local/**', 'core/**', 'docs/mcp.md', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.github/workflows/local-install.yml']
+  push:
+    branches: [master, main]
+    paths: ['install.sh', 'scripts/install/**', 'packaging/local/**', 'core/**', 'docs/mcp.md', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.github/workflows/local-install.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fixtures:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: bash -n install.sh scripts/install/build.sh scripts/install/workstation.sh scripts/install/local-dns.sh scripts/install/local-dns-macos.sh
+      - run: shellcheck install.sh scripts/install/build.sh scripts/install/workstation.sh scripts/install/local-dns.sh scripts/install/local-dns-macos.sh scripts/live-empty-ingress-config.sh
+      - run: node scripts/install/test-install.mjs
+      - run: node scripts/install/test-local-dns.mjs
+      - run: node scripts/install/test-local-dns-macos.mjs
+      - run: bash scripts/live-empty-ingress-config.sh
+      - name: Test installer with macOS-compatible Bash 3.2
+        run: >-
+          docker run --rm --cpus=1 --memory=512m --pids-limit=256
+          -v "$PWD:/workspace" -w /workspace
+          bash:3.2@sha256:5a7b20e4f39122a62a34265e0b3ac279ed137b3bf90657fba9209cd4ea1078e5
+          bash -c 'apk add --no-cache nodejs git tar coreutils perl-utils && node scripts/install/test-install.mjs'
+
+  native:
+    name: Build and update (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install from checkout
+        shell: bash
+        # Use the OS-provided Bash (including macOS Bash 3.2).
+        run: /bin/bash ./install.sh --install-dir "$RUNNER_TEMP/mm bin" --with-daemon --no-modify-path --no-setup
+      - name: Smoke outside checkout and verify embedded dashboard
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: |
+          "$RUNNER_TEMP/mm bin/mm" --version
+          "$RUNNER_TEMP/mm bin/mm" --help
+          "$RUNNER_TEMP/mm bin/mmd" --version
+          grep -a -q 'mm local dashboard' "$RUNNER_TEMP/mm bin/mm"
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            file "$RUNNER_TEMP/mm bin/mm"
+            if readelf -l "$RUNNER_TEMP/mm bin/mm" | grep -q INTERP; then
+              echo 'Linux executable unexpectedly needs a dynamic loader' >&2
+              exit 1
+            fi
+          fi
+      - name: Rebuild same-version local UI change and verify update
+        shell: bash
+        run: |
+          python3 -c 'from pathlib import Path; p=Path("core/ui/index.html"); p.write_text(p.read_text().replace("mm local dashboard", "mm installer update fixture"))'
+          /bin/bash ./install.sh --install-dir "$RUNNER_TEMP/mm bin" --with-daemon --no-modify-path --no-setup
+          grep -a -q 'mm installer update fixture' "$RUNNER_TEMP/mm bin/mm"
+          "$RUNNER_TEMP/mm bin/mm" --version
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: local-install-logs-${{ matrix.runner }}
+          path: .modmon/install/build.*
+          include-hidden-files: true

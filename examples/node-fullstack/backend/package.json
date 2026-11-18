@@ -1,0 +1,17 @@
+{
+  "name": "mm-node-example-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "check": "node --check server.js",
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "mongodb": "7.7.0"
+  }
+}

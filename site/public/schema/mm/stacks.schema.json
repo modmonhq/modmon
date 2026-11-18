@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "mm configuration: stacks",
+  "type": "object",
+  "$comment": "The value of top-level 'stacks', for .config/mm/stacks.yaml. Generated from MmConfig; run ./scripts/generate-artifacts.sh. Do not edit.",
+  "additionalProperties": {
+    "$ref": "#/$defs/StackConfig"
+  },
+  "$defs": {
+    "AllowRule": {
+      "description": "One kind of request a route lets through: one of `methods` (any when\nempty) whose path matches `path` (any when absent).",
+      "type": "object",
+      "properties": {
+        "methods": {
+          "description": "HTTP methods in capitals, such as `[GET, HEAD]`.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "path": {
+          "description": "A regular expression the request path matches, such as\n`^/hooks/[^/]+$`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Balance": {
+      "description": "Which of a service's healthy containers an ingress node sends a route's\nrequests to.",
+      "oneOf": [
+        {
+          "description": "The ones on the proxy's own node, and every node's when it has none.",
+          "type": "string",
+          "const": "local-first"
+        },
+        {
+          "description": "The ones on every node.",
+          "type": "string",
+          "const": "spread"
+        }
+      ]
+    },
+    "IngressConfig": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/IngressRouteConfig"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/IngressRouteConfig"
+          }
+        }
+      ]
+    },
+    "IngressRouteConfig": {
+      "type": "object",
+      "properties": {
+        "allow": {
+          "description": "On a cluster target: the only requests that reach the service; the\nproxy answers 404 to every other one.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AllowRule"
+          }
+        },
+        "balance": {
+          "description": "On a cluster target: `spread` sends this route's requests to the\nservice's containers on every node. The default is the\nenvironment's `ingress.balance`, else `spread` for a service with\n`autoscale` and `local-first` for every other one.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Balance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "domain": {
+          "type": "string"
+        },
+        "environments": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "headers": {
+          "description": "On a cluster target: response headers, on top of the environment's\n`ingress.headers`. An empty value removes the header.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "https": {
+          "type": "boolean",
+          "default": true
+        },
+        "port": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "priority": {
+          "description": "On a cluster target: where this route stands among the routes of\nits host, from 1 to 1000000. By default the longer path goes first.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "route": {
+          "type": "string",
+          "default": "/"
+        },
+        "service": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "domain"
+      ]
+    },
+    "StackConfig": {
+      "type": "object",
+      "properties": {
+        "after": {
+          "description": "Stacks a deployment rolls out before this one. Without it, stacks\nroll out in name order.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ingress": {
+          "$ref": "#/$defs/IngressConfig"
+        },
+        "networks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "project-name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "shared-volumes": {
+          "description": "Top-level Compose volumes of this stack that are one directory on\nevery node of a cluster target: the target's storage node keeps the\nfiles and the other nodes mount them over the mesh. For files that\nreplicas share, such as uploads. Not for databases: a shared volume\nis slower than local disk and does not give the locking guarantees a\ndatabase needs. On a target that names one host they are ordinary\nvolumes.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "files"
+      ]
+    }
+  }
+}

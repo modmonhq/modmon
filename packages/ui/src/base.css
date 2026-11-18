@@ -1,0 +1,105 @@
+/* Base element styles shared by the site and the local dashboard. Requires tokens.css. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+  background: var(--mm-bg);
+  scrollbar-color: #2a302b transparent;
+  scrollbar-width: thin;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  color: var(--mm-ink);
+  /*
+   * No background here: the page color is on <html>. A background on <body> is painted
+   * above layers with a negative z-index, which silently hides backdrops placed that way.
+   */
+  font-family: var(--mm-font-sans);
+  font-size: var(--mm-text-md);
+  line-height: 1.6;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+code,
+kbd,
+pre,
+samp {
+  font-family: var(--mm-font-mono);
+}
+
+:focus-visible {
+  outline: 2px solid var(--mm-accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+::selection {
+  color: var(--mm-accent-ink);
+  background: var(--mm-accent);
+}
+
+/* Tone helpers: set --tone once and let children use it. */
+[data-tone="ok"] {
+  --tone: var(--mm-ok);
+  --tone-rgb: var(--mm-accent-rgb);
+}
+[data-tone="warn"] {
+  --tone: var(--mm-warn);
+  --tone-rgb: var(--mm-warn-rgb);
+}
+[data-tone="bad"] {
+  --tone: var(--mm-bad);
+  --tone-rgb: var(--mm-bad-rgb);
+}
+[data-tone="info"] {
+  --tone: var(--mm-info);
+  --tone-rgb: var(--mm-info-rgb);
+}
+[data-tone="idle"] {
+  --tone: var(--mm-idle);
+  --tone-rgb: 127 136 131;
+}
+
+.mm-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

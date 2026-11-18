@@ -1,0 +1,23 @@
+# Critical deterministic and secret-safe behavior. Expanding this list requires
+# tests in the same change; missed and timed-out mutants are release blockers.
+examine_globs = [
+    "core/src/app/config_validation/identifiers.rs",
+    "core/src/app/config_validation/path_validation.rs",
+    "core/src/app/dockerfile.rs",
+    "core/src/adapters/remote/codec.rs",
+    "core/src/domain/build.rs",
+    "core/src/domain/config_resolve.rs",
+    "core/src/domain/local_ingress.rs",
+    "core/src/domain/path_policy.rs",
+    "core/src/domain/scheduler.rs",
+    "core/src/domain/secret_contract.rs",
+]
+all_features = true
+test_workspace = true
+additional_cargo_args = ["--locked", "--jobs", "1"]
+additional_cargo_test_args = ["--", "--test-threads=1"]
+build_timeout_multiplier = 3.0
+timeout_multiplier = 3.0
+minimum_test_timeout = 120.0
+output = ".modmon/artifacts/mutation"
+profile = "test"

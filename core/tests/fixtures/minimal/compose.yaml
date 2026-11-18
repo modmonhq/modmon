@@ -1,0 +1,4 @@
+services:
+  api:
+    image: docker.io/library/alpine:3.22
+    command: ["sleep", "infinity"]

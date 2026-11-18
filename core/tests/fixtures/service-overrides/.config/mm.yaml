@@ -1,0 +1,30 @@
+schema-version: 1
+default-environment: local
+project:
+  id: b01ec4be-f253-44cc-82f7-06d44e31d250
+  name: service-overrides
+target: local
+runtime:
+  driver: podman-compose
+stacks:
+  app:
+    files:
+      - compose.yaml
+modules:
+  api:
+    path: api
+    env:
+      template: .env.example
+    services:
+      api:
+        stack: app
+      worker:
+        stack: app
+        env:
+          ROLE: worker
+          EXTRA: enabled
+environments:
+  local:
+    bindings:
+      DB.HOST:
+        value: database

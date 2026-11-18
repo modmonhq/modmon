@@ -1,0 +1,259 @@
+{
+  "drivers": [
+    {
+      "display_name": "OpenBao",
+      "driver": "openbao",
+      "modes": [
+        {
+          "configuration": [
+            {
+              "allowed_values": [],
+              "default": null,
+              "key": "address",
+              "kind": "https_url",
+              "label": "HTTPS address",
+              "required": true,
+              "secret": false
+            },
+            {
+              "allowed_values": [],
+              "default": null,
+              "key": "namespace",
+              "kind": "text",
+              "label": "Namespace (optional)",
+              "required": false,
+              "secret": false
+            },
+            {
+              "allowed_values": [],
+              "default": "mm-kv",
+              "key": "storage-mount",
+              "kind": "text",
+              "label": "KV v2 mount",
+              "required": true,
+              "secret": false
+            },
+            {
+              "allowed_values": [],
+              "default": "mm-approle",
+              "key": "automation-auth-mount",
+              "kind": "text",
+              "label": "AppRole mount",
+              "required": true,
+              "secret": false
+            },
+            {
+              "allowed_values": [],
+              "default": null,
+              "key": "trust-bundle",
+              "kind": "path",
+              "label": "CA PEM path",
+              "required": true,
+              "secret": false
+            },
+            {
+              "allowed_values": [],
+              "default": null,
+              "key": "expected-trust-sha256",
+              "kind": "sha256",
+              "label": "CA sha256 pin",
+              "required": true,
+              "secret": false
+            }
+          ],
+          "mode": "external",
+          "operations": [
+            "add",
+            "edit",
+            "test",
+            "status"
+          ],
+          "scopes": [
+            "project"
+          ]
+        },
+        {
+          "configuration": [
+            {
+              "allowed_values": [],
+              "default": null,
+              "key": "installation",
+              "kind": "text",
+              "label": "Installation",
+              "required": false,
+              "secret": false
+            },
+            {
+              "allowed_values": [
+                "2.3",
+                "2.4",
+                "2.5"
+              ],
+              "default": "2.4",
+              "key": "release",
+              "kind": "release",
+              "label": "Server release",
+              "required": true,
+              "secret": false
+            },
+            {
+              "allowed_values": [],
+              "default": "18200",
+              "key": "management-port",
+              "kind": "u16",
+              "label": "Loopback management port",
+              "required": false,
+              "secret": false
+            }
+          ],
+          "mode": "managed",
+          "operations": [
+            "add",
+            "status",
+            "install",
+            "restart",
+            "upgrade",
+            "seal",
+            "unseal",
+            "backup",
+            "restore",
+            "remove"
+          ],
+          "scopes": [
+            "installation",
+            "environment"
+          ]
+        }
+      ]
+    },
+    {
+      "display_name": "HashiCorp Vault",
+      "driver": "vault",
+      "modes": [
+        {
+          "configuration": [
+            {
+              "allowed_values": [],
+              "default": null,
+              "key": "address",
+              "kind": "https_url",
+              "label": "HTTPS address",
+              "required": true,
+              "secret": false
+            },
+            {
+              "allowed_values": [],
+              "default": null,
+              "key": "namespace",
+              "kind": "text",
+              "label": "Enterprise namespace (optional)",
+              "required": false,
+              "secret": false
+            },
+            {
+              "allowed_values": [],
+              "default": "mm-kv",
+              "key": "storage-mount",
+              "kind": "text",
+              "label": "KV v2 mount",
+              "required": true,
+              "secret": false
+            },
+            {
+              "allowed_values": [],
+              "default": "mm-approle",
+              "key": "automation-auth-mount",
+              "kind": "text",
+              "label": "AppRole mount",
+              "required": true,
+              "secret": false
+            },
+            {
+              "allowed_values": [],
+              "default": null,
+              "key": "trust-bundle",
+              "kind": "path",
+              "label": "CA PEM path",
+              "required": true,
+              "secret": false
+            },
+            {
+              "allowed_values": [],
+              "default": null,
+              "key": "expected-trust-sha256",
+              "kind": "sha256",
+              "label": "CA sha256 pin",
+              "required": true,
+              "secret": false
+            }
+          ],
+          "mode": "external",
+          "operations": [
+            "add",
+            "edit",
+            "test",
+            "status"
+          ],
+          "scopes": [
+            "project"
+          ]
+        },
+        {
+          "configuration": [
+            {
+              "allowed_values": [],
+              "default": null,
+              "key": "installation",
+              "kind": "text",
+              "label": "Installation",
+              "required": true,
+              "secret": false
+            },
+            {
+              "allowed_values": [
+                "1.18",
+                "1.19"
+              ],
+              "default": "1.19",
+              "key": "release",
+              "kind": "release",
+              "label": "Server release",
+              "required": true,
+              "secret": false
+            },
+            {
+              "allowed_values": [],
+              "default": "18210",
+              "key": "management-port",
+              "kind": "u16",
+              "label": "Loopback management port",
+              "required": true,
+              "secret": false
+            }
+          ],
+          "mode": "managed",
+          "operations": [
+            "add",
+            "status",
+            "install",
+            "restart",
+            "upgrade",
+            "seal",
+            "unseal",
+            "backup",
+            "restore",
+            "remove"
+          ],
+          "scopes": [
+            "installation"
+          ]
+        }
+      ]
+    }
+  ],
+  "generated": {
+    "command": "./scripts/generate-artifacts.sh",
+    "notice": "Do not edit.",
+    "source": "OpenBao and Vault provider descriptors"
+  }
+}

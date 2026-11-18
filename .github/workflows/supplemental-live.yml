@@ -1,0 +1,124 @@
+name: Supplemental live certification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  MM_RUST_IMAGE: rust:1.98-bookworm@sha256:e70e2eec3d495fd5c8e0be74adda86507dfac7f51a724fbf9813ff59b2b247c7
+
+jobs:
+  binaries:
+    name: Constrained live binaries
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: core/ui/package-lock.json
+      - name: Build embedded dashboard
+        run: npm --prefix core/ui ci && npm --prefix core/ui run build
+      - name: Build live binaries in the constrained container
+        run: |
+          mkdir -p /tmp/opencode
+          docker run --rm --cpus=1 --memory=2g --pids-limit=256 \
+            --user "$(id -u):$(id -g)" -e HOME=/tmp -e CARGO_HOME=/tmp/cargo \
+            -e CARGO_BUILD_JOBS=1 -e RUST_TEST_THREADS=1 -e RUSTUP_TOOLCHAIN=1.98.0 \
+            -v "$PWD:/workspace" -w /workspace "$MM_RUST_IMAGE" \
+            cargo build --package mm --bins --all-features --locked --jobs 1 \
+            >/tmp/opencode/live-build.log 2>&1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: supplemental-live-binaries
+          path: |
+            target/debug/mm
+            target/debug/mmd
+          if-no-files-found: error
+          retention-days: 1
+
+  engine:
+    name: Host isolation and delivery (${{ matrix.runtime }})
+    needs: binaries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [docker-compose, podman-compose]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: supplemental-live-binaries
+          path: target/debug
+      - if: matrix.runtime == 'podman-compose'
+        run: sudo apt-get update && sudo apt-get install --yes podman podman-compose
+      - name: Run environment, multi-project, and development-mount evidence
+        env:
+          MM_BIN: ${{ github.workspace }}/target/debug/mm
+        run: |
+          chmod +x target/debug/mm target/debug/mmd
+          ./scripts/live-environment-delivery.sh "${{ matrix.runtime }}" 2>&1 | tee environment-live.log
+          ./scripts/live-multi-project-host.sh "${{ matrix.runtime }}" 2>&1 | tee multi-project-live.log
+          ./scripts/live-development-mounts.sh "${{ matrix.runtime }}" 2>&1 | tee development-mounts-live.log
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: supplemental-live-${{ matrix.runtime }}
+          path: "*-live.log"
+          if-no-files-found: error
+          retention-days: 30
+
+  remote-rbac:
+    name: Remote access
+    needs: binaries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: supplemental-live-binaries
+          path: live-bin
+      - name: Run relay-only access, repo users, and git-fetched deploy evidence
+        env:
+          MM_LIVE_PREBUILT_DIR: ${{ github.workspace }}/live-bin
+        run: |
+          chmod +x live-bin/mm live-bin/mmd
+          ./scripts/live-remote-access.sh 2>&1 | tee remote-access-live.log
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: supplemental-live-remote-access
+          path: remote-access-live.log
+          if-no-files-found: error
+          retention-days: 30
+
+  cluster:
+    name: Cluster deployment
+    needs: binaries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: supplemental-live-binaries
+          path: live-bin
+      - name: Run three-node plan, apply, status, subset, and node list evidence
+        env:
+          MM_LIVE_PREBUILT_DIR: ${{ github.workspace }}/live-bin
+        run: |
+          chmod +x live-bin/mm live-bin/mmd
+          ./scripts/live-cluster.sh 2>&1 | tee cluster-live.log
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: supplemental-live-cluster
+          path: cluster-live.log
+          if-no-files-found: error
+          retention-days: 30

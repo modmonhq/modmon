@@ -1,0 +1,35 @@
+# Rust workspace output
+/target/
+**/target/
+!core/src/adapters/target/
+!core/src/domain/target/
+/mutants.out*/
+
+# Node and documentation output
+**/node_modules/
+**/vendor/
+/site/.nuxt/
+/site/.output/
+/site/.data/
+/core/ui/dist/
+**/coverage/
+**/playwright-report/
+**/test-results/
+**/bin/
+!core/src/bin/
+**/obj/
+
+# Private mm state and generated runtime material
+**/.mm/
+**/.config/mm.yaml.lock
+**/.config/mm.overrides.yaml
+**/.env
+**/.env.*
+!**/.env.example
+**/*.db-shm
+**/*.db-wal
+**/.certificates/
+**/generated-certs/
+
+# Agent slop dir
+/.modmon/*

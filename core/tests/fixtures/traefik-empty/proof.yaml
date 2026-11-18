@@ -1,0 +1,12 @@
+http:
+  routers:
+    proof:
+      rule: Host(`proof.invalid`)
+      entryPoints: [web]
+      service: noop@internal
+      middlewares: [proof]
+  middlewares:
+    proof:
+      headers:
+        customResponseHeaders:
+          X-MM-Test-Loaded: "yes"

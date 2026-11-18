@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "mm configuration: default-environment",
+  "type": [
+    "string",
+    "null"
+  ],
+  "$comment": "The value of top-level 'default-environment', for .config/mm/default-environment.yaml. Generated from MmConfig; run ./scripts/generate-artifacts.sh. Do not edit."
+}

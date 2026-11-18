@@ -1,0 +1,21 @@
+[workspace]
+members = ["core", "core/domain"]
+exclude = ["examples/laravel-rust/services/pricing"]
+resolver = "3"
+
+[profile.release]
+lto = "thin"
+strip = "symbols"
+
+# Local iteration: no LTO or debug-info linking, with cached optimized deps.
+# Keep embedded assets enabled when the binary leaves the build container.
+[profile.local]
+inherits = "dev"
+opt-level = 0
+debug = 0
+debug-assertions = false
+incremental = true
+lto = false
+
+[profile.local.package."*"]
+opt-level = 1

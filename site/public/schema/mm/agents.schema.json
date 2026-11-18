@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "mm configuration: agents",
+  "description": "What an AI agent may do through `mm mcp serve`, per environment.",
+  "type": "object",
+  "$comment": "The value of top-level 'agents', for .config/mm/agents.yaml. Generated from MmConfig; run ./scripts/generate-artifacts.sh. Do not edit.",
+  "additionalProperties": {
+    "$ref": "#/$defs/AgentAccessConfig"
+  },
+  "$defs": {
+    "AccessLevel": {
+      "description": "Access levels a repo grants per environment. Each includes the previous.",
+      "oneOf": [
+        {
+          "description": "Plan, status, inspect, and logs.",
+          "type": "string",
+          "const": "view"
+        },
+        {
+          "description": "`view` plus restart and job run, cancel, and retry.",
+          "type": "string",
+          "const": "operate"
+        },
+        {
+          "description": "`operate` plus deploy, rollback, and team sync.",
+          "type": "string",
+          "const": "deploy"
+        },
+        {
+          "description": "`deploy` plus exec, forward, setting secrets and variables,\nemergency blocks, and audit.",
+          "type": "string",
+          "const": "admin"
+        }
+      ]
+    },
+    "AgentAccess": {
+      "description": "What an agent may do in one environment.",
+      "type": "object",
+      "properties": {
+        "exec": {
+          "description": "Services the agent may run commands in: `true`, or a list of names.",
+          "$ref": "#/$defs/ServiceSelection"
+        },
+        "level": {
+          "description": "`view`, `operate`, or `deploy`. Agents are never `admin`.",
+          "$ref": "#/$defs/AccessLevel"
+        },
+        "secrets": {
+          "description": "The agent may set secrets and variables on the environment's hosts\nfor the next deployment, when its user may. It never reads a value.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "level"
+      ]
+    },
+    "AgentAccessConfig": {
+      "description": "`production: view` or `local: { level: deploy, exec: true }`.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AccessLevel"
+        },
+        {
+          "$ref": "#/$defs/AgentAccess"
+        }
+      ]
+    },
+    "ServiceSelection": {
+      "description": "Services an add-on applies to: all of them, none, or a named list.",
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      ]
+    }
+  }
+}

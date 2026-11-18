@@ -1,0 +1,345 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "mm configuration: targets",
+  "description": "Public connection facts for remote targets; clients pin them.",
+  "type": "object",
+  "$comment": "The value of top-level 'targets', for .config/mm/targets.yaml. Generated from MmConfig; run ./scripts/generate-artifacts.sh. Do not edit.",
+  "additionalProperties": {
+    "$ref": "#/$defs/RepoTargetConfig"
+  },
+  "$defs": {
+    "Delivery": {
+      "description": "How a target's hosts get a commit's files.",
+      "oneOf": [
+        {
+          "description": "Each host fetches the commit from the origin in its host policy.",
+          "type": "string",
+          "const": "fetch"
+        },
+        {
+          "description": "mm sends the commit's tracked files; the hosts never contact the\ngit server.",
+          "type": "string",
+          "const": "push"
+        }
+      ]
+    },
+    "Ipv4Cidr": {
+      "description": "An IPv4 network in CIDR notation, such as 10.90.0.0/24.",
+      "type": "string",
+      "pattern": "^\\d{1,3}(\\.\\d{1,3}){3}/\\d{1,2}$"
+    },
+    "MeshFields": {
+      "description": "The YAML shape of [`MeshConfig`].",
+      "type": "object",
+      "properties": {
+        "interface": {
+          "description": "Use this existing private interface (`eth1`) instead of creating a\nWireGuard mesh. Every node then declares its `private-address`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mtu": {
+          "description": "The mesh interface's MTU: the underlay's MTU minus 80 bytes of\nWireGuard overhead. Default `1420`, which fits a 1500-byte underlay.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "port": {
+          "description": "The UDP port WireGuard listens on, on every node. It must be reachable\nbetween the nodes. Default `51820`.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "subnet": {
+          "description": "The WireGuard mesh's address range. Default `10.90.0.0/24`.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Ipv4Cidr"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "PlacementSpec": {
+      "description": "One placement word, or a list of them.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "RepoBreakGlassKey": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "description": "`ssh-ed25519 AAAA… comment`; keep the private half offline.",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "key"
+      ]
+    },
+    "RepoClusterConfig": {
+      "description": "How the nodes of a cluster target work together. Every key has a default.",
+      "type": "object",
+      "properties": {
+        "groups": {
+          "description": "Names for sets of nodes, for a service's `placement`.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "ingress": {
+          "description": "The nodes that run the ingress proxy and take the traffic of every\n`ingress:` route, written like a `placement`: a node, a group,\n`all`, or a list. Unset means the first node.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlacementSpec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mesh": {
+          "description": "The private network between the nodes: a WireGuard mesh mm creates\n(`subnet`, `port`, `mtu`) or an existing `interface`.",
+          "$ref": "#/$defs/MeshFields"
+        },
+        "networks": {
+          "description": "Address space for networks that span the nodes: a private range, a\n/20 or larger, that no node uses for anything else. Each network\ntakes a /20 of it (16 nodes, room for 253 containers on each), so\nthe default holds 256 networks.",
+          "$ref": "#/$defs/Ipv4Cidr"
+        },
+        "storage": {
+          "description": "The node that serves shared volumes. Unset means the first node.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "RepoDeployKey": {
+      "type": "object",
+      "properties": {
+        "public-key": {
+          "description": "Its public half, as added to the git host.",
+          "type": "string"
+        },
+        "secret": {
+          "description": "The age secret holding the private key (`mm target setup deploy-key`\ncreates it).",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "secret",
+        "public-key"
+      ]
+    },
+    "RepoTargetConfig": {
+      "description": "A repo target takes one of two forms. The flat form names one host. The\ncluster form lists `nodes` instead; `mm target setup` prepares them and\n`mm target setup record` writes each node's keys and address back.",
+      "type": "object",
+      "properties": {
+        "cluster": {
+          "description": "Cluster form: the nodes' private network, storage node, and groups.",
+          "$ref": "#/$defs/RepoClusterConfig"
+        },
+        "daemon-fingerprint": {
+          "description": "Printed by `mmd --print-identity` on the host.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "delivery": {
+          "description": "How the target's hosts get a commit's files. `push`: mm sends them\nover its own connection and the hosts never contact the git server.\nDefault `fetch`: each host fetches from the origin.",
+          "$ref": "#/$defs/Delivery"
+        },
+        "host": {
+          "description": "Flat form: the host mm connects to.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "host-key": {
+          "description": "The host's SSH public key, `<type> <base64>`; its fingerprint is derived.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nodes": {
+          "description": "Cluster form: every node. Replaces `host`, `host-key`, and\n`daemon-fingerprint`.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RepoTargetNode"
+          }
+        },
+        "port": {
+          "type": "integer",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "providers": {
+          "description": "Where this target's hosts read an external secret provider, by the\nprovider's name under `providers:`. The hosts resolve the secrets\nthemselves; see `mmd secrets connect`.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/TargetProviderConfig"
+          }
+        },
+        "setup": {
+          "description": "Cluster form: what setup installs on every node.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RepoTargetSetup"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "RepoTargetNode": {
+      "description": "One host of a cluster target. `mm target setup record` fills `host-key`,\n`daemon-fingerprint`, and `private-address`.",
+      "type": "object",
+      "properties": {
+        "daemon-fingerprint": {
+          "description": "Printed by `mmd --print-identity` on the node.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "endpoint": {
+          "description": "The address the other nodes send WireGuard packets to, when that is\nnot `host`: for example an address on a network the nodes share.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "host": {
+          "description": "The public address or DNS name mm connects to.",
+          "type": "string"
+        },
+        "host-key": {
+          "description": "The host's SSH public key, `<type> <base64>`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "The node's name and hostname: a lowercase hostname label.",
+          "type": "string"
+        },
+        "port": {
+          "type": "integer",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "private-address": {
+          "description": "The node's address on the private network. Unset, mm assigns the\nlowest free address of the mesh subnet.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "ipv4"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "host"
+      ]
+    },
+    "RepoTargetSetup": {
+      "description": "What setup installs on every node of a cluster target.",
+      "type": "object",
+      "properties": {
+        "break-glass": {
+          "description": "Recovery keys that are admin on every node.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RepoBreakGlassKey"
+          }
+        },
+        "deploy-key": {
+          "description": "The environment's read-only deploy key, shared by every node.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RepoDeployKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "origin": {
+          "description": "Git URL every node fetches the project from. Left out with\n`delivery: push`, where the nodes fetch nothing.",
+          "type": "string"
+        },
+        "origin-host-key": {
+          "description": "The git server's SSH host key, `<type> <base64>`; required for SSH origins.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "user": {
+          "description": "The account setup connects as; the operator's mm key is authorized for it.",
+          "type": "string",
+          "default": "root"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TargetProviderConfig": {
+      "description": "What a target changes about one of the project's `providers:`.",
+      "type": "object",
+      "properties": {
+        "address": {
+          "description": "Where this target's hosts reach the store, for example\n`https://127.0.0.1:8200` when it runs on the host itself, or a mesh\naddress. Replaces the provider's own `address` on this target.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "address"
+      ]
+    }
+  }
+}

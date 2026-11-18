@@ -1,0 +1,54 @@
+/* Self-hosted fonts: Barlow for display, Geist for text, Geist Mono for terminal and code. */
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("../../../node_modules/@fontsource-variable/geist/files/geist-latin-wght-normal.woff2")
+    format("woff2-variations");
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("../../../node_modules/@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2")
+    format("woff2-variations");
+}
+
+@font-face {
+  font-family: "Barlow";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../../../node_modules/@fontsource/barlow/files/barlow-latin-500-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Barlow";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("../../../node_modules/@fontsource/barlow/files/barlow-latin-600-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Barlow";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("../../../node_modules/@fontsource/barlow/files/barlow-latin-700-normal.woff2") format("woff2");
+}
+
+/* Metrics-matched fallback so headings do not shift when Barlow arrives. */
+@font-face {
+  font-family: "Barlow Fallback";
+  font-style: normal;
+  font-weight: 500 700;
+  src: local("Arial"), local("ArialMT"), local("Liberation Sans");
+  size-adjust: 98%;
+  ascent-override: 102%;
+  descent-override: 20.4%;
+  line-gap-override: 0%;
+}

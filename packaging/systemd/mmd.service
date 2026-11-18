@@ -1,0 +1,68 @@
+[Unit]
+Description=mm privileged target daemon
+Documentation=https://mm.local/docs/remote-daemon
+After=network-online.target mm-mesh.service
+Wants=network-online.target
+# mmd answers names for this host's containers, so a daemon that keeps
+# failing is started again for as long as it takes.
+StartLimitIntervalSec=0
+
+[Service]
+# mmd says when it serves requests, and from then on that it still does.
+# It reports itself alive only after a request to its own socket was
+# answered, so a daemon that stopped answering is killed after WatchdogSec
+# and started again. It cannot handle a signal then, hence SIGKILL.
+Type=notify
+NotifyAccess=main
+WatchdogSec=30s
+WatchdogSignal=SIGKILL
+# mmd answers the names of this host's containers and hands each socket it
+# listens on to systemd. A restart (an upgrade, a crash, the watchdog)
+# keeps them open, and the next mmd answers what arrived in between; a
+# stop closes them. /run/mm keeps the request socket's file for it.
+FileDescriptorStoreMax=1024
+RuntimeDirectoryPreserve=restart
+User=root
+Group=mm-relay
+UMask=0077
+RuntimeDirectory=mm
+RuntimeDirectoryMode=0750
+StateDirectory=mm mm-home
+StateDirectoryMode=0700
+ExecStart=/usr/libexec/mmd --config /etc/mm/mmd.json
+Restart=on-failure
+RestartSec=2s
+TimeoutStartSec=30s
+TimeoutStopSec=30s
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RemoveIPC=yes
+# AF_NETLINK: reading the mesh interface and its peers for
+# `mm target mesh status`. Changing the interface is mm-mesh.service's and
+# setup's job, not the daemon's.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+# /etc/ssh: each reconcile rewrites /etc/ssh/mm_authorized_keys with an
+# atomic rename, which needs the directory writable.
+ReadWritePaths=/run/mm /var/lib/mm /var/lib/mm-home /srv/mm /etc/ssh -/var/lib/mm-openbao
+ReadOnlyPaths=/etc/mm
+
+[Install]
+WantedBy=multi-user.target

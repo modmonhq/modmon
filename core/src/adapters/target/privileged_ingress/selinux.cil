@@ -1,0 +1,6 @@
+; Fixed mm policy: allow the hardened systemd service to enter HAProxy's domain
+; and connect only to ports explicitly labelled for mm's loopback ingress.
+(type mm_ingress_port_t)
+(typeattributeset port_type (mm_ingress_port_t))
+(allow init_t haproxy_t (process2 (nnp_transition)))
+(allow haproxy_t mm_ingress_port_t (tcp_socket (name_connect)))

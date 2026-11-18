@@ -1,0 +1,66 @@
+[Unit]
+Description=mm cluster mesh (WireGuard interface mm0)
+Documentation=https://mm.local/docs/remote-daemon
+# The interface exists before anything that listens on or routes through the
+# mesh starts: mmd, the container engine, and the shared-storage server.
+After=network-online.target
+Wants=network-online.target
+Before=mmd.service docker.service podman.service nfs-server.service remote-fs-pre.target
+# A host that is not a cluster node has no mesh state and skips this unit.
+ConditionPathExists=/var/lib/mm/mesh/mesh.json
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Brings mm0 to the state mmd stored at the last reviewed apply. The private
+# key is read by WireGuard from a file under /var/lib/mm/mesh; it is never an
+# argument or an output. Stopping this unit leaves the interface in place.
+# Before it touches the interface it loads the firewall chains MM-MESH and
+# MM-MESH-IN, which keep everything off the mesh but the hosts themselves
+# and the cluster's networks.
+ExecStart=/usr/libexec/mmd --config /etc/mm/mmd.json mesh up
+ExecReload=/usr/libexec/mmd --config /etc/mm/mmd.json mesh up
+# The firewall chains of the networks that span the cluster, loaded before
+# the engine starts a container. mm-network.service does the rest once the
+# engine is up. Nothing to do on a node that holds no such network.
+ExecStart=/usr/libexec/mmd --config /etc/mm/mmd.json network up --before-engine
+ExecReload=/usr/libexec/mmd --config /etc/mm/mmd.json network up --before-engine
+# The firewall chains that keep shared storage between the hosts: nothing a
+# container sends reaches a storage port through the mesh, and the node's
+# mesh address takes storage traffic from the other nodes' mesh addresses
+# only. In place before the storage server and the engine start.
+ExecStart=/usr/libexec/mmd --config /etc/mm/mmd.json storage up
+ExecReload=/usr/libexec/mmd --config /etc/mm/mmd.json storage up
+# A peer named by a DNS name that does not resolve yet is tried again.
+Restart=on-failure
+RestartSec=15s
+User=root
+UMask=0077
+# Creating and configuring a network interface and loading packet filter
+# rules is all this unit may do.
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RemoveIPC=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+ReadOnlyPaths=/etc/mm /var/lib/mm
+
+[Install]
+WantedBy=multi-user.target

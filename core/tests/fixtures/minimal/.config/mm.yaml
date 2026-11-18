@@ -1,0 +1,39 @@
+schema-version: 1
+default-environment: local
+project:
+  id: 019c527b-6242-7b43-bfd4-bd60e27c1de3
+  name: minimal
+  development-environment: local
+target: local
+runtime:
+  driver: podman-compose
+stacks:
+  app:
+    project-name: minimal-{environment}-{stack}
+    files:
+      - compose.yaml
+modules:
+  api:
+    path: api
+    services:
+      api:
+        stack: app
+    env:
+      template: .env.example
+secrets:
+  database.password:
+    storage:
+      provider: age
+      location: local/db-password
+    generate:
+      preset: password
+      length: 32
+environments:
+  local:
+    bindings:
+      DB.HOST:
+        value: database
+      DB.PORT:
+        value: 5432
+      DB.PASSWORD:
+        secret: database.password

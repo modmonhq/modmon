@@ -1,0 +1,92 @@
+name: Examples
+
+on:
+  pull_request:
+    paths:
+      - "examples/**"
+      - "core/**"
+      - "scripts/smoke-example.sh"
+      - "Dockerfile.cargo"
+      - ".github/workflows/examples.yml"
+  push:
+    branches:
+      - master
+      - main
+    paths:
+      - "examples/**"
+      - "core/**"
+      - "scripts/smoke-example.sh"
+      - "Dockerfile.cargo"
+      - ".github/workflows/examples.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Standalone project validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            examples/node-fullstack/backend/package-lock.json
+            examples/node-fullstack/frontend/package-lock.json
+            core/ui/package-lock.json
+      - name: Validate Node services
+        run: |
+          npm --prefix examples/node-fullstack/backend ci
+          npm --prefix examples/node-fullstack/backend run check
+          npm --prefix examples/node-fullstack/frontend ci
+          npm --prefix examples/node-fullstack/frontend run check
+      - name: Build embedded dashboard
+        run: npm --prefix core/ui ci && npm --prefix core/ui run build
+      - name: Build bounded mm validator
+        run: |
+          docker build --memory=4g --cpu-period=100000 --cpu-quota=200000 --ulimit nproc=512 -f Dockerfile.cargo -t mm-rust:examples .
+          docker run --rm --cpus=2 --memory=4g --pids-limit=512 \
+            -e CARGO_BUILD_JOBS=1 -e CARGO_PROFILE_DEV_DEBUG=0 \
+            -v "$PWD:/workspace" -w /workspace mm-rust:examples \
+            cargo build --package mm --bin mm --features unstable --locked
+      - name: Validate current mm schema in every environment
+        run: |
+          for example in node-fullstack dotnet-web-api laravel-rust; do
+            target/debug/mm --root "examples/$example" config validate
+            target/debug/mm --root "examples/$example" --environment production config validate
+          done
+      - name: Validate Compose models
+        run: |
+          docker compose -f examples/node-fullstack/compose.yaml -f examples/node-fullstack/compose.validation.yaml config --quiet
+          docker compose -f examples/dotnet-web-api/compose.yaml -f examples/dotnet-web-api/compose.validation.yaml config --quiet
+          docker compose -f examples/laravel-rust/compose.data.yaml -f examples/laravel-rust/compose.app.yaml -f examples/laravel-rust/compose.validation.yaml config --quiet
+      - name: Validate standalone Rust service
+        run: >-
+          docker run --rm --cpus=2 --memory=4g --pids-limit=512
+          -e CARGO_BUILD_JOBS=2
+          -e RUSTUP_TOOLCHAIN=1.98.0
+          -v "$PWD:/workspace"
+          -w /workspace/examples/laravel-rust/services/pricing
+          rust:1.98-slim-bookworm@sha256:94e9efa4033213dbb70d4f665527e7ece3944ddb7ba1dd2e43f6fd6e2490af58
+          sh -c "cargo check --locked && cargo test --all-targets --locked"
+      - name: Validate Composer lockfile
+        run: >-
+          docker run --rm --cpus=2 --memory=4g --pids-limit=512
+          -v "$PWD/examples/laravel-rust/app:/app"
+          -w /app
+          composer:2@sha256:4d71c3c2109c61d5415544264b59ad4087e4c5b7244481723664138fd36d5040
+          validate --strict --check-lock
+      - name: Build .NET example with locked dependencies
+        run: >-
+          docker run --rm --cpus=2 --memory=4g --pids-limit=512
+          -v "$PWD/examples/dotnet-web-api/src/Example.Api:/source"
+          -w /source
+          mcr.microsoft.com/dotnet/sdk:10.0@sha256:e1ffd2a92ae84c1291bc1b6887501f8af98e6331e7af6d4c8d37168c5e87a64c
+          sh -c "dotnet restore --locked-mode && dotnet build --no-restore"
+      - name: Disposable live mm example smoke
+        run: |
+          MM_BIN=target/debug/mm ./scripts/smoke-example.sh node-fullstack
+          MM_BIN=target/debug/mm ./scripts/smoke-example.sh dotnet-web-api
+          MM_BIN=target/debug/mm ./scripts/smoke-example.sh laravel-rust

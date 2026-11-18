@@ -1,0 +1,520 @@
+{
+  "generated": {
+    "command": "./scripts/generate-artifacts.sh",
+    "notice": "Do not edit.",
+    "source": "runtime, secret delivery, storage, and provider descriptors"
+  },
+  "providers": [
+    {
+      "display_name": "OpenBao",
+      "driver": "openbao",
+      "modes": [
+        {
+          "configuration": [
+            {
+              "allowed_values": [],
+              "default": null,
+              "key": "address",
+              "kind": "https_url",
+              "label": "HTTPS address",
+              "required": true,
+              "secret": false
+            },
+            {
+              "allowed_values": [],
+              "default": null,
+              "key": "namespace",
+              "kind": "text",
+              "label": "Namespace (optional)",
+              "required": false,
+              "secret": false
+            },
+            {
+              "allowed_values": [],
+              "default": "mm-kv",
+              "key": "storage-mount",
+              "kind": "text",
+              "label": "KV v2 mount",
+              "required": true,
+              "secret": false
+            },
+            {
+              "allowed_values": [],
+              "default": "mm-approle",
+              "key": "automation-auth-mount",
+              "kind": "text",
+              "label": "AppRole mount",
+              "required": true,
+              "secret": false
+            },
+            {
+              "allowed_values": [],
+              "default": null,
+              "key": "trust-bundle",
+              "kind": "path",
+              "label": "CA PEM path",
+              "required": true,
+              "secret": false
+            },
+            {
+              "allowed_values": [],
+              "default": null,
+              "key": "expected-trust-sha256",
+              "kind": "sha256",
+              "label": "CA sha256 pin",
+              "required": true,
+              "secret": false
+            }
+          ],
+          "mode": "external",
+          "operations": [
+            "add",
+            "edit",
+            "test",
+            "status"
+          ],
+          "scopes": [
+            "project"
+          ]
+        },
+        {
+          "configuration": [
+            {
+              "allowed_values": [],
+              "default": null,
+              "key": "installation",
+              "kind": "text",
+              "label": "Installation",
+              "required": false,
+              "secret": false
+            },
+            {
+              "allowed_values": [
+                "2.3",
+                "2.4",
+                "2.5"
+              ],
+              "default": "2.4",
+              "key": "release",
+              "kind": "release",
+              "label": "Server release",
+              "required": true,
+              "secret": false
+            },
+            {
+              "allowed_values": [],
+              "default": "18200",
+              "key": "management-port",
+              "kind": "u16",
+              "label": "Loopback management port",
+              "required": false,
+              "secret": false
+            }
+          ],
+          "mode": "managed",
+          "operations": [
+            "add",
+            "status",
+            "install",
+            "restart",
+            "upgrade",
+            "seal",
+            "unseal",
+            "backup",
+            "restore",
+            "remove"
+          ],
+          "scopes": [
+            "installation",
+            "environment"
+          ]
+        }
+      ]
+    },
+    {
+      "display_name": "HashiCorp Vault",
+      "driver": "vault",
+      "modes": [
+        {
+          "configuration": [
+            {
+              "allowed_values": [],
+              "default": null,
+              "key": "address",
+              "kind": "https_url",
+              "label": "HTTPS address",
+              "required": true,
+              "secret": false
+            },
+            {
+              "allowed_values": [],
+              "default": null,
+              "key": "namespace",
+              "kind": "text",
+              "label": "Enterprise namespace (optional)",
+              "required": false,
+              "secret": false
+            },
+            {
+              "allowed_values": [],
+              "default": "mm-kv",
+              "key": "storage-mount",
+              "kind": "text",
+              "label": "KV v2 mount",
+              "required": true,
+              "secret": false
+            },
+            {
+              "allowed_values": [],
+              "default": "mm-approle",
+              "key": "automation-auth-mount",
+              "kind": "text",
+              "label": "AppRole mount",
+              "required": true,
+              "secret": false
+            },
+            {
+              "allowed_values": [],
+              "default": null,
+              "key": "trust-bundle",
+              "kind": "path",
+              "label": "CA PEM path",
+              "required": true,
+              "secret": false
+            },
+            {
+              "allowed_values": [],
+              "default": null,
+              "key": "expected-trust-sha256",
+              "kind": "sha256",
+              "label": "CA sha256 pin",
+              "required": true,
+              "secret": false
+            }
+          ],
+          "mode": "external",
+          "operations": [
+            "add",
+            "edit",
+            "test",
+            "status"
+          ],
+          "scopes": [
+            "project"
+          ]
+        },
+        {
+          "configuration": [
+            {
+              "allowed_values": [],
+              "default": null,
+              "key": "installation",
+              "kind": "text",
+              "label": "Installation",
+              "required": true,
+              "secret": false
+            },
+            {
+              "allowed_values": [
+                "1.18",
+                "1.19"
+              ],
+              "default": "1.19",
+              "key": "release",
+              "kind": "release",
+              "label": "Server release",
+              "required": true,
+              "secret": false
+            },
+            {
+              "allowed_values": [],
+              "default": "18210",
+              "key": "management-port",
+              "kind": "u16",
+              "label": "Loopback management port",
+              "required": true,
+              "secret": false
+            }
+          ],
+          "mode": "managed",
+          "operations": [
+            "add",
+            "status",
+            "install",
+            "restart",
+            "upgrade",
+            "seal",
+            "unseal",
+            "backup",
+            "restore",
+            "remove"
+          ],
+          "scopes": [
+            "installation"
+          ]
+        }
+      ]
+    }
+  ],
+  "runtimes": [
+    {
+      "capabilities": [
+        {
+          "fixture": "scheduler",
+          "live_job": "live-jobs-podman",
+          "name": "one_shot_jobs"
+        },
+        {
+          "fixture": "runtime_observability",
+          "live_job": "live-observability-podman",
+          "name": "stream_logs"
+        },
+        {
+          "fixture": "runtime_observability",
+          "live_job": "live-observability-podman",
+          "name": "exec"
+        },
+        {
+          "fixture": "runtime_secret_delivery",
+          "live_job": "live-secret-podman",
+          "name": "runtime_secrets"
+        },
+        {
+          "fixture": "development_mounts",
+          "live_job": "live-development-mounts-podman",
+          "name": "bind_mounts"
+        },
+        {
+          "fixture": "environment_delivery",
+          "live_job": "live-podman-compose",
+          "name": "direct_environment"
+        },
+        {
+          "fixture": "runtime_conformance",
+          "live_job": "live-podman-compose",
+          "name": "render_compose"
+        },
+        {
+          "fixture": "runtime_conformance",
+          "live_job": "live-podman-compose",
+          "name": "apply_compose"
+        },
+        {
+          "fixture": "runtime_conformance",
+          "live_job": "live-podman-compose",
+          "name": "observe_services"
+        },
+        {
+          "fixture": "runtime_conformance",
+          "live_job": "live-podman-compose",
+          "name": "container_health"
+        },
+        {
+          "fixture": "runtime_conformance",
+          "live_job": "live-podman-compose",
+          "name": "manage_networks"
+        },
+        {
+          "fixture": "runtime_conformance",
+          "live_job": "live-podman-compose",
+          "name": "manage_volumes"
+        },
+        {
+          "fixture": "runtime_conformance",
+          "live_job": "live-podman-compose",
+          "name": "mutate_volume_files"
+        }
+      ],
+      "runtime": "podman-compose"
+    },
+    {
+      "capabilities": [
+        {
+          "fixture": "scheduler",
+          "live_job": "live-jobs-docker-compose",
+          "name": "one_shot_jobs"
+        },
+        {
+          "fixture": "runtime_observability",
+          "live_job": "live-observability-docker-compose",
+          "name": "stream_logs"
+        },
+        {
+          "fixture": "runtime_observability",
+          "live_job": "live-observability-docker-compose",
+          "name": "exec"
+        },
+        {
+          "fixture": "runtime_secret_delivery",
+          "live_job": "live-secret-docker-compose",
+          "name": "runtime_secrets"
+        },
+        {
+          "fixture": "development_mounts",
+          "live_job": "live-development-mounts-docker",
+          "name": "bind_mounts"
+        },
+        {
+          "fixture": "environment_delivery",
+          "live_job": "live-docker-compose",
+          "name": "direct_environment"
+        },
+        {
+          "fixture": "runtime_conformance",
+          "live_job": "live-docker-compose",
+          "name": "render_compose"
+        },
+        {
+          "fixture": "runtime_conformance",
+          "live_job": "live-docker-compose",
+          "name": "apply_compose"
+        },
+        {
+          "fixture": "runtime_conformance",
+          "live_job": "live-docker-compose",
+          "name": "observe_services"
+        },
+        {
+          "fixture": "runtime_conformance",
+          "live_job": "live-docker-compose",
+          "name": "container_health"
+        },
+        {
+          "fixture": "runtime_conformance",
+          "live_job": "live-docker-compose",
+          "name": "manage_networks"
+        },
+        {
+          "fixture": "runtime_conformance",
+          "live_job": "live-docker-compose",
+          "name": "manage_volumes"
+        },
+        {
+          "fixture": "runtime_conformance",
+          "live_job": "live-docker-compose",
+          "name": "mutate_volume_files"
+        }
+      ],
+      "runtime": "docker-compose"
+    }
+  ],
+  "secrets": {
+    "delivery": [
+      {
+        "environment_scoping": "operation",
+        "id": "direct-environment",
+        "material_kinds": [
+          "text"
+        ],
+        "max_material_bytes": 1048576,
+        "max_materialization_name_bytes": 255,
+        "operation": "direct_environment_value",
+        "plaintext_persistence": "none",
+        "runtimes": [
+          "podman-compose",
+          "docker-compose"
+        ],
+        "workload_kinds": [
+          "service"
+        ]
+      },
+      {
+        "environment_scoping": "operation",
+        "id": "operation-env-file",
+        "material_kinds": [
+          "text"
+        ],
+        "max_material_bytes": 1048576,
+        "max_materialization_name_bytes": 255,
+        "operation": "operation_scoped_environment_file",
+        "plaintext_persistence": "operation_scoped_private_file",
+        "runtimes": [
+          "podman-compose",
+          "docker-compose"
+        ],
+        "workload_kinds": [
+          "service"
+        ]
+      },
+      {
+        "environment_scoping": "workload",
+        "id": "podman-native-secret",
+        "material_kinds": [
+          "text",
+          "binary"
+        ],
+        "max_material_bytes": 512000,
+        "max_materialization_name_bytes": 255,
+        "operation": "runtime_native_secret",
+        "plaintext_persistence": "provider_managed",
+        "runtimes": [
+          "podman-compose"
+        ],
+        "workload_kinds": [
+          "service"
+        ]
+      },
+      {
+        "environment_scoping": "workload",
+        "id": "compose-file-secret",
+        "material_kinds": [
+          "text",
+          "binary"
+        ],
+        "max_material_bytes": 512000,
+        "max_materialization_name_bytes": 255,
+        "operation": "mounted_file",
+        "plaintext_persistence": "revision_scoped_private_file",
+        "runtimes": [
+          "docker-compose",
+          "podman-compose"
+        ],
+        "workload_kinds": [
+          "service"
+        ]
+      }
+    ],
+    "storage": [
+      {
+        "authentication": "local_identity",
+        "environment_scoping": "isolated",
+        "id": "age",
+        "material_kinds": [
+          "text"
+        ],
+        "max_location_bytes": 1024,
+        "max_material_bytes": 1048576,
+        "metadata_without_material_resolution": false,
+        "operations": [
+          "inspect_metadata",
+          "resolve_material",
+          "create",
+          "replace",
+          "replace_batch",
+          "stage_candidate",
+          "promote_candidate",
+          "delete"
+        ],
+        "revision_semantics": "compare_and_swap",
+        "rotation": "staged"
+      },
+      {
+        "authentication": "process_environment",
+        "environment_scoping": "process_global",
+        "id": "env",
+        "material_kinds": [
+          "text"
+        ],
+        "max_location_bytes": 255,
+        "max_material_bytes": 1048576,
+        "metadata_without_material_resolution": true,
+        "operations": [
+          "inspect_metadata",
+          "resolve_material"
+        ],
+        "revision_semantics": "observed",
+        "rotation": "none"
+      }
+    ]
+  }
+}

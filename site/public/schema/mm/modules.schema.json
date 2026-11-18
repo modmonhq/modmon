@@ -1,0 +1,950 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "mm configuration: modules",
+  "type": "object",
+  "$comment": "The value of top-level 'modules', for .config/mm/modules.yaml. Generated from MmConfig; run ./scripts/generate-artifacts.sh. Do not edit.",
+  "additionalProperties": {
+    "$ref": "#/$defs/ModuleConfig"
+  },
+  "default": {},
+  "$defs": {
+    "AutoscaleConfig": {
+      "description": "`autoscale:` on a service.",
+      "type": "object",
+      "properties": {
+        "metric": {
+          "description": "What is measured and when a container is added or removed. Every\nkey has a default: CPU, up above 75% for 30s, down below 40% for 5m.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ScaleMetricConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scale": {
+          "description": "How few and how many containers the service runs.",
+          "$ref": "#/$defs/ScaleRange"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "scale"
+      ]
+    },
+    "BuildTarget": {
+      "description": "A build target under `modules.<m>.build.targets`, which an environment's\n`build-variant` selects: the tag suffix alone, or a mapping.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/BuildVariantConfig"
+        }
+      ]
+    },
+    "BuildVariantConfig": {
+      "type": "object",
+      "properties": {
+        "args": {
+          "description": "Build arguments merged over the module's `build.args`.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/EnvScalar"
+          }
+        },
+        "suffix": {
+          "description": "The image tag suffix; defaults to the target's name.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target": {
+          "description": "The Dockerfile stage; defaults to the target's name.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Development": {
+      "description": "Whether a module, service or job runs in the development environment.",
+      "type": "string",
+      "enum": [
+        "on",
+        "optional",
+        "off"
+      ]
+    },
+    "DevelopmentBindMount": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "description": "Relative to the module path, like the primary source.",
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "target"
+      ]
+    },
+    "DevelopmentMountConfig": {
+      "type": "object",
+      "properties": {
+        "additional": {
+          "description": "Additional source directories mounted into the same services with the same mode.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DevelopmentBindMount"
+          }
+        },
+        "excludes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "mode": {
+          "$ref": "#/$defs/DevelopmentMountMode",
+          "default": "read-write"
+        },
+        "preserve": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PreservedContainerPath"
+          }
+        },
+        "preset": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DevelopmentMountPreset"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "protected": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "safe-exceptions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "services": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source": {
+          "description": "Relative to the module path, never the workstation root.",
+          "type": "string"
+        },
+        "target": {
+          "description": "Absolute POSIX path in the selected container services.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "target",
+        "services"
+      ]
+    },
+    "DevelopmentMountMode": {
+      "type": "string",
+      "enum": [
+        "read-write",
+        "read-only"
+      ]
+    },
+    "DevelopmentMountPreset": {
+      "type": "string",
+      "enum": [
+        "laravel",
+        "node",
+        "dotnet",
+        "rust"
+      ]
+    },
+    "DownRuleConfig": {
+      "description": "`autoscale.metric.down`: remove a container when the average is below\n`less` for `for`.",
+      "type": "object",
+      "properties": {
+        "for": {
+          "description": "Such as `5m`; at most `4h`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "less": {
+          "description": "Such as `40%`.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PercentSpec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "EnvScalar": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "format": "int64"
+        },
+        {
+          "type": "boolean"
+        }
+      ]
+    },
+    "HardeningExceptions": {
+      "description": "Each key is a default the service leaves out; its value says why.",
+      "type": "object",
+      "properties": {
+        "cap-drop": {
+          "description": "Keep the engine's default capabilities. A service that needs a few\nkeeps them with `cap_add` in its Compose file and needs no\nexception.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "no-new-privileges": {
+          "description": "Let processes gain privileges through setuid binaries.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "read-only": {
+          "description": "Keep the root filesystem writable. Volumes and bind mounts are\nwritable either way: prefer a volume for the paths the service\nwrites.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "seccomp": {
+          "description": "Let the Compose file choose another seccomp profile than the\nengine's default.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tmpfs": {
+          "description": "Add no tmpfs at `/tmp`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "HealthConfig": {
+      "description": "`modules.<m>.services.<s>.health`. Every key has a default.",
+      "type": "object",
+      "properties": {
+        "after": {
+          "description": "How long a container stays unhealthy before it is restarted, such as\n`3m` (the default).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "max-restarts": {
+          "description": "How many restarts of one container within `window` before its node\nstops restarting it; default 5.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "on-failure": {
+          "description": "`restart` (the default on a cluster target) restarts a container\nthat stays unhealthy; `none` leaves it as it is.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OnFailure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "window": {
+          "description": "Default `1h`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Metric": {
+      "description": "What is measured.",
+      "type": "string",
+      "enum": [
+        "cpu",
+        "memory"
+      ]
+    },
+    "ModuleBuildConfig": {
+      "type": "object",
+      "properties": {
+        "args": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/EnvScalar"
+          },
+          "default": {}
+        },
+        "context": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "credential-only-secrets": {
+          "description": "Keys of `secrets` that only authenticate fetching inputs, such as a\npackage registry token. They are still mounted, but they do not change\nthe image, so they never block reuse or promotion of a build.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "default-variant": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "depends-on": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "dockerfile": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "extra-inputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "image": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "secrets": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {}
+        },
+        "targets": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/BuildTarget"
+          },
+          "default": {}
+        }
+      },
+      "additionalProperties": false
+    },
+    "ModuleConfig": {
+      "type": "object",
+      "properties": {
+        "build": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModuleBuildConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "development": {
+          "description": "`on` (the default), `optional` (off in the development environment\nuntil a developer turns it on with `mm dev enable`), or `off`. Its\nservices take it unless they set their own.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Development"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "development-mail": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "development-mount": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DevelopmentMountConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "env": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModuleEnvConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "networks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "path": {
+          "type": "string"
+        },
+        "services": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/ServiceConfig"
+          },
+          "default": {}
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "path"
+      ]
+    },
+    "ModuleEnvConfig": {
+      "type": "object",
+      "properties": {
+        "template": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "template"
+      ]
+    },
+    "OnFailure": {
+      "type": "string",
+      "enum": [
+        "restart",
+        "none"
+      ]
+    },
+    "PercentSpec": {
+      "description": "A percentage, such as 75%.",
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]{1,2})?%$"
+    },
+    "PlacementSpec": {
+      "description": "One placement word, or a list of them.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "PreservedContainerPath": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "path"
+      ]
+    },
+    "ScaleMetricConfig": {
+      "description": "`autoscale.metric`.",
+      "type": "object",
+      "properties": {
+        "down": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DownRuleConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "type": {
+          "description": "`cpu` (the default) or `memory`: a share of the container's limit,\nor of one core (CPU) or of the node's memory without one.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Metric"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "up": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UpRuleConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "ScaleRange": {
+      "description": "`autoscale.scale`.",
+      "type": "object",
+      "properties": {
+        "max": {
+          "description": "The most containers, over all the service's nodes.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "min": {
+          "description": "The fewest containers; defaults to the service's `replicas`.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "max"
+      ]
+    },
+    "ServiceConfig": {
+      "type": "object",
+      "properties": {
+        "allow-shared-volumes": {
+          "description": "Lets a service with role `database` or `queue` mount a shared\nvolume, which mm otherwise refuses: a shared volume is a network\nmount, slower than local disk and without the locking guarantees\nsuch a service needs.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "automatic-local-ingress": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "autoscale": {
+          "description": "On a cluster target: follow the load between `scale.min` and\n`scale.max`, the one required key (`domain::autoscale`).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AutoscaleConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "config-files": {
+          "description": "Files the service ships with, by their path in the container.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/ServiceConfigFileConfig"
+          }
+        },
+        "development": {
+          "description": "`on`, `optional` or `off` in the development environment; without\nit, the module's.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Development"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "development-mail": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "drain": {
+          "description": "On a cluster target: how long a container of this service that\nleaves (a rolling update replaces it, it moves, or it is scaled\naway) keeps serving what is in flight once no node sends it new\nrequests, such as `30s`. Then it gets its stop signal and its\n`stop_grace_period`. The default is `1m`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/EnvScalar"
+          },
+          "default": {}
+        },
+        "environments": {
+          "description": "Environments in which this service runs; an empty list enables all.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "hardening": {
+          "description": "The defaults of `hardening: strict` this service leaves out, each\nwith a reason: `hardening: {except: {read-only: \"writes its cache\"}}`.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ServiceHardening"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "health": {
+          "description": "On a cluster target: what the service's node does with a container\nthat keeps failing its health check. Without it, the node restarts\none that stays unhealthy for 3m, at most 5 times in 1h.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HealthConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "host-user-namespace": {
+          "description": "On a remote host that runs Podman, keeps this service in the host's\nuser namespace instead of one of its own (`userns: auto`). The value\nsays why; a service that mounts a shared volume needs it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "http-port": {
+          "description": "A persisted HTTP selection made explicitly or by the guided editor.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "local-https": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "networks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "placement": {
+          "description": "Which nodes of a cluster target run this service, one container on\neach: a node name, a group name, `all` for every node, or a list of\nthose. Without it the service runs on the target's first node. The\nnames must exist on the environment's target.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlacementSpec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "replicas": {
+          "description": "On a cluster target: the containers the service runs over its nodes\nwhen nothing scales it; default one per node, and `autoscale`'s `min`.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "role": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ServiceRole"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "secret-files": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/ServiceSecretFileConfig"
+          }
+        },
+        "stack": {
+          "type": "string"
+        },
+        "update": {
+          "description": "How a deployment replaces this service's containers. Every key has\na default: stop the old container first, one node at a time, and\nroll the deployment back when the new one fails.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UpdateConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "stack"
+      ]
+    },
+    "ServiceConfigFileConfig": {
+      "description": "A file the service ships with, mounted read-only at the path that is\nits key under `config-files`. Exactly one of `file` and `template`\nsays where it comes from.",
+      "type": "object",
+      "properties": {
+        "environments": {
+          "description": "Environments in which the file is mounted; an empty list means all\nof the service's.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "file": {
+          "description": "A file of the module, shipped as it is.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "gid": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mode": {
+          "type": "integer",
+          "format": "uint32",
+          "default": 292,
+          "minimum": 0
+        },
+        "template": {
+          "description": "A file of the module in which every `{{ KEY }}` is replaced by the\nenvironment's binding of that key.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "uid": {
+          "description": "The numeric user that owns the file. Without it the file belongs\nto the user mm runs as on the host.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "ServiceHardening": {
+      "description": "`hardening` of one service in `mm.yaml`.",
+      "type": "object",
+      "properties": {
+        "except": {
+          "description": "The defaults of `hardening: strict` this service does not take, each\nwith the reason, which the plan shows.",
+          "$ref": "#/$defs/HardeningExceptions"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ServiceRole": {
+      "type": "string",
+      "enum": [
+        "http",
+        "database",
+        "queue",
+        "worker",
+        "scheduler",
+        "job"
+      ]
+    },
+    "ServiceSecretFileConfig": {
+      "type": "object",
+      "properties": {
+        "environments": {
+          "description": "Environments in which the file is mounted and its secret required;\nan empty list means all of the service's.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "gid": {
+          "type": "string",
+          "default": "0"
+        },
+        "mode": {
+          "type": "integer",
+          "format": "uint32",
+          "default": 292,
+          "minimum": 0
+        },
+        "secret": {
+          "type": "string"
+        },
+        "uid": {
+          "type": "string",
+          "default": "0"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "secret"
+      ]
+    },
+    "UpRuleConfig": {
+      "description": "`autoscale.metric.up`: add a container when the average is above\n`greater` for `for`.",
+      "type": "object",
+      "properties": {
+        "for": {
+          "description": "Such as `30s`; at most `4h`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "greater": {
+          "description": "Such as `75%`.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PercentSpec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "UpdateConfig": {
+      "description": "`modules.<module>.services.<service>.update`.",
+      "type": "object",
+      "properties": {
+        "failure": {
+          "description": "`rollback` (the default) or `pause`.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UpdateFailure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "order": {
+          "description": "`stop-first` (the default) or `start-first`.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UpdateOrder"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "parallelism": {
+          "description": "How many nodes of a cluster target replace the service's stack at\nthe same time. The default is 1.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "UpdateFailure": {
+      "description": "What a deployment does when this service does not become healthy.",
+      "oneOf": [
+        {
+          "description": "Every node the deployment changed returns to what it ran before.",
+          "type": "string",
+          "const": "rollback"
+        },
+        {
+          "description": "The deployment stops where it is and changes nothing more, so the\nfailed container can be looked at. `mm deploy rollback` returns the\nnodes to what they ran before.",
+          "type": "string",
+          "const": "pause"
+        }
+      ]
+    },
+    "UpdateOrder": {
+      "description": "Whether a service's new container starts before or after the old one\nstops.",
+      "oneOf": [
+        {
+          "description": "The engine stops the old container, then starts the new one.",
+          "type": "string",
+          "const": "stop-first"
+        },
+        {
+          "description": "The new container starts next to the old one, and the old one stops\nonce the new one is healthy and the other nodes resolve it. Not for\na service that publishes a host port or sets `container_name`.",
+          "type": "string",
+          "const": "start-first"
+        }
+      ]
+    }
+  }
+}

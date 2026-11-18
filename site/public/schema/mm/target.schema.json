@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "mm configuration: target",
+  "type": "string",
+  "$comment": "The value of top-level 'target', for .config/mm/target.yaml. Generated from MmConfig; run ./scripts/generate-artifacts.sh. Do not edit."
+}

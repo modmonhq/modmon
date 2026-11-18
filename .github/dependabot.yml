@@ -1,0 +1,72 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directories:
+      - "/"
+      - "/examples/laravel-rust/services/pricing"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    cooldown:
+      default-days: 7
+    groups:
+      cargo-dependencies:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directories:
+      - "/site"
+      - "/examples/node-fullstack/backend"
+      - "/examples/node-fullstack/frontend"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    cooldown:
+      default-days: 7
+    groups:
+      npm-dependencies:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: docker
+    directories:
+      - "/"
+      - "/examples/dotnet-web-api/src/Example.Api"
+      - "/examples/laravel-rust/app"
+      - "/examples/laravel-rust/services/pricing"
+      - "/examples/node-fullstack/backend"
+      - "/examples/node-fullstack/frontend"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    cooldown:
+      default-days: 7
+    groups:
+      container-images:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 5

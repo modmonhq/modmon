@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "mm configuration: networks",
+  "type": "object",
+  "$comment": "The value of top-level 'networks', for .config/mm/networks.yaml. Generated from MmConfig; run ./scripts/generate-artifacts.sh. Do not edit.",
+  "additionalProperties": {
+    "$ref": "#/$defs/NetworkConfig"
+  },
+  "$defs": {
+    "NetworkConfig": {
+      "type": "object",
+      "properties": {
+        "internal": {
+          "description": "Containers on the network reach its members and nothing else: no\noutbound access.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

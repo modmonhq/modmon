@@ -1,0 +1,14 @@
+{
+  "name": "mm-node-example-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "check": "node --check server.js",
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "mm configuration: hardening",
+  "description": "`strict` hardens every service of a deployment: read-only root\nfilesystem, no capabilities, no new privileges, the engine's default\nseccomp profile, a tmpfs at `/tmp`. Not applied by `mm dev`.",
+  "$comment": "The value of top-level 'hardening', for .config/mm/hardening.yaml. Generated from MmConfig; run ./scripts/generate-artifacts.sh. Do not edit.",
+  "anyOf": [
+    {
+      "$ref": "#/$defs/Hardening"
+    },
+    {
+      "type": "null"
+    }
+  ],
+  "$defs": {
+    "Hardening": {
+      "description": "`hardening` at the top of `mm.yaml`.",
+      "oneOf": [
+        {
+          "description": "Every service of a deployment gets a read-only root filesystem,\ndrops all Linux capabilities, cannot gain privileges, keeps the\nengine's default seccomp profile, and gets a tmpfs at `/tmp`.",
+          "type": "string",
+          "const": "strict"
+        }
+      ]
+    }
+  }
+}

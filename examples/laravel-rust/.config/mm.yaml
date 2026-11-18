@@ -1,0 +1,183 @@
+schema-version: 1
+project:
+  id: 1d87a39c-7d82-4d44-9b5e-bac463e84701
+  name: laravel-rust
+  development-environment: local
+default-environment: local
+target: local
+
+environment-delivery:
+  default: direct
+  development-default: env-file
+
+development-mail:
+  enabled: true
+  bindings:
+    MAIL_HOST: smtp-host
+    MAIL_PORT: smtp-port
+    MAIL_URL: smtp-url
+    MAILPIT_UI_URL: ui-url
+
+networks:
+  backend: {}
+
+stacks:
+  data:
+    files:
+      - compose.data.yaml
+    networks:
+      - backend
+  app:
+    files:
+      - compose.app.yaml
+    networks:
+      - backend
+    ingress:
+      - domain: web
+        service: web
+        environments: [production]
+      - domain: pricing
+        service: pricing
+        environments: [production]
+
+modules:
+  postgres:
+    path: infrastructure/postgres
+    env:
+      template: .env.example
+    services:
+      postgres:
+        stack: data
+        role: database
+  valkey:
+    path: infrastructure/valkey
+    services:
+      valkey:
+        stack: data
+        role: database
+  laravel:
+    path: app
+    env:
+      template: .env.example
+    build:
+      image: ghcr.io/example/mm-laravel-rust-app
+    development-mount:
+      source: .
+      target: /app
+      preset: laravel
+      services: [web, queue]
+      preserve:
+        - path: /app/vendor
+      protected: [.env]
+    services:
+      web:
+        stack: app
+        role: http
+        http-port: 8080
+        development-mail: true
+        env:
+          APP_ROLE: web
+      queue:
+        stack: app
+        role: worker
+        development-mail: true
+        env:
+          APP_ROLE: queue
+  pricing:
+    path: services/pricing
+    env:
+      template: .env.example
+    build:
+      image: ghcr.io/example/mm-laravel-rust-pricing
+    services:
+      pricing:
+        stack: app
+        role: http
+        http-port: 8080
+        development-mail: false
+
+jobs:
+  schedule-run:
+    module: laravel
+    service: web
+    command: ["php", "artisan", "schedule:run"]
+    timeout: 10m
+    retry:
+      attempts: 2
+      backoff: 5s
+      max-backoff: 1m
+
+schedules:
+  laravel-schedule:
+    job: schedule-run
+    cron: "* * * * *"
+    timezone: UTC
+    concurrency: forbid
+    misfire: run-once
+
+gates:
+  staff-preview:
+    provider: password-cap
+    ingress: [web]
+
+secrets:
+  laravel.app-key:
+    storage:
+      provider: age
+      location: local/laravel-app-key
+    generate:
+      preset: laravel-app-key
+  database.password:
+    storage:
+      provider: age
+      location: local/database-password
+    generate:
+      preset: password
+      length: 40
+
+bindings:
+  LARAVEL.APP.KEY:
+    secret: laravel.app-key
+  DB.PASSWORD:
+    secret: database.password
+  DB.HOST:
+    value: postgres
+  DB.PORT:
+    value: 5432
+  DB.NAME:
+    value: application
+  DB.USER:
+    value: application
+  VALKEY.HOST:
+    value: valkey
+  VALKEY.PORT:
+    value: 6379
+  PRICING.INTERNAL.URL:
+    value: http://pricing:8080
+
+environments:
+  local:
+    bindings:
+      APP.ENV:
+        value: local
+      APP.DEBUG:
+        value: true
+      APP.URL:
+        value: https://web.laravel-rust.test
+      PRICING.LOG:
+        value: debug
+  production:
+    environment-delivery: direct
+    domains:
+      web: store.example.com
+      pricing: pricing.example.com
+    bindings:
+      APP.ENV:
+        value: production
+      APP.DEBUG:
+        value: false
+      APP.URL:
+        cast: url
+        value-ref: domains.web
+      PRICING.LOG:
+        value: info

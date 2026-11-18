@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: docker.io/library/postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "application", "-d", "application"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    cpus: "1"
+    mem_limit: 512m
+    pids_limit: 128
+
+  valkey:
+    image: docker.io/valkey/valkey:8-alpine@sha256:e0eb7c480958d32bdc4357a74bdd70653ae15f2f9b4c93c4a5a9fad1dc471c84
+    command: ["valkey-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - valkey_data:/data
+    cpus: "0.5"
+    mem_limit: 256m
+    pids_limit: 128
+
+volumes:
+  postgres_data:
+  valkey_data:

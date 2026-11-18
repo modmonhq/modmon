@@ -1,0 +1,38 @@
+name: Local dashboard
+
+on:
+  pull_request:
+    paths: ["core/ui/**", "packages/ui/**", "core/src/app/dashboard.rs", "core/src/domain/dashboard.rs", "core/src/presentation/http.rs", ".github/workflows/dashboard.yml"]
+  push:
+    branches: [master, main]
+    paths: ["core/ui/**", "packages/ui/**", "core/src/app/dashboard.rs", "core/src/domain/dashboard.rs", "core/src/presentation/http.rs", ".github/workflows/dashboard.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: core/ui/package-lock.json
+      - run: npm --prefix core/ui ci
+      - run: >-
+          docker run --rm --cpus=2 --memory=4g --pids-limit=512
+          --user "$(id -u):$(id -g)" -e HOME=/tmp
+          -v "$PWD:/workspace" -w /workspace
+          node:24-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03
+          npm --prefix core/ui run generate:api
+      - run: git diff --exit-code -- core/ui/src/api.generated.ts core/ui/src/api.validator.generated.js core/ui/src/api.validator.generated.d.ts
+      - run: npm --prefix core/ui run lint
+      - run: npm --prefix core/ui run typecheck
+      - run: npm --prefix core/ui run unit
+      - run: npm --prefix core/ui run component
+      - run: npm --prefix core/ui run accessibility
+      - run: npm --prefix core/ui run build
+      - run: npx --prefix core/ui playwright install --with-deps chromium
+      - run: npm --prefix core/ui run browser

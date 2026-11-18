@@ -1,0 +1,420 @@
+//! Which installations `mm target setup` upgrades in place, which it refuses,
+//! and what its plan says for each, as docs/how-to/upgrade.md states them.
+
+use std::net::Ipv4Addr;
+
+use base64::Engine;
+use mm::domain::cluster_setup::{HostRelease, ReleaseConsent, release_notices};
+use mm::domain::mesh::{MeshFacts, MeshMember, MeshNodeOrigin, PeerAction, plan_node};
+use mm::domain::remote::{PROTOCOL_VERSION, protocol_mismatch};
+use mm::domain::repo_target::WireguardMesh;
+
+mod temp_dirs;
+
+type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+const THIS: &str = env!("CARGO_PKG_VERSION");
+const MESH_FACTS: &str = include_str!("../src/adapters/target/cluster_shell/mesh-facts.sh");
+
+fn key(byte: u8) -> String {
+    base64::engine::general_purpose::STANDARD.encode([byte; 32])
+}
+
+fn members() -> Vec<MeshMember> {
+    [("app-1", 1), ("app-2", 2)]
+        .into_iter()
+        .map(|(name, last)| MeshMember {
+            name: name.to_owned(),
+            address: Ipv4Addr::new(10, 90, 0, last),
+            endpoint: format!("203.0.113.{}", 10 + last),
+            public_key: Some(key(last)),
+            routed: Vec::new(),
+        })
+        .collect()
+}
+
+fn release(version: &str, protocol: u16, build: Option<char>) -> HostRelease {
+    HostRelease {
+        version: version.to_owned(),
+        protocol,
+        build: build.map(|digit| digit.to_string().repeat(64)),
+    }
+}
+
+fn this() -> HostRelease {
+    release(THIS, PROTOCOL_VERSION, Some('a'))
+}
+
+const ASKED: ReleaseConsent = ReleaseConsent {
+    downgrade: false,
+    upgrade: true,
+};
+
+fn mesh_show(release: &str) -> String {
+    format!(
+        r#"{{"public-key":"{}","state":{{"interface":"mm0","address":"10.90.0.1","prefix":24,"port":51820,"mtu":1420,"peers":[{{"name":"app-2","public-key":"{}","endpoint":"203.0.113.12:51820","allowed-ips":["10.90.0.2/32"]}}]}}{release}}}"#,
+        key(1),
+        key(2)
+    )
+}
+
+#[test]
+fn a_node_whose_mmd_reports_no_release_is_replaced_without_a_flag() -> TestResult {
+    assert!(
+        MESH_FACTS.contains("printf '{}\\n'"),
+        "a node without mmd prints no facts"
+    );
+    assert!(
+        MESH_FACTS.contains(r#"printf '{"public-key":"%s","legacy-interface":"wg0"}\n'"#),
+        "a node with the wg-quick mesh of an earlier mm prints its key"
+    );
+    let legacy = format!(r#"{{"public-key":"{}","legacy-interface":"wg0"}}"#, key(1));
+    let members = members();
+    for (era, printed, origin) in [
+        ("no mmd", "{}".to_owned(), MeshNodeOrigin::New),
+        (
+            "an mmd without mesh commands",
+            legacy,
+            MeshNodeOrigin::Legacy,
+        ),
+        (
+            "an mmd from before nodes reported their release",
+            mesh_show(""),
+            MeshNodeOrigin::Current,
+        ),
+    ] {
+        let facts: MeshFacts = serde_json::from_str(&printed)?;
+        let planned = plan_node(
+            &WireguardMesh::default(),
+            &members,
+            &members[0],
+            &[],
+            Some(&facts),
+        );
+        assert_eq!(planned.origin, origin, "{era}");
+        assert_eq!(planned.release, None, "{era}");
+        assert_eq!(
+            release_notices(
+                &[("app-1", planned.release.as_ref())],
+                &this(),
+                ReleaseConsent::default()
+            )?,
+            [format!(
+                "app-1: installs mm and mmd {}, in place of the earlier release the node may run",
+                this()
+            )],
+            "{era}"
+        );
+        if origin == MeshNodeOrigin::Current {
+            assert_eq!(
+                planned
+                    .peers
+                    .iter()
+                    .map(|peer| peer.action)
+                    .collect::<Vec<_>>(),
+                [PeerAction::Keep],
+                "the mesh a node holds is kept"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn a_node_on_an_earlier_protocol_is_replaced_only_when_asked() -> TestResult {
+    let members = members();
+    for (era, reported, shown) in [
+        (
+            "protocol 16",
+            r#","release":{"version":"0.1.0","protocol":16}"#.to_owned(),
+            release("0.1.0", 16, None),
+        ),
+        (
+            "protocol 17 and later",
+            format!(
+                r#","release":{{"version":"0.1.0","protocol":{PROTOCOL_VERSION},"build":"{}"}}"#,
+                "b".repeat(64)
+            ),
+            release("0.1.0", PROTOCOL_VERSION, Some('b')),
+        ),
+    ] {
+        let facts: MeshFacts = serde_json::from_str(&mesh_show(&reported))?;
+        let planned = plan_node(
+            &WireguardMesh::default(),
+            &members,
+            &members[0],
+            &[],
+            Some(&facts),
+        );
+        assert_eq!(planned.release.as_ref(), Some(&shown), "{era}");
+        let nodes = [("app-1", planned.release.as_ref())];
+        let refused = release_notices(&nodes, &this(), ReleaseConsent::default())
+            .err()
+            .ok_or(format!("{era}: replaced without --upgrade"))?;
+        for part in [
+            format!("app-1 runs mm {shown}, and this mm is {}", this()),
+            "pass --upgrade, or pin this release with deploy.mm-version".to_owned(),
+        ] {
+            assert!(refused.contains(&part), "{era}: {part}: {refused}");
+        }
+        assert_eq!(
+            release_notices(&nodes, &this(), ASKED)?,
+            [format!(
+                "app-1: replaces mm and mmd {shown} with {}",
+                this()
+            )],
+            "{era}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn every_earlier_protocol_is_older_and_a_later_one_is_refused() -> TestResult {
+    for protocol in 1..=PROTOCOL_VERSION {
+        let earlier = release("0.1.0", protocol, Some('b'));
+        assert!(!earlier.is_newer_than(&this()), "{earlier}");
+        assert!(!earlier.same_build(&this()), "{earlier}");
+        assert!(release_notices(&[("app-1", Some(&earlier))], &this(), ASKED).is_ok());
+    }
+    for newer in [
+        release(THIS, PROTOCOL_VERSION + 1, Some('b')),
+        release("99.0.0", PROTOCOL_VERSION, Some('b')),
+    ] {
+        let nodes = [("app-1", Some(&newer))];
+        for consent in [ReleaseConsent::default(), ASKED] {
+            let refused = release_notices(&nodes, &this(), consent)
+                .err()
+                .ok_or(format!("{newer} was replaced without --downgrade"))?;
+            for part in [
+                format!("app-1 runs mm {newer}, newer than this mm {}", this()),
+                format!("Install mm {} or later on this machine", newer.version),
+                "pass --downgrade".to_owned(),
+            ] {
+                assert!(refused.contains(&part), "{part}: {refused}");
+            }
+        }
+        assert_eq!(
+            release_notices(
+                &nodes,
+                &this(),
+                ReleaseConsent {
+                    downgrade: true,
+                    upgrade: false
+                }
+            )?,
+            [format!(
+                "app-1: downgrades mm and mmd from {newer} to {} (--downgrade)",
+                this()
+            )]
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn the_same_build_is_installed_again_without_a_flag() -> TestResult {
+    for same in [this(), release(THIS, PROTOCOL_VERSION, None)] {
+        assert_eq!(
+            release_notices(
+                &[("app-1", Some(&same))],
+                &this(),
+                ReleaseConsent::default()
+            )?,
+            [format!(
+                "app-1 runs this release of mm, {}; setup installs its host binaries again",
+                this()
+            )]
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn a_client_and_a_host_on_different_protocols_are_told_which_side_to_upgrade() {
+    let older_client = protocol_mismatch(PROTOCOL_VERSION - 1, PROTOCOL_VERSION, THIS);
+    assert!(
+        older_client.contains(&format!("Upgrade mm on this machine to {THIS} or newer")),
+        "{older_client}"
+    );
+    let older_host = protocol_mismatch(PROTOCOL_VERSION, PROTOCOL_VERSION - 1, "0.1.0");
+    assert!(
+        older_host.contains("Upgrade the host: run `mm target setup plan --upgrade` and apply that plan with --upgrade"),
+        "{older_host}"
+    );
+}
+
+struct Runs(Option<HostRelease>);
+
+#[async_trait::async_trait]
+impl mm::app::ports::HostReleaseReader for Runs {
+    async fn host_release(
+        &self,
+        _: &mm::domain::target::TargetTransport,
+    ) -> Result<Option<HostRelease>, mm::MmError> {
+        Ok(self.0.clone())
+    }
+}
+
+struct SingleHost {
+    workspace: tempfile::TempDir,
+    selection: mm::app::WorkspaceSelection,
+    targets: std::sync::Arc<dyn mm::app::ports::TargetStore>,
+}
+
+impl SingleHost {
+    fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        use mm::adapters::config::ConfigLoader;
+        let workspace = temp_dirs::tempdir()?;
+        let root = workspace.path().join("project");
+        std::fs::create_dir(&root)?;
+        std::fs::write(root.join("compose.yaml"), "services: {}\n")?;
+        ConfigLoader.initialize(&root, Some("single-host"))?;
+        let targets: std::sync::Arc<dyn mm::app::ports::TargetStore> = std::sync::Arc::new(
+            mm::adapters::target::FilesystemTargetStore::new(workspace.path().join("targets.yaml")),
+        );
+        mm::app::TargetManager::new(
+            std::sync::Arc::new(ConfigLoader),
+            std::sync::Arc::clone(&targets),
+        )
+        .add_ssh(
+            "production",
+            mm::app::SshTargetInput {
+                host: "203.0.113.20".to_owned(),
+                port: 22,
+                user: "deploy".to_owned(),
+                host_key_fingerprint: "SHA256:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU"
+                    .to_owned(),
+                host_key: None,
+                identity_file: None,
+                remote_root: None,
+                daemon_fingerprint: None,
+            },
+        )?;
+        let binaries = workspace.path().join("release");
+        std::fs::create_dir(&binaries)?;
+        std::fs::write(binaries.join("mm"), b"mm of this release")?;
+        std::fs::write(binaries.join("mmd"), b"mmd of this release")?;
+        let mut selection = mm::app::WorkspaceSelection::new(&root, None);
+        selection.target = Some("production".to_owned());
+        Ok(Self {
+            workspace,
+            selection,
+            targets,
+        })
+    }
+
+    fn this(&self) -> HostRelease {
+        HostRelease {
+            version: THIS.to_owned(),
+            protocol: PROTOCOL_VERSION,
+            build: Some(blake3::hash(b"mmd of this release").to_hex().to_string()),
+        }
+    }
+
+    async fn plan(
+        &self,
+        running: Option<HostRelease>,
+        consent: ReleaseConsent,
+    ) -> Result<mm::domain::target::TargetBootstrapPlan, mm::MmError> {
+        let request = mm::app::BootstrapAccessRequest {
+            origin: String::new(),
+            origin_host_key: None,
+            break_glass: vec![
+                mm::domain::host_policy::parse_break_glass(
+                    "ops=ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFkPDuJzgp2r/scZMqe+noBIAdbQcrLlOG3w6WBNqR+w ops@offline",
+                )
+                .map_err(|message| mm::MmError::Target { message })?,
+            ],
+            binaries: self.workspace.path().join("release"),
+            upgrade: consent.upgrade,
+            downgrade: consent.downgrade,
+        };
+        mm::app::TargetManager::new(
+            std::sync::Arc::new(mm::adapters::config::ConfigLoader),
+            std::sync::Arc::clone(&self.targets),
+        )
+        .with_host_releases(std::sync::Arc::new(Runs(running)))
+        .bootstrap_plan_on_host(&self.selection, None, Some(&request))
+        .await
+    }
+}
+
+fn notices(plan: &mm::domain::target::TargetBootstrapPlan) -> Vec<String> {
+    plan.access
+        .as_ref()
+        .map(|access| access.notices.clone())
+        .unwrap_or_default()
+}
+
+#[tokio::test]
+async fn a_target_without_nodes_reads_its_host_release_as_a_cluster_reads_each_node() -> TestResult
+{
+    let host = SingleHost::new()?;
+    let this = host.this();
+    const DOWN: ReleaseConsent = ReleaseConsent {
+        downgrade: true,
+        upgrade: false,
+    };
+
+    let fresh = host.plan(None, ReleaseConsent::default()).await?;
+    assert_eq!(
+        notices(&fresh),
+        [format!(
+            "production: installs mm and mmd {this}, in place of the earlier release the node may run"
+        )]
+    );
+
+    let same = host
+        .plan(Some(this.clone()), ReleaseConsent::default())
+        .await?;
+    assert_eq!(
+        notices(&same),
+        [format!(
+            "production runs this release of mm, {this}; setup installs its host binaries again"
+        )]
+    );
+    assert_ne!(same.plan_hash, fresh.plan_hash);
+
+    for earlier in [
+        release("0.1.0", PROTOCOL_VERSION - 1, Some('b')),
+        release(THIS, PROTOCOL_VERSION, Some('b')),
+    ] {
+        let refused = host
+            .plan(Some(earlier.clone()), ReleaseConsent::default())
+            .await
+            .err()
+            .ok_or("an older or other build was replaced without a flag")?
+            .to_string();
+        assert!(refused.contains("pass --upgrade"), "{refused}");
+        let upgrade = host.plan(Some(earlier.clone()), ASKED).await?;
+        assert_eq!(
+            notices(&upgrade),
+            [format!(
+                "production: replaces mm and mmd {earlier} with {this}"
+            )]
+        );
+        assert!(upgrade.apply_command().ends_with(" --upgrade"));
+        upgrade.validate()?;
+    }
+
+    let newer = release("9.0.0", PROTOCOL_VERSION + 1, Some('c'));
+    for consent in [ReleaseConsent::default(), ASKED] {
+        let refused = host
+            .plan(Some(newer.clone()), consent)
+            .await
+            .err()
+            .ok_or("a newer release was replaced without --downgrade")?
+            .to_string();
+        assert!(refused.contains("pass --downgrade"), "{refused}");
+    }
+    let downgrade = host.plan(Some(newer.clone()), DOWN).await?;
+    assert_eq!(
+        notices(&downgrade),
+        [format!(
+            "production: downgrades mm and mmd from {newer} to {this} (--downgrade)"
+        )]
+    );
+    assert!(downgrade.apply_command().ends_with(" --downgrade"));
+    Ok(())
+}

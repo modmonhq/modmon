@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "mm configuration: providers",
+  "type": "object",
+  "$comment": "The value of top-level 'providers', for .config/mm/providers.yaml. Generated from MmConfig; run ./scripts/generate-artifacts.sh. Do not edit.",
+  "additionalProperties": {
+    "$ref": "#/$defs/ProviderInstanceConfig"
+  },
+  "$defs": {
+    "EveryNode": {
+      "description": "`nodes: all`.",
+      "type": "string",
+      "enum": [
+        "all"
+      ]
+    },
+    "ProviderDriverId": {
+      "type": "string"
+    },
+    "ProviderInstanceConfig": {
+      "type": "object",
+      "properties": {
+        "driver": {
+          "$ref": "#/$defs/ProviderDriverId"
+        },
+        "scope": {
+          "$ref": "#/$defs/ProviderScope"
+        }
+      },
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "installation": {
+              "description": "Local development only. Default: the provider's name.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "management-port": {
+              "description": "Local development only. Default: 18200.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint16",
+              "maximum": 65535,
+              "minimum": 0
+            },
+            "mode": {
+              "type": "string",
+              "const": "managed"
+            },
+            "nodes": {
+              "description": "Cluster targets only: the store's Raft members. Default: every\nnode of the target, when it has 3 or 5.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/StoreNodes"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "release": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode",
+            "release"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "address": {
+              "type": "string"
+            },
+            "automation-auth-mount": {
+              "type": "string"
+            },
+            "expected-trust-sha256": {
+              "type": "string"
+            },
+            "mode": {
+              "type": "string",
+              "const": "external"
+            },
+            "namespace": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "storage-mount": {
+              "type": "string"
+            },
+            "trust-bundle": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode",
+            "address",
+            "storage-mount",
+            "automation-auth-mount",
+            "trust-bundle",
+            "expected-trust-sha256"
+          ]
+        }
+      ],
+      "required": [
+        "driver",
+        "scope"
+      ]
+    },
+    "ProviderScope": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "installation",
+            "project"
+          ]
+        },
+        {
+          "description": "One store per environment: on a cluster target, the store mm runs\non the target's nodes.",
+          "type": "string",
+          "const": "environment"
+        }
+      ]
+    },
+    "StoreNodes": {
+      "description": "The Raft members of a managed store: every node of the target, or the\nnodes named. Three or five.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EveryNode"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    }
+  }
+}

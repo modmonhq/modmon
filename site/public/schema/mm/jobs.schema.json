@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "mm configuration: jobs",
+  "type": "object",
+  "$comment": "The value of top-level 'jobs', for .config/mm/jobs.yaml. Generated from MmConfig; run ./scripts/generate-artifacts.sh. Do not edit.",
+  "additionalProperties": {
+    "$ref": "#/$defs/JobConfig"
+  },
+  "$defs": {
+    "Development": {
+      "description": "Whether a module, service or job runs in the development environment.",
+      "type": "string",
+      "enum": [
+        "on",
+        "optional",
+        "off"
+      ]
+    },
+    "JobConfig": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "development": {
+          "description": "`on` (the default), `optional` or `off` in the development\nenvironment. A job of a service that is off is off too.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Development"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "environments": {
+          "description": "The environments the job belongs to; every environment when left\nout. `environment:` with one name is read the same way.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobEnvironments"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "history-limit": {
+          "type": "integer",
+          "format": "uint32",
+          "default": 100,
+          "minimum": 0
+        },
+        "module": {
+          "type": "string"
+        },
+        "output-limit-bytes": {
+          "type": "integer",
+          "format": "uint32",
+          "default": 65536,
+          "minimum": 0
+        },
+        "placement": {
+          "description": "On a cluster target, the node the job runs on: a node name, or a\ngroup whose first node that runs the service is taken. It must run\nthe job's service. Without it, the first node that does.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "retry": {
+          "$ref": "#/$defs/RetryPolicyConfig",
+          "default": {
+            "attempts": 1,
+            "backoff": "5s",
+            "max-backoff": "5m"
+          }
+        },
+        "run": {
+          "description": "When a deployment runs the job by itself: `before-deploy` (before\nits service is started or replaced, after what the service depends\non is healthy), `after-deploy` (once the deployment converged), or\n`once` (the first time the environment is deployed with it). Left\nout, the job runs only when asked (`mm job run`) or scheduled.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobWhen"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "service": {
+          "type": "string"
+        },
+        "timeout": {
+          "type": "string",
+          "default": "10m"
+        },
+        "user": {
+          "description": "Who the command runs as in the container (`uid`, `uid:gid`, or a\nname the image knows), in place of the service's own user.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "module",
+        "service",
+        "command"
+      ]
+    },
+    "JobEnvironments": {
+      "description": "One environment name, or a list of them.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "JobWhen": {
+      "description": "When a deployment runs a job.",
+      "type": "string",
+      "enum": [
+        "before-deploy",
+        "after-deploy",
+        "once"
+      ]
+    },
+    "RetryPolicyConfig": {
+      "type": "object",
+      "properties": {
+        "attempts": {
+          "type": "integer",
+          "format": "uint16",
+          "default": 1,
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "backoff": {
+          "type": "string",
+          "default": "5s"
+        },
+        "max-backoff": {
+          "type": "string",
+          "default": "5m"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

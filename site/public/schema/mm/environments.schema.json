@@ -1,0 +1,375 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "mm configuration: environments",
+  "type": "object",
+  "$comment": "The value of top-level 'environments', for .config/mm/environments.yaml. Generated from MmConfig; run ./scripts/generate-artifacts.sh. Do not edit.",
+  "additionalProperties": {
+    "$ref": "#/$defs/EnvironmentConfig"
+  },
+  "$defs": {
+    "Balance": {
+      "description": "Which of a service's healthy containers an ingress node sends a route's\nrequests to.",
+      "oneOf": [
+        {
+          "description": "The ones on the proxy's own node, and every node's when it has none.",
+          "type": "string",
+          "const": "local-first"
+        },
+        {
+          "description": "The ones on every node.",
+          "type": "string",
+          "const": "spread"
+        }
+      ]
+    },
+    "CastBinding": {
+      "type": "object",
+      "properties": {
+        "cast": {
+          "$ref": "#/$defs/ValueCast"
+        },
+        "value-ref": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "cast",
+        "value-ref"
+      ]
+    },
+    "CloudflaredConfig": {
+      "description": "The Cloudflare Tunnel of an environment with `type: cloudflared`.",
+      "type": "object",
+      "properties": {
+        "image": {
+          "description": "The connector's image. The default is a cloudflared release mm\npins by digest.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "token": {
+          "description": "The secret that holds the tunnel's token, as\n`cloudflared tunnel token <name>` prints it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "DeployConfig": {
+      "description": "`environments.<environment>.deploy`.",
+      "type": "object",
+      "properties": {
+        "convergence-timeout": {
+          "description": "How long a stack may take on a host to become healthy before the\ndeployment counts as failed, such as `90s` or `15m`. The default is\n`10m`. The plan shows it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mm-version": {
+          "description": "The releases of mm that may plan deployments here, and that the\nhosts' mmd must be: `0.9` is any 0.9 release, `=0.9.3` exactly that\none. A plan from another mm, or for a host that runs another mmd,\nis refused, and `mm doctor` reports both. Not set: any mm that\nspeaks the hosts' protocol.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "progress-timeout": {
+          "description": "How long `mm deploy apply` waits without any sign of progress from\na host before it stops with a timeout that names the host, the step\nand the operation, such as `5m`. The default is `2m`; at least `30s`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "EnvScalar": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "format": "int64"
+        },
+        {
+          "type": "boolean"
+        }
+      ]
+    },
+    "EnvironmentBinding": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CastBinding"
+        },
+        {
+          "$ref": "#/$defs/SecretBinding"
+        },
+        {
+          "$ref": "#/$defs/ValueBinding"
+        },
+        {
+          "$ref": "#/$defs/ReferenceBinding"
+        }
+      ]
+    },
+    "EnvironmentConfig": {
+      "type": "object",
+      "properties": {
+        "automatic-local-ingress": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "bindings": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/EnvironmentBinding"
+          },
+          "default": {}
+        },
+        "build-variant": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "deploy": {
+          "description": "How deployments to this environment behave.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DeployConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "deploy-from": {
+          "description": "Branches a commit must be reachable from to be deployed here: names, or\npatterns where `*` matches within one `/` segment (`*.x`); `*` alone is\nany branch. A commit that changes this list must pass the current one.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "domains": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {}
+        },
+        "environment-delivery": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EnvironmentDeliveryMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ingress": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EnvironmentIngressConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "runtime": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RuntimeConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "target": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tls": {
+          "description": "A certificate the environment provides for its domains, in place\nof one the ingress requests with ACME.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EnvironmentTlsConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "EnvironmentDeliveryMode": {
+      "type": "string",
+      "enum": [
+        "direct",
+        "env-file"
+      ]
+    },
+    "EnvironmentIngressConfig": {
+      "description": "The YAML shape of [`EnvironmentIngressConfig`].",
+      "type": "object",
+      "properties": {
+        "balance": {
+          "description": "`local-first` (the default) sends each request to the service's\ncontainers on the ingress node that took it, and to every node's\nonly when that node runs none; `spread` sends it to the service's\ncontainers on every node.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Balance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cloudflared": {
+          "description": "The tunnel, with `type: cloudflared`.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CloudflaredConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "headers": {
+          "description": "Response headers every route of the environment sets on a cluster\ntarget, such as `X-Robots-Tag: noindex`.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "type": {
+          "description": "`public` (the default) takes requests on ports 80 and 443 of the\ningress nodes; `cloudflared` through a Cloudflare Tunnel, with no\nport open. Local development ignores it.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/IngressType"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "EnvironmentTlsConfig": {
+      "description": "A certificate the operator provides for an environment's domains, such\nas a Cloudflare origin certificate, where ACME challenges cannot reach\nthe ingress. Both secrets hold a PEM file encoded as base64 on one line\n(`base64 -w0 cert.pem | mm secret set NAME --stdin`).",
+      "type": "object",
+      "properties": {
+        "certificate": {
+          "description": "Secret holding the certificate chain.",
+          "type": "string"
+        },
+        "key": {
+          "description": "Secret holding the private key.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "certificate",
+        "key"
+      ]
+    },
+    "IngressType": {
+      "description": "Where an environment's requests come in on a cluster target.",
+      "oneOf": [
+        {
+          "description": "Ports 80 and 443 of every ingress node.",
+          "type": "string",
+          "const": "public"
+        },
+        {
+          "description": "A Cloudflare Tunnel, with no port open on any node.",
+          "type": "string",
+          "const": "cloudflared"
+        }
+      ]
+    },
+    "ReferenceBinding": {
+      "description": "A release fact under another key: `value-ref: MM.RELEASE`.",
+      "type": "object",
+      "properties": {
+        "value-ref": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "value-ref"
+      ]
+    },
+    "RuntimeConfig": {
+      "type": "object",
+      "properties": {
+        "driver": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RuntimeKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "RuntimeKind": {
+      "type": "string",
+      "enum": [
+        "podman-compose",
+        "docker-compose"
+      ]
+    },
+    "SecretBinding": {
+      "type": "object",
+      "properties": {
+        "secret": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "secret"
+      ]
+    },
+    "ValueBinding": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "$ref": "#/$defs/EnvScalar"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "value"
+      ]
+    },
+    "ValueCast": {
+      "type": "string",
+      "enum": [
+        "url"
+      ]
+    }
+  }
+}

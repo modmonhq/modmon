@@ -1,0 +1,17 @@
+{
+  "name": "@mm/ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Design tokens and Vue components shared by the mm site and the local dashboard. Built on Reka UI.",
+  "exports": {
+    "./tokens.css": "./src/tokens.css",
+    "./base.css": "./src/base.css",
+    "./types": "./src/types.ts",
+    "./components/*": "./src/components/*"
+  },
+  "peerDependencies": {
+    "reka-ui": "^2.10.0",
+    "vue": "^3.5.0"
+  }
+}

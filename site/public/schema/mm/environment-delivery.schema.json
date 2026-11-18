@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "mm configuration: environment-delivery",
+  "$comment": "The value of top-level 'environment-delivery', for .config/mm/environment-delivery.yaml. Generated from MmConfig; run ./scripts/generate-artifacts.sh. Do not edit.",
+  "$ref": "#/$defs/EnvironmentDeliveryPolicy",
+  "$defs": {
+    "EnvironmentDeliveryMode": {
+      "type": "string",
+      "enum": [
+        "direct",
+        "env-file"
+      ]
+    },
+    "EnvironmentDeliveryPolicy": {
+      "type": "object",
+      "properties": {
+        "default": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EnvironmentDeliveryMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "development-default": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EnvironmentDeliveryMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

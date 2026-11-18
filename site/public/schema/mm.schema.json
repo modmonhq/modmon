@@ -1,0 +1,2899 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MmConfig",
+  "type": "object",
+  "properties": {
+    "agents": {
+      "description": "What an AI agent may do through `mm mcp serve`, per environment.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/AgentAccessConfig"
+      }
+    },
+    "bindings": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/EnvironmentBinding"
+      },
+      "default": {}
+    },
+    "build": {
+      "$ref": "#/$defs/BuildConfig"
+    },
+    "default-environment": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "development-mail": {
+      "$ref": "#/$defs/DevelopmentMailPolicy"
+    },
+    "development-mounts": {
+      "$ref": "#/$defs/DevelopmentMountPolicy"
+    },
+    "environment-delivery": {
+      "$ref": "#/$defs/EnvironmentDeliveryPolicy"
+    },
+    "environments": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/EnvironmentConfig"
+      }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/GateConfig"
+      }
+    },
+    "hardening": {
+      "description": "`strict` hardens every service of a deployment: read-only root\nfilesystem, no capabilities, no new privileges, the engine's default\nseccomp profile, a tmpfs at `/tmp`. Not applied by `mm dev`.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Hardening"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "ingress": {
+      "$ref": "#/$defs/ProjectIngressConfig"
+    },
+    "jobs": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/JobConfig"
+      }
+    },
+    "modules": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/ModuleConfig"
+      },
+      "default": {}
+    },
+    "networks": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/NetworkConfig"
+      }
+    },
+    "project": {
+      "$ref": "#/$defs/ProjectConfig"
+    },
+    "providers": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/ProviderInstanceConfig"
+      }
+    },
+    "registries": {
+      "description": "Image registries and the credentials deploys pull with, by host.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/RegistryConfig"
+      }
+    },
+    "release-inputs": {
+      "description": "Values `mm deploy plan --release-input NAME=VALUE` supplies per\ndeployment, read as `RELEASE.<NAME>`.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/ReleaseInputConfig"
+      }
+    },
+    "runtime": {
+      "$ref": "#/$defs/RuntimeConfig",
+      "default": {}
+    },
+    "schedules": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/ScheduleConfig"
+      }
+    },
+    "schema-version": {
+      "type": "integer",
+      "format": "uint32",
+      "maximum": 1,
+      "minimum": 1
+    },
+    "secrets": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/SecretDeclaration"
+      },
+      "default": {}
+    },
+    "stacks": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/StackConfig"
+      }
+    },
+    "target": {
+      "type": "string"
+    },
+    "targets": {
+      "description": "Public connection facts for remote targets; clients pin them.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/RepoTargetConfig"
+      }
+    },
+    "users": {
+      "description": "Who may reach each remote environment, reconciled on deploy.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/UserConfig"
+      }
+    }
+  },
+  "$comment": "Generated from MmConfig; run ./scripts/generate-artifacts.sh. Do not edit.",
+  "additionalProperties": false,
+  "required": [
+    "schema-version",
+    "project",
+    "target",
+    "stacks",
+    "environments"
+  ],
+  "$defs": {
+    "AccessLevel": {
+      "description": "Access levels a repo grants per environment. Each includes the previous.",
+      "oneOf": [
+        {
+          "description": "Plan, status, inspect, and logs.",
+          "type": "string",
+          "const": "view"
+        },
+        {
+          "description": "`view` plus restart and job run, cancel, and retry.",
+          "type": "string",
+          "const": "operate"
+        },
+        {
+          "description": "`operate` plus deploy, rollback, and team sync.",
+          "type": "string",
+          "const": "deploy"
+        },
+        {
+          "description": "`deploy` plus exec, forward, setting secrets and variables,\nemergency blocks, and audit.",
+          "type": "string",
+          "const": "admin"
+        }
+      ]
+    },
+    "AgentAccess": {
+      "description": "What an agent may do in one environment.",
+      "type": "object",
+      "properties": {
+        "exec": {
+          "description": "Services the agent may run commands in: `true`, or a list of names.",
+          "$ref": "#/$defs/ServiceSelection"
+        },
+        "level": {
+          "description": "`view`, `operate`, or `deploy`. Agents are never `admin`.",
+          "$ref": "#/$defs/AccessLevel"
+        },
+        "secrets": {
+          "description": "The agent may set secrets and variables on the environment's hosts\nfor the next deployment, when its user may. It never reads a value.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "level"
+      ]
+    },
+    "AgentAccessConfig": {
+      "description": "`production: view` or `local: { level: deploy, exec: true }`.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AccessLevel"
+        },
+        {
+          "$ref": "#/$defs/AgentAccess"
+        }
+      ]
+    },
+    "AllowRule": {
+      "description": "One kind of request a route lets through: one of `methods` (any when\nempty) whose path matches `path` (any when absent).",
+      "type": "object",
+      "properties": {
+        "methods": {
+          "description": "HTTP methods in capitals, such as `[GET, HEAD]`.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "path": {
+          "description": "A regular expression the request path matches, such as\n`^/hooks/[^/]+$`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "AutoscaleConfig": {
+      "description": "`autoscale:` on a service.",
+      "type": "object",
+      "properties": {
+        "metric": {
+          "description": "What is measured and when a container is added or removed. Every\nkey has a default: CPU, up above 75% for 30s, down below 40% for 5m.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ScaleMetricConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scale": {
+          "description": "How few and how many containers the service runs.",
+          "$ref": "#/$defs/ScaleRange"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "scale"
+      ]
+    },
+    "Balance": {
+      "description": "Which of a service's healthy containers an ingress node sends a route's\nrequests to.",
+      "oneOf": [
+        {
+          "description": "The ones on the proxy's own node, and every node's when it has none.",
+          "type": "string",
+          "const": "local-first"
+        },
+        {
+          "description": "The ones on every node.",
+          "type": "string",
+          "const": "spread"
+        }
+      ]
+    },
+    "BuildConfig": {
+      "type": "object",
+      "properties": {
+        "platforms": {
+          "type": "array",
+          "default": [
+            "linux/amd64",
+            "linux/arm64"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "tag-strategy": {
+          "$ref": "#/$defs/BuildTagStrategy",
+          "default": "auto"
+        }
+      },
+      "additionalProperties": false
+    },
+    "BuildTagStrategy": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "immutable"
+      ]
+    },
+    "BuildTarget": {
+      "description": "A build target under `modules.<m>.build.targets`, which an environment's\n`build-variant` selects: the tag suffix alone, or a mapping.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/BuildVariantConfig"
+        }
+      ]
+    },
+    "BuildVariantConfig": {
+      "type": "object",
+      "properties": {
+        "args": {
+          "description": "Build arguments merged over the module's `build.args`.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/EnvScalar"
+          }
+        },
+        "suffix": {
+          "description": "The image tag suffix; defaults to the target's name.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target": {
+          "description": "The Dockerfile stage; defaults to the target's name.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "CastBinding": {
+      "type": "object",
+      "properties": {
+        "cast": {
+          "$ref": "#/$defs/ValueCast"
+        },
+        "value-ref": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "cast",
+        "value-ref"
+      ]
+    },
+    "CloudflaredConfig": {
+      "description": "The Cloudflare Tunnel of an environment with `type: cloudflared`.",
+      "type": "object",
+      "properties": {
+        "image": {
+          "description": "The connector's image. The default is a cloudflared release mm\npins by digest.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "token": {
+          "description": "The secret that holds the tunnel's token, as\n`cloudflared tunnel token <name>` prints it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Delivery": {
+      "description": "How a target's hosts get a commit's files.",
+      "oneOf": [
+        {
+          "description": "Each host fetches the commit from the origin in its host policy.",
+          "type": "string",
+          "const": "fetch"
+        },
+        {
+          "description": "mm sends the commit's tracked files; the hosts never contact the\ngit server.",
+          "type": "string",
+          "const": "push"
+        }
+      ]
+    },
+    "DeployConfig": {
+      "description": "`environments.<environment>.deploy`.",
+      "type": "object",
+      "properties": {
+        "convergence-timeout": {
+          "description": "How long a stack may take on a host to become healthy before the\ndeployment counts as failed, such as `90s` or `15m`. The default is\n`10m`. The plan shows it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mm-version": {
+          "description": "The releases of mm that may plan deployments here, and that the\nhosts' mmd must be: `0.9` is any 0.9 release, `=0.9.3` exactly that\none. A plan from another mm, or for a host that runs another mmd,\nis refused, and `mm doctor` reports both. Not set: any mm that\nspeaks the hosts' protocol.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "progress-timeout": {
+          "description": "How long `mm deploy apply` waits without any sign of progress from\na host before it stops with a timeout that names the host, the step\nand the operation, such as `5m`. The default is `2m`; at least `30s`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Development": {
+      "description": "Whether a module, service or job runs in the development environment.",
+      "type": "string",
+      "enum": [
+        "on",
+        "optional",
+        "off"
+      ]
+    },
+    "DevelopmentBindMount": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "description": "Relative to the module path, like the primary source.",
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "target"
+      ]
+    },
+    "DevelopmentMailPolicy": {
+      "type": "object",
+      "properties": {
+        "bindings": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/DevelopmentMailValue"
+          }
+        },
+        "enabled": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "DevelopmentMailValue": {
+      "type": "string",
+      "enum": [
+        "smtp-host",
+        "smtp-port",
+        "smtp-url",
+        "ui-url"
+      ]
+    },
+    "DevelopmentMountConfig": {
+      "type": "object",
+      "properties": {
+        "additional": {
+          "description": "Additional source directories mounted into the same services with the same mode.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DevelopmentBindMount"
+          }
+        },
+        "excludes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "mode": {
+          "$ref": "#/$defs/DevelopmentMountMode",
+          "default": "read-write"
+        },
+        "preserve": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PreservedContainerPath"
+          }
+        },
+        "preset": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DevelopmentMountPreset"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "protected": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "safe-exceptions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "services": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source": {
+          "description": "Relative to the module path, never the workstation root.",
+          "type": "string"
+        },
+        "target": {
+          "description": "Absolute POSIX path in the selected container services.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "target",
+        "services"
+      ]
+    },
+    "DevelopmentMountMode": {
+      "type": "string",
+      "enum": [
+        "read-write",
+        "read-only"
+      ]
+    },
+    "DevelopmentMountPolicy": {
+      "type": "object",
+      "properties": {
+        "sensitive-patterns": {
+          "description": "Additional case-insensitive glob-like names (`*` matches any substring).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "DevelopmentMountPreset": {
+      "type": "string",
+      "enum": [
+        "laravel",
+        "node",
+        "dotnet",
+        "rust"
+      ]
+    },
+    "DownRuleConfig": {
+      "description": "`autoscale.metric.down`: remove a container when the average is below\n`less` for `for`.",
+      "type": "object",
+      "properties": {
+        "for": {
+          "description": "Such as `5m`; at most `4h`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "less": {
+          "description": "Such as `40%`.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PercentSpec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "EnvScalar": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "format": "int64"
+        },
+        {
+          "type": "boolean"
+        }
+      ]
+    },
+    "EnvironmentAccess": {
+      "description": "One user's effective access in one environment.",
+      "type": "object",
+      "properties": {
+        "exec": {
+          "$ref": "#/$defs/ServiceSelection"
+        },
+        "forward": {
+          "$ref": "#/$defs/ServiceSelection"
+        },
+        "level": {
+          "$ref": "#/$defs/AccessLevel"
+        },
+        "secrets": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "level"
+      ]
+    },
+    "EnvironmentBinding": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CastBinding"
+        },
+        {
+          "$ref": "#/$defs/SecretBinding"
+        },
+        {
+          "$ref": "#/$defs/ValueBinding"
+        },
+        {
+          "$ref": "#/$defs/ReferenceBinding"
+        }
+      ]
+    },
+    "EnvironmentConfig": {
+      "type": "object",
+      "properties": {
+        "automatic-local-ingress": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "bindings": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/EnvironmentBinding"
+          },
+          "default": {}
+        },
+        "build-variant": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "deploy": {
+          "description": "How deployments to this environment behave.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DeployConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "deploy-from": {
+          "description": "Branches a commit must be reachable from to be deployed here: names, or\npatterns where `*` matches within one `/` segment (`*.x`); `*` alone is\nany branch. A commit that changes this list must pass the current one.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "domains": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {}
+        },
+        "environment-delivery": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EnvironmentDeliveryMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ingress": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EnvironmentIngressConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "runtime": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RuntimeConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "target": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tls": {
+          "description": "A certificate the environment provides for its domains, in place\nof one the ingress requests with ACME.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EnvironmentTlsConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "EnvironmentDeliveryMode": {
+      "type": "string",
+      "enum": [
+        "direct",
+        "env-file"
+      ]
+    },
+    "EnvironmentDeliveryPolicy": {
+      "type": "object",
+      "properties": {
+        "default": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EnvironmentDeliveryMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "development-default": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EnvironmentDeliveryMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "EnvironmentIngressConfig": {
+      "description": "The YAML shape of [`EnvironmentIngressConfig`].",
+      "type": "object",
+      "properties": {
+        "balance": {
+          "description": "`local-first` (the default) sends each request to the service's\ncontainers on the ingress node that took it, and to every node's\nonly when that node runs none; `spread` sends it to the service's\ncontainers on every node.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Balance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cloudflared": {
+          "description": "The tunnel, with `type: cloudflared`.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CloudflaredConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "headers": {
+          "description": "Response headers every route of the environment sets on a cluster\ntarget, such as `X-Robots-Tag: noindex`.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "type": {
+          "description": "`public` (the default) takes requests on ports 80 and 443 of the\ningress nodes; `cloudflared` through a Cloudflare Tunnel, with no\nport open. Local development ignores it.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/IngressType"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "EnvironmentTlsConfig": {
+      "description": "A certificate the operator provides for an environment's domains, such\nas a Cloudflare origin certificate, where ACME challenges cannot reach\nthe ingress. Both secrets hold a PEM file encoded as base64 on one line\n(`base64 -w0 cert.pem | mm secret set NAME --stdin`).",
+      "type": "object",
+      "properties": {
+        "certificate": {
+          "description": "Secret holding the certificate chain.",
+          "type": "string"
+        },
+        "key": {
+          "description": "Secret holding the private key.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "certificate",
+        "key"
+      ]
+    },
+    "EveryNode": {
+      "description": "`nodes: all`.",
+      "type": "string",
+      "enum": [
+        "all"
+      ]
+    },
+    "GateConfig": {
+      "type": "object",
+      "properties": {
+        "ingress": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "provider": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "provider"
+      ]
+    },
+    "Hardening": {
+      "description": "`hardening` at the top of `mm.yaml`.",
+      "oneOf": [
+        {
+          "description": "Every service of a deployment gets a read-only root filesystem,\ndrops all Linux capabilities, cannot gain privileges, keeps the\nengine's default seccomp profile, and gets a tmpfs at `/tmp`.",
+          "type": "string",
+          "const": "strict"
+        }
+      ]
+    },
+    "HardeningExceptions": {
+      "description": "Each key is a default the service leaves out; its value says why.",
+      "type": "object",
+      "properties": {
+        "cap-drop": {
+          "description": "Keep the engine's default capabilities. A service that needs a few\nkeeps them with `cap_add` in its Compose file and needs no\nexception.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "no-new-privileges": {
+          "description": "Let processes gain privileges through setuid binaries.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "read-only": {
+          "description": "Keep the root filesystem writable. Volumes and bind mounts are\nwritable either way: prefer a volume for the paths the service\nwrites.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "seccomp": {
+          "description": "Let the Compose file choose another seccomp profile than the\nengine's default.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tmpfs": {
+          "description": "Add no tmpfs at `/tmp`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "HealthConfig": {
+      "description": "`modules.<m>.services.<s>.health`. Every key has a default.",
+      "type": "object",
+      "properties": {
+        "after": {
+          "description": "How long a container stays unhealthy before it is restarted, such as\n`3m` (the default).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "max-restarts": {
+          "description": "How many restarts of one container within `window` before its node\nstops restarting it; default 5.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "on-failure": {
+          "description": "`restart` (the default on a cluster target) restarts a container\nthat stays unhealthy; `none` leaves it as it is.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OnFailure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "window": {
+          "description": "Default `1h`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "IngressConfig": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/IngressRouteConfig"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/IngressRouteConfig"
+          }
+        }
+      ]
+    },
+    "IngressRouteConfig": {
+      "type": "object",
+      "properties": {
+        "allow": {
+          "description": "On a cluster target: the only requests that reach the service; the\nproxy answers 404 to every other one.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AllowRule"
+          }
+        },
+        "balance": {
+          "description": "On a cluster target: `spread` sends this route's requests to the\nservice's containers on every node. The default is the\nenvironment's `ingress.balance`, else `spread` for a service with\n`autoscale` and `local-first` for every other one.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Balance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "domain": {
+          "type": "string"
+        },
+        "environments": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "headers": {
+          "description": "On a cluster target: response headers, on top of the environment's\n`ingress.headers`. An empty value removes the header.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "https": {
+          "type": "boolean",
+          "default": true
+        },
+        "port": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "priority": {
+          "description": "On a cluster target: where this route stands among the routes of\nits host, from 1 to 1000000. By default the longer path goes first.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "route": {
+          "type": "string",
+          "default": "/"
+        },
+        "service": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "domain"
+      ]
+    },
+    "IngressType": {
+      "description": "Where an environment's requests come in on a cluster target.",
+      "oneOf": [
+        {
+          "description": "Ports 80 and 443 of every ingress node.",
+          "type": "string",
+          "const": "public"
+        },
+        {
+          "description": "A Cloudflare Tunnel, with no port open on any node.",
+          "type": "string",
+          "const": "cloudflared"
+        }
+      ]
+    },
+    "Ipv4Cidr": {
+      "description": "An IPv4 network in CIDR notation, such as 10.90.0.0/24.",
+      "type": "string",
+      "pattern": "^\\d{1,3}(\\.\\d{1,3}){3}/\\d{1,2}$"
+    },
+    "JobConfig": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "development": {
+          "description": "`on` (the default), `optional` or `off` in the development\nenvironment. A job of a service that is off is off too.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Development"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "environments": {
+          "description": "The environments the job belongs to; every environment when left\nout. `environment:` with one name is read the same way.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobEnvironments"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "history-limit": {
+          "type": "integer",
+          "format": "uint32",
+          "default": 100,
+          "minimum": 0
+        },
+        "module": {
+          "type": "string"
+        },
+        "output-limit-bytes": {
+          "type": "integer",
+          "format": "uint32",
+          "default": 65536,
+          "minimum": 0
+        },
+        "placement": {
+          "description": "On a cluster target, the node the job runs on: a node name, or a\ngroup whose first node that runs the service is taken. It must run\nthe job's service. Without it, the first node that does.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "retry": {
+          "$ref": "#/$defs/RetryPolicyConfig",
+          "default": {
+            "attempts": 1,
+            "backoff": "5s",
+            "max-backoff": "5m"
+          }
+        },
+        "run": {
+          "description": "When a deployment runs the job by itself: `before-deploy` (before\nits service is started or replaced, after what the service depends\non is healthy), `after-deploy` (once the deployment converged), or\n`once` (the first time the environment is deployed with it). Left\nout, the job runs only when asked (`mm job run`) or scheduled.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobWhen"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "service": {
+          "type": "string"
+        },
+        "timeout": {
+          "type": "string",
+          "default": "10m"
+        },
+        "user": {
+          "description": "Who the command runs as in the container (`uid`, `uid:gid`, or a\nname the image knows), in place of the service's own user.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "module",
+        "service",
+        "command"
+      ]
+    },
+    "JobEnvironments": {
+      "description": "One environment name, or a list of them.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "JobWhen": {
+      "description": "When a deployment runs a job.",
+      "type": "string",
+      "enum": [
+        "before-deploy",
+        "after-deploy",
+        "once"
+      ]
+    },
+    "MeshFields": {
+      "description": "The YAML shape of [`MeshConfig`].",
+      "type": "object",
+      "properties": {
+        "interface": {
+          "description": "Use this existing private interface (`eth1`) instead of creating a\nWireGuard mesh. Every node then declares its `private-address`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mtu": {
+          "description": "The mesh interface's MTU: the underlay's MTU minus 80 bytes of\nWireGuard overhead. Default `1420`, which fits a 1500-byte underlay.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "port": {
+          "description": "The UDP port WireGuard listens on, on every node. It must be reachable\nbetween the nodes. Default `51820`.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "subnet": {
+          "description": "The WireGuard mesh's address range. Default `10.90.0.0/24`.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Ipv4Cidr"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Metric": {
+      "description": "What is measured.",
+      "type": "string",
+      "enum": [
+        "cpu",
+        "memory"
+      ]
+    },
+    "MiddlewareBundleConfig": {
+      "type": "object",
+      "properties": {
+        "environments": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "file": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "file"
+      ]
+    },
+    "MisfirePolicy": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "skip",
+            "run-once"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "bounded-catch-up": {
+              "type": "object",
+              "properties": {
+                "maximum": {
+                  "type": "integer",
+                  "format": "uint16",
+                  "maximum": 65535,
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "maximum"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "bounded-catch-up"
+          ]
+        }
+      ]
+    },
+    "ModuleBuildConfig": {
+      "type": "object",
+      "properties": {
+        "args": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/EnvScalar"
+          },
+          "default": {}
+        },
+        "context": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "credential-only-secrets": {
+          "description": "Keys of `secrets` that only authenticate fetching inputs, such as a\npackage registry token. They are still mounted, but they do not change\nthe image, so they never block reuse or promotion of a build.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "default-variant": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "depends-on": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "dockerfile": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "extra-inputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "image": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "secrets": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {}
+        },
+        "targets": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/BuildTarget"
+          },
+          "default": {}
+        }
+      },
+      "additionalProperties": false
+    },
+    "ModuleConfig": {
+      "type": "object",
+      "properties": {
+        "build": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModuleBuildConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "development": {
+          "description": "`on` (the default), `optional` (off in the development environment\nuntil a developer turns it on with `mm dev enable`), or `off`. Its\nservices take it unless they set their own.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Development"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "development-mail": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "development-mount": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DevelopmentMountConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "env": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModuleEnvConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "networks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "path": {
+          "type": "string"
+        },
+        "services": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/ServiceConfig"
+          },
+          "default": {}
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "path"
+      ]
+    },
+    "ModuleEnvConfig": {
+      "type": "object",
+      "properties": {
+        "template": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "template"
+      ]
+    },
+    "NetworkConfig": {
+      "type": "object",
+      "properties": {
+        "internal": {
+          "description": "Containers on the network reach its members and nothing else: no\noutbound access.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "OnFailure": {
+      "type": "string",
+      "enum": [
+        "restart",
+        "none"
+      ]
+    },
+    "PercentSpec": {
+      "description": "A percentage, such as 75%.",
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]{1,2})?%$"
+    },
+    "PlacementSpec": {
+      "description": "One placement word, or a list of them.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "PreservedContainerPath": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "path"
+      ]
+    },
+    "ProjectConfig": {
+      "type": "object",
+      "properties": {
+        "development-environment": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name"
+      ]
+    },
+    "ProjectIngressConfig": {
+      "type": "object",
+      "properties": {
+        "automatic-local": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "middlewares": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/MiddlewareBundleConfig"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "ProviderDriverId": {
+      "type": "string"
+    },
+    "ProviderInstanceConfig": {
+      "type": "object",
+      "properties": {
+        "driver": {
+          "$ref": "#/$defs/ProviderDriverId"
+        },
+        "scope": {
+          "$ref": "#/$defs/ProviderScope"
+        }
+      },
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "installation": {
+              "description": "Local development only. Default: the provider's name.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "management-port": {
+              "description": "Local development only. Default: 18200.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint16",
+              "maximum": 65535,
+              "minimum": 0
+            },
+            "mode": {
+              "type": "string",
+              "const": "managed"
+            },
+            "nodes": {
+              "description": "Cluster targets only: the store's Raft members. Default: every\nnode of the target, when it has 3 or 5.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/StoreNodes"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "release": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode",
+            "release"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "address": {
+              "type": "string"
+            },
+            "automation-auth-mount": {
+              "type": "string"
+            },
+            "expected-trust-sha256": {
+              "type": "string"
+            },
+            "mode": {
+              "type": "string",
+              "const": "external"
+            },
+            "namespace": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "storage-mount": {
+              "type": "string"
+            },
+            "trust-bundle": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode",
+            "address",
+            "storage-mount",
+            "automation-auth-mount",
+            "trust-bundle",
+            "expected-trust-sha256"
+          ]
+        }
+      ],
+      "required": [
+        "driver",
+        "scope"
+      ]
+    },
+    "ProviderScope": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "installation",
+            "project"
+          ]
+        },
+        {
+          "description": "One store per environment: on a cluster target, the store mm runs\non the target's nodes.",
+          "type": "string",
+          "const": "environment"
+        }
+      ]
+    },
+    "ReferenceBinding": {
+      "description": "A release fact under another key: `value-ref: MM.RELEASE`.",
+      "type": "object",
+      "properties": {
+        "value-ref": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "value-ref"
+      ]
+    },
+    "RegistryConfig": {
+      "description": "A registry, keyed by its host (`ghcr.io`, `registry.example.com:5000`).",
+      "type": "object",
+      "properties": {
+        "password": {
+          "description": "The secret holding the password or access token; set it per environment.",
+          "$ref": "#/$defs/RegistryPassword"
+        },
+        "username": {
+          "description": "The account the token belongs to. GHCR accepts any name with a token.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "username",
+        "password"
+      ]
+    },
+    "RegistryPassword": {
+      "type": "object",
+      "properties": {
+        "secret": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "secret"
+      ]
+    },
+    "ReleaseInputConfig": {
+      "description": "One value under `release-inputs:` that `mm deploy plan` takes with\n`--release-input NAME=VALUE`.",
+      "type": "object",
+      "properties": {
+        "pattern": {
+          "description": "A regular expression the whole value has to match, such as\n`^[A-Za-z0-9._-]+$`. Without one, any value of printable text is\naccepted.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "RepoBreakGlassKey": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "description": "`ssh-ed25519 AAAA… comment`; keep the private half offline.",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "key"
+      ]
+    },
+    "RepoClusterConfig": {
+      "description": "How the nodes of a cluster target work together. Every key has a default.",
+      "type": "object",
+      "properties": {
+        "groups": {
+          "description": "Names for sets of nodes, for a service's `placement`.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "ingress": {
+          "description": "The nodes that run the ingress proxy and take the traffic of every\n`ingress:` route, written like a `placement`: a node, a group,\n`all`, or a list. Unset means the first node.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlacementSpec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mesh": {
+          "description": "The private network between the nodes: a WireGuard mesh mm creates\n(`subnet`, `port`, `mtu`) or an existing `interface`.",
+          "$ref": "#/$defs/MeshFields"
+        },
+        "networks": {
+          "description": "Address space for networks that span the nodes: a private range, a\n/20 or larger, that no node uses for anything else. Each network\ntakes a /20 of it (16 nodes, room for 253 containers on each), so\nthe default holds 256 networks.",
+          "$ref": "#/$defs/Ipv4Cidr"
+        },
+        "storage": {
+          "description": "The node that serves shared volumes. Unset means the first node.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "RepoDeployKey": {
+      "type": "object",
+      "properties": {
+        "public-key": {
+          "description": "Its public half, as added to the git host.",
+          "type": "string"
+        },
+        "secret": {
+          "description": "The age secret holding the private key (`mm target setup deploy-key`\ncreates it).",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "secret",
+        "public-key"
+      ]
+    },
+    "RepoTargetConfig": {
+      "description": "A repo target takes one of two forms. The flat form names one host. The\ncluster form lists `nodes` instead; `mm target setup` prepares them and\n`mm target setup record` writes each node's keys and address back.",
+      "type": "object",
+      "properties": {
+        "cluster": {
+          "description": "Cluster form: the nodes' private network, storage node, and groups.",
+          "$ref": "#/$defs/RepoClusterConfig"
+        },
+        "daemon-fingerprint": {
+          "description": "Printed by `mmd --print-identity` on the host.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "delivery": {
+          "description": "How the target's hosts get a commit's files. `push`: mm sends them\nover its own connection and the hosts never contact the git server.\nDefault `fetch`: each host fetches from the origin.",
+          "$ref": "#/$defs/Delivery"
+        },
+        "host": {
+          "description": "Flat form: the host mm connects to.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "host-key": {
+          "description": "The host's SSH public key, `<type> <base64>`; its fingerprint is derived.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nodes": {
+          "description": "Cluster form: every node. Replaces `host`, `host-key`, and\n`daemon-fingerprint`.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RepoTargetNode"
+          }
+        },
+        "port": {
+          "type": "integer",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "providers": {
+          "description": "Where this target's hosts read an external secret provider, by the\nprovider's name under `providers:`. The hosts resolve the secrets\nthemselves; see `mmd secrets connect`.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/TargetProviderConfig"
+          }
+        },
+        "setup": {
+          "description": "Cluster form: what setup installs on every node.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RepoTargetSetup"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "RepoTargetNode": {
+      "description": "One host of a cluster target. `mm target setup record` fills `host-key`,\n`daemon-fingerprint`, and `private-address`.",
+      "type": "object",
+      "properties": {
+        "daemon-fingerprint": {
+          "description": "Printed by `mmd --print-identity` on the node.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "endpoint": {
+          "description": "The address the other nodes send WireGuard packets to, when that is\nnot `host`: for example an address on a network the nodes share.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "host": {
+          "description": "The public address or DNS name mm connects to.",
+          "type": "string"
+        },
+        "host-key": {
+          "description": "The host's SSH public key, `<type> <base64>`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "The node's name and hostname: a lowercase hostname label.",
+          "type": "string"
+        },
+        "port": {
+          "type": "integer",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "private-address": {
+          "description": "The node's address on the private network. Unset, mm assigns the\nlowest free address of the mesh subnet.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "ipv4"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "host"
+      ]
+    },
+    "RepoTargetSetup": {
+      "description": "What setup installs on every node of a cluster target.",
+      "type": "object",
+      "properties": {
+        "break-glass": {
+          "description": "Recovery keys that are admin on every node.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RepoBreakGlassKey"
+          }
+        },
+        "deploy-key": {
+          "description": "The environment's read-only deploy key, shared by every node.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RepoDeployKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "origin": {
+          "description": "Git URL every node fetches the project from. Left out with\n`delivery: push`, where the nodes fetch nothing.",
+          "type": "string"
+        },
+        "origin-host-key": {
+          "description": "The git server's SSH host key, `<type> <base64>`; required for SSH origins.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "user": {
+          "description": "The account setup connects as; the operator's mm key is authorized for it.",
+          "type": "string",
+          "default": "root"
+        }
+      },
+      "additionalProperties": false
+    },
+    "RetryPolicyConfig": {
+      "type": "object",
+      "properties": {
+        "attempts": {
+          "type": "integer",
+          "format": "uint16",
+          "default": 1,
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "backoff": {
+          "type": "string",
+          "default": "5s"
+        },
+        "max-backoff": {
+          "type": "string",
+          "default": "5m"
+        }
+      },
+      "additionalProperties": false
+    },
+    "RuntimeConfig": {
+      "type": "object",
+      "properties": {
+        "driver": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RuntimeKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "RuntimeKind": {
+      "type": "string",
+      "enum": [
+        "podman-compose",
+        "docker-compose"
+      ]
+    },
+    "ScaleMetricConfig": {
+      "description": "`autoscale.metric`.",
+      "type": "object",
+      "properties": {
+        "down": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DownRuleConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "type": {
+          "description": "`cpu` (the default) or `memory`: a share of the container's limit,\nor of one core (CPU) or of the node's memory without one.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Metric"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "up": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UpRuleConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "ScaleRange": {
+      "description": "`autoscale.scale`.",
+      "type": "object",
+      "properties": {
+        "max": {
+          "description": "The most containers, over all the service's nodes.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "min": {
+          "description": "The fewest containers; defaults to the service's `replicas`.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "max"
+      ]
+    },
+    "ScheduleConcurrency": {
+      "type": "string",
+      "enum": [
+        "allow",
+        "forbid",
+        "replace"
+      ]
+    },
+    "ScheduleConfig": {
+      "type": "object",
+      "properties": {
+        "concurrency": {
+          "$ref": "#/$defs/ScheduleConcurrency",
+          "default": "forbid"
+        },
+        "cron": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "ends-at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "jitter": {
+          "type": "string",
+          "default": "0s"
+        },
+        "job": {
+          "type": "string"
+        },
+        "misfire": {
+          "$ref": "#/$defs/MisfirePolicy",
+          "default": "run-once"
+        },
+        "retry": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RetryPolicyConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "starts-at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timeout": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timezone": {
+          "type": "string",
+          "default": "UTC"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "job",
+        "cron"
+      ]
+    },
+    "SecretBinding": {
+      "type": "object",
+      "properties": {
+        "secret": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "secret"
+      ]
+    },
+    "SecretDeclaration": {
+      "type": "object",
+      "properties": {
+        "generate": {
+          "description": "Present for generated secrets created by `mm secret generate`. Omit for operator-supplied values.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SecretGeneratorConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "input": {
+          "description": "Hidden-input prompt for operator-supplied secrets set with `mm secret set` or `mm secret rotate`.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SecretInputConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rotation": {
+          "$ref": "#/$defs/SecretRotationConfig",
+          "default": {
+            "strategy": "manual"
+          }
+        },
+        "storage": {
+          "$ref": "#/$defs/SecretStorageConfig"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "storage"
+      ]
+    },
+    "SecretEncoding": {
+      "type": "string",
+      "enum": [
+        "base64",
+        "base64-url",
+        "hex"
+      ]
+    },
+    "SecretGeneratorConfig": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "length": {
+              "type": "integer",
+              "format": "uint",
+              "default": 32,
+              "minimum": 0
+            },
+            "preset": {
+              "type": "string",
+              "const": "password"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "preset"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "length": {
+              "type": "integer",
+              "format": "uint",
+              "default": 48,
+              "minimum": 0
+            },
+            "preset": {
+              "type": "string",
+              "const": "token"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "preset"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "encoding": {
+              "$ref": "#/$defs/SecretEncoding",
+              "default": "base64-url"
+            },
+            "length": {
+              "type": "integer",
+              "format": "uint",
+              "default": 32,
+              "minimum": 0
+            },
+            "preset": {
+              "type": "string",
+              "const": "bytes"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "preset"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "preset": {
+              "type": "string",
+              "const": "laravel-app-key"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "preset"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "preset": {
+              "type": "string",
+              "const": "uuid"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "preset"
+          ]
+        }
+      ]
+    },
+    "SecretInputConfig": {
+      "type": "object",
+      "properties": {
+        "prompt": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "prompt"
+      ]
+    },
+    "SecretRotationConfig": {
+      "type": "object",
+      "properties": {
+        "interval-days": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "strategy": {
+          "$ref": "#/$defs/SecretRotationStrategy",
+          "default": "manual"
+        }
+      },
+      "additionalProperties": false
+    },
+    "SecretRotationStrategy": {
+      "type": "string",
+      "enum": [
+        "manual",
+        "replace-and-redeploy",
+        "coordinated"
+      ]
+    },
+    "SecretStorageConfig": {
+      "type": "object",
+      "properties": {
+        "location": {
+          "type": "string"
+        },
+        "provider": {
+          "$ref": "#/$defs/StorageProviderId"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "location"
+      ]
+    },
+    "ServiceConfig": {
+      "type": "object",
+      "properties": {
+        "allow-shared-volumes": {
+          "description": "Lets a service with role `database` or `queue` mount a shared\nvolume, which mm otherwise refuses: a shared volume is a network\nmount, slower than local disk and without the locking guarantees\nsuch a service needs.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "automatic-local-ingress": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "autoscale": {
+          "description": "On a cluster target: follow the load between `scale.min` and\n`scale.max`, the one required key (`domain::autoscale`).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AutoscaleConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "config-files": {
+          "description": "Files the service ships with, by their path in the container.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/ServiceConfigFileConfig"
+          }
+        },
+        "development": {
+          "description": "`on`, `optional` or `off` in the development environment; without\nit, the module's.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Development"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "development-mail": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "drain": {
+          "description": "On a cluster target: how long a container of this service that\nleaves (a rolling update replaces it, it moves, or it is scaled\naway) keeps serving what is in flight once no node sends it new\nrequests, such as `30s`. Then it gets its stop signal and its\n`stop_grace_period`. The default is `1m`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/EnvScalar"
+          },
+          "default": {}
+        },
+        "environments": {
+          "description": "Environments in which this service runs; an empty list enables all.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "hardening": {
+          "description": "The defaults of `hardening: strict` this service leaves out, each\nwith a reason: `hardening: {except: {read-only: \"writes its cache\"}}`.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ServiceHardening"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "health": {
+          "description": "On a cluster target: what the service's node does with a container\nthat keeps failing its health check. Without it, the node restarts\none that stays unhealthy for 3m, at most 5 times in 1h.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HealthConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "host-user-namespace": {
+          "description": "On a remote host that runs Podman, keeps this service in the host's\nuser namespace instead of one of its own (`userns: auto`). The value\nsays why; a service that mounts a shared volume needs it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "http-port": {
+          "description": "A persisted HTTP selection made explicitly or by the guided editor.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "local-https": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "networks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "placement": {
+          "description": "Which nodes of a cluster target run this service, one container on\neach: a node name, a group name, `all` for every node, or a list of\nthose. Without it the service runs on the target's first node. The\nnames must exist on the environment's target.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlacementSpec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "replicas": {
+          "description": "On a cluster target: the containers the service runs over its nodes\nwhen nothing scales it; default one per node, and `autoscale`'s `min`.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "role": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ServiceRole"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "secret-files": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/ServiceSecretFileConfig"
+          }
+        },
+        "stack": {
+          "type": "string"
+        },
+        "update": {
+          "description": "How a deployment replaces this service's containers. Every key has\na default: stop the old container first, one node at a time, and\nroll the deployment back when the new one fails.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UpdateConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "stack"
+      ]
+    },
+    "ServiceConfigFileConfig": {
+      "description": "A file the service ships with, mounted read-only at the path that is\nits key under `config-files`. Exactly one of `file` and `template`\nsays where it comes from.",
+      "type": "object",
+      "properties": {
+        "environments": {
+          "description": "Environments in which the file is mounted; an empty list means all\nof the service's.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "file": {
+          "description": "A file of the module, shipped as it is.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "gid": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mode": {
+          "type": "integer",
+          "format": "uint32",
+          "default": 292,
+          "minimum": 0
+        },
+        "template": {
+          "description": "A file of the module in which every `{{ KEY }}` is replaced by the\nenvironment's binding of that key.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "uid": {
+          "description": "The numeric user that owns the file. Without it the file belongs\nto the user mm runs as on the host.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "ServiceHardening": {
+      "description": "`hardening` of one service in `mm.yaml`.",
+      "type": "object",
+      "properties": {
+        "except": {
+          "description": "The defaults of `hardening: strict` this service does not take, each\nwith the reason, which the plan shows.",
+          "$ref": "#/$defs/HardeningExceptions"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ServiceRole": {
+      "type": "string",
+      "enum": [
+        "http",
+        "database",
+        "queue",
+        "worker",
+        "scheduler",
+        "job"
+      ]
+    },
+    "ServiceSecretFileConfig": {
+      "type": "object",
+      "properties": {
+        "environments": {
+          "description": "Environments in which the file is mounted and its secret required;\nan empty list means all of the service's.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "gid": {
+          "type": "string",
+          "default": "0"
+        },
+        "mode": {
+          "type": "integer",
+          "format": "uint32",
+          "default": 292,
+          "minimum": 0
+        },
+        "secret": {
+          "type": "string"
+        },
+        "uid": {
+          "type": "string",
+          "default": "0"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "secret"
+      ]
+    },
+    "ServiceSelection": {
+      "description": "Services an add-on applies to: all of them, none, or a named list.",
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      ]
+    },
+    "StackConfig": {
+      "type": "object",
+      "properties": {
+        "after": {
+          "description": "Stacks a deployment rolls out before this one. Without it, stacks\nroll out in name order.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ingress": {
+          "$ref": "#/$defs/IngressConfig"
+        },
+        "networks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "project-name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "shared-volumes": {
+          "description": "Top-level Compose volumes of this stack that are one directory on\nevery node of a cluster target: the target's storage node keeps the\nfiles and the other nodes mount them over the mesh. For files that\nreplicas share, such as uploads. Not for databases: a shared volume\nis slower than local disk and does not give the locking guarantees a\ndatabase needs. On a target that names one host they are ordinary\nvolumes.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "files"
+      ]
+    },
+    "StorageProviderId": {
+      "type": "string"
+    },
+    "StoreNodes": {
+      "description": "The Raft members of a managed store: every node of the target, or the\nnodes named. Three or five.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EveryNode"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "TargetProviderConfig": {
+      "description": "What a target changes about one of the project's `providers:`.",
+      "type": "object",
+      "properties": {
+        "address": {
+          "description": "Where this target's hosts reach the store, for example\n`https://127.0.0.1:8200` when it runs on the host itself, or a mesh\naddress. Replaces the provider's own `address` on this target.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "address"
+      ]
+    },
+    "UpRuleConfig": {
+      "description": "`autoscale.metric.up`: add a container when the average is above\n`greater` for `for`.",
+      "type": "object",
+      "properties": {
+        "for": {
+          "description": "Such as `30s`; at most `4h`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "greater": {
+          "description": "Such as `75%`.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PercentSpec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "UpdateConfig": {
+      "description": "`modules.<module>.services.<service>.update`.",
+      "type": "object",
+      "properties": {
+        "failure": {
+          "description": "`rollback` (the default) or `pause`.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UpdateFailure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "order": {
+          "description": "`stop-first` (the default) or `start-first`.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UpdateOrder"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "parallelism": {
+          "description": "How many nodes of a cluster target replace the service's stack at\nthe same time. The default is 1.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "UpdateFailure": {
+      "description": "What a deployment does when this service does not become healthy.",
+      "oneOf": [
+        {
+          "description": "Every node the deployment changed returns to what it ran before.",
+          "type": "string",
+          "const": "rollback"
+        },
+        {
+          "description": "The deployment stops where it is and changes nothing more, so the\nfailed container can be looked at. `mm deploy rollback` returns the\nnodes to what they ran before.",
+          "type": "string",
+          "const": "pause"
+        }
+      ]
+    },
+    "UpdateOrder": {
+      "description": "Whether a service's new container starts before or after the old one\nstops.",
+      "oneOf": [
+        {
+          "description": "The engine stops the old container, then starts the new one.",
+          "type": "string",
+          "const": "stop-first"
+        },
+        {
+          "description": "The new container starts next to the old one, and the old one stops\nonce the new one is healthy and the other nodes resolve it. Not for\na service that publishes a host port or sets `container_name`.",
+          "type": "string",
+          "const": "start-first"
+        }
+      ]
+    },
+    "UserAccessConfig": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AccessLevel"
+        },
+        {
+          "$ref": "#/$defs/EnvironmentAccess"
+        }
+      ]
+    },
+    "UserConfig": {
+      "type": "object",
+      "properties": {
+        "access": {
+          "description": "Level per environment name, or `*` for every remote environment.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/UserAccessConfig"
+          },
+          "default": {}
+        },
+        "keys": {
+          "description": "OpenSSH public keys: `ssh-ed25519` or `sk-ssh-ed25519@openssh.com`.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/UserKeyConfig"
+          }
+        },
+        "machine": {
+          "description": "A CI or automation identity rather than a person.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "keys"
+      ]
+    },
+    "UserKeyConfig": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "agent": {
+              "description": "The key of this user's AI agent (`mm key create --agent`). It gets\nthe user's access limited by the `agents:` block, never more.",
+              "type": "boolean"
+            },
+            "expires": {
+              "description": "`YYYY-MM-DD`; the key stops working at the start of that UTC day.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "key"
+          ]
+        }
+      ]
+    },
+    "ValueBinding": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "$ref": "#/$defs/EnvScalar"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "value"
+      ]
+    },
+    "ValueCast": {
+      "type": "string",
+      "enum": [
+        "url"
+      ]
+    }
+  }
+}

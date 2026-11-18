@@ -1,0 +1,13 @@
+// Cloudflare Worker that serves the generated site as static assets.
+// Deployed by .github/workflows/site-deploy.yml; `npm run generate` writes the assets.
+{
+  "name": "mm-site",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./.output/public",
+    // Routes have no trailing slash: /docs/foo is served from docs/foo/index.html.
+    "html_handling": "drop-trailing-slash",
+    "not_found_handling": "404-page"
+  },
+  "routes": [{ "pattern": "modmon.dev", "custom_domain": true }]
+}

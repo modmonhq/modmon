@@ -1,0 +1,41 @@
+services:
+  web:
+    expose:
+      - "8080"
+    volumes:
+      - laravel_storage:/app/storage
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(file_get_contents('http://127.0.0.1:8080/up') === false ? 1 : 0);"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    cpus: "1"
+    mem_limit: 384m
+    pids_limit: 128
+
+  queue:
+    command: ["php", "artisan", "queue:work", "--sleep=3", "--tries=3", "--timeout=90"]
+    restart: unless-stopped
+    healthcheck:
+      disable: true
+    stop_grace_period: 30s
+    volumes:
+      - laravel_storage:/app/storage
+    cpus: "1"
+    mem_limit: 384m
+    pids_limit: 128
+
+  pricing:
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "pricing-service", "--healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    cpus: "1"
+    mem_limit: 128m
+    pids_limit: 64
+
+volumes:
+  laravel_storage:

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "mm configuration: build",
+  "$comment": "The value of top-level 'build', for .config/mm/build.yaml. Generated from MmConfig; run ./scripts/generate-artifacts.sh. Do not edit.",
+  "$ref": "#/$defs/BuildConfig",
+  "$defs": {
+    "BuildConfig": {
+      "type": "object",
+      "properties": {
+        "platforms": {
+          "type": "array",
+          "default": [
+            "linux/amd64",
+            "linux/arm64"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "tag-strategy": {
+          "$ref": "#/$defs/BuildTagStrategy",
+          "default": "auto"
+        }
+      },
+      "additionalProperties": false
+    },
+    "BuildTagStrategy": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "immutable"
+      ]
+    }
+  }
+}

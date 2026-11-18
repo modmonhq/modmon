@@ -1,0 +1,423 @@
+---
+# Installs the mm remote access layer. `mm target setup` runs this playbook
+# after the project's bootstrap playbook when the reviewed plan includes
+# remote access. It ships inside mm, so projects cannot change it; every value
+# comes from the reviewed plan through mm_access_* variables.
+- name: Install the mm remote access layer
+  hosts: mm_targets
+  become: true
+  gather_facts: true
+  vars:
+    mm_relay_shell: /usr/libexec/mm-relay-shell
+    mm_relay_next: /usr/libexec/mm.next
+    mm_sshd_drop_in: /etc/ssh/sshd_config.d/90-mm-relay.conf
+    mm_ssh_service: "{{ 'ssh.service' if ansible_os_family == 'Debian' else 'sshd.service' }}"
+
+  tasks:
+    - name: Require a Linux host managed by systemd
+      ansible.builtin.assert:
+        that:
+          - ansible_system == 'Linux'
+          - ansible_service_mgr == 'systemd'
+        fail_msg: Remote access needs a Linux host that runs systemd.
+
+    - name: Install git and the OpenSSH server
+      ansible.builtin.apt:
+        name: [git, openssh-server]
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+      when: ansible_os_family == 'Debian'
+
+    - name: Install git and the OpenSSH server on other distributions
+      ansible.builtin.package:
+        name: [git, openssh-server]
+        state: present
+      when: ansible_os_family != 'Debian'
+
+    - name: Create the daemon socket group
+      ansible.builtin.group:
+        name: mm-relay
+        system: true
+        state: present
+      register: mm_relay_group
+
+    - name: Install the relay shell
+      ansible.builtin.copy:
+        src: "{{ mm_access_files }}/mm-relay-shell"
+        dest: "{{ mm_relay_shell }}"
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: List the relay shell in /etc/shells
+      ansible.builtin.lineinfile:
+        path: /etc/shells
+        line: "{{ mm_relay_shell }}"
+        state: present
+
+    # '*' is no valid password hash, so nobody can log in with a password.
+    # sshd still accepts keys for it, even with UsePAM disabled.
+    - name: Create the mm relay account without a password
+      ansible.builtin.user:
+        name: mm
+        system: true
+        group: mm-relay
+        groups: ''
+        append: false
+        shell: "{{ mm_relay_shell }}"
+        home: /nonexistent
+        create_home: false
+        password: '*'
+        update_password: always
+        state: present
+      register: mm_account
+
+    - name: Read the mm account's groups
+      ansible.builtin.command:
+        argv: [id, -Gn, mm]
+      register: mm_account_groups
+      changed_when: false
+
+    - name: Keep the mm account out of administrative groups
+      ansible.builtin.assert:
+        that:
+          - mm_account_groups.stdout.split() == ['mm-relay']
+        fail_msg: The mm account must belong to mm-relay only, never sudo, wheel, docker, or podman.
+
+    # Every SSH session runs the relay (/usr/bin/mm), which refuses a daemon
+    # of another remote protocol. So mm waits beside the relay until "Put the
+    # new relay in place" moves it there right before "Start mmd" restarts the
+    # daemon: an upgrade never leaves a new relay in front of the old mmd for
+    # the rest of this play. The running mmd keeps its old file open until then.
+    - name: Install mmd and stage mm
+      ansible.builtin.copy:
+        src: "{{ mm_access_files }}/{{ item.name }}"
+        dest: "{{ item.dest }}"
+        owner: root
+        group: root
+        mode: '0755'
+      loop:
+        - {name: mm, dest: "{{ mm_relay_next }}"}
+        - {name: mmd, dest: /usr/libexec/mmd}
+      register: mm_binaries
+
+    - name: Read the staged mm version
+      ansible.builtin.command:
+        argv: ["{{ mm_relay_next }}", --version]
+      register: mm_version
+      changed_when: false
+
+    - name: Read the installed mmd version
+      ansible.builtin.command:
+        argv: [/usr/libexec/mmd, --version]
+      register: mmd_version
+      changed_when: false
+
+    - name: Require mm and mmd from the same release
+      ansible.builtin.assert:
+        that:
+          - mm_version.stdout.split() | length == 2
+          - mmd_version.stdout.split() | length == 2
+          - mm_version.stdout.split()[1] == mmd_version.stdout.split()[1]
+        fail_msg: mm and mmd report different releases; pass --host-binaries with both from one release.
+
+    - name: Create the daemon layout
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+      loop:
+        - {path: /etc/mm, mode: '0700'}
+        - {path: /var/lib/mm, mode: '0700'}
+        - {path: /var/lib/mm-home, mode: '0700'}
+        - {path: /srv/mm, mode: '0755'}
+        - {path: /srv/mm/projects, mode: '0755'}
+
+    - name: Write the daemon configuration
+      ansible.builtin.copy:
+        dest: /etc/mm/mmd.json
+        owner: root
+        group: root
+        mode: '0600'
+        content: >-
+          {{ {'schema_version': 2,
+              'socket_path': '/run/mm/mm.sock',
+              'state_root': '/var/lib/mm',
+              'mm_home': '/var/lib/mm-home',
+              'socket_uid': 0,
+              'socket_gid': mm_relay_group.gid | int,
+              'idle_timeout_ms': 30000,
+              'host_policy_path': '/etc/mm/host.yaml',
+              'relay_uid': mm_account.uid | int,
+              'authorized_keys_path': '/etc/ssh/mm_authorized_keys',
+              'relay_command': '/usr/bin/mm relay serve --stdio --socket /run/mm/mm.sock --daemon-uid 0',
+              'projects_root': '/srv/mm/projects'} | to_nice_json(indent=2) }}
+      register: mm_daemon_config
+
+    - name: Install the mmd service
+      ansible.builtin.copy:
+        src: "{{ mm_access_files }}/mmd.service"
+        dest: /usr/lib/systemd/system/mmd.service
+        owner: root
+        group: root
+        mode: '0644'
+      register: mm_daemon_unit
+
+    # Restores a cluster node's WireGuard interface at boot, before mmd and
+    # the container engine. Cluster setup enables it; on any other host it
+    # stays disabled and has nothing to restore. "Start mmd" below reloads
+    # systemd, which picks the unit up.
+    - name: Install the mesh service
+      ansible.builtin.copy:
+        src: "{{ mm_access_files }}/mm-mesh.service"
+        dest: /usr/lib/systemd/system/mm-mesh.service
+        owner: root
+        group: root
+        mode: '0644'
+
+    # Restores the routes, firewall chains, and bridge settings of the
+    # networks that span a cluster once the container engine is up. Cluster
+    # setup enables it; it is skipped on a host that holds no such network.
+    - name: Install the cluster network service
+      ansible.builtin.copy:
+        src: "{{ mm_access_files }}/mm-network.service"
+        dest: /usr/lib/systemd/system/mm-network.service
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Enroll the project, write the host policy, and create the deploy key
+      ansible.builtin.command:
+        argv: "{{ mm_access_enroll_argv }}"
+      register: mm_enrollment
+      changed_when: (mm_enrollment.stdout | from_json).changed
+
+    - name: Validate the host policy
+      ansible.builtin.command:
+        argv: [/usr/libexec/mmd, access, validate]
+      changed_when: false
+
+    - name: Install the relay sshd drop-in
+      ansible.builtin.copy:
+        src: "{{ mm_access_files }}/90-mm-relay.conf"
+        dest: "{{ mm_sshd_drop_in }}"
+        owner: root
+        group: root
+        mode: '0644'
+      register: mm_sshd_config
+
+    - name: Check that sshd applies the relay settings to the mm account
+      block:
+        - name: Create the sshd privilege separation directory
+          ansible.builtin.file:
+            path: /run/sshd
+            state: directory
+            owner: root
+            group: root
+            mode: '0755'
+
+        - name: Validate the sshd configuration
+          ansible.builtin.command:
+            argv: [/usr/sbin/sshd, -t]
+          changed_when: false
+
+        - name: Read sshd's effective settings for the mm account
+          ansible.builtin.command:
+            argv: [/usr/sbin/sshd, -T, -C, 'user=mm,host=localhost,addr=127.0.0.1']
+          register: mm_sshd_effective
+          changed_when: false
+
+        - name: Require the relay settings
+          ansible.builtin.assert:
+            that:
+              - "'authorizedkeysfile /etc/ssh/mm_authorized_keys' in mm_sshd_effective.stdout_lines"
+              - "'forcecommand /usr/bin/mm relay serve --stdio --socket /run/mm/mm.sock --daemon-uid 0' in mm_sshd_effective.stdout_lines"
+              - "'disableforwarding yes' in mm_sshd_effective.stdout_lines"
+              - "'permittty no' in mm_sshd_effective.stdout_lines"
+              - "'exposeauthinfo yes' in mm_sshd_effective.stdout_lines"
+            fail_msg: >-
+              sshd does not apply the relay drop-in to the mm account. Check
+              that /etc/ssh/sshd_config includes /etc/ssh/sshd_config.d/*.conf
+              before any setting that overrides it.
+      rescue:
+        - name: Remove a new drop-in that sshd rejected
+          ansible.builtin.file:
+            path: "{{ mm_sshd_drop_in }}"
+            state: absent
+          when: mm_sshd_config.changed
+
+        - name: Stop before reloading sshd
+          ansible.builtin.fail:
+            msg: The sshd check failed, so sshd was not reloaded; see the task above.
+
+    - name: Write the relay's authorized keys
+      ansible.builtin.command:
+        argv: [/usr/libexec/mmd, access, render-keys]
+      changed_when: false
+
+    # mmd drives Podman as root. Each service mmd runs gets 65536 user ids
+    # of its own from the `mm-services` range, the same on every node and
+    # from one deployment to the next, unless it keeps the host's with
+    # `host-user-namespace`; any other container gets ids of its own from
+    # the `containers` range (userns auto). The two ranges never overlap.
+    # A range an administrator changed is left as it is. Podman's Compose
+    # provider is Docker Compose, which talks to the API socket; mmd reads
+    # status and logs there too. podman-restart starts the containers whose
+    # restart policy says so at boot.
+    - name: Give rootful Podman's other containers user ids of their own
+      ansible.builtin.lineinfile:
+        path: "{{ item }}"
+        regexp: '^containers:'
+        line: 'containers:2147483647:1073741825'
+        create: true
+        owner: root
+        group: root
+        mode: '0644'
+      loop: [/etc/subuid, /etc/subgid]
+      when: mm_runtime == 'podman-compose' and not mm_runtime_rootless
+
+    - name: Look for the user ids reserved for the services mmd runs
+      ansible.builtin.command:
+        argv: [grep, -q, '^mm-services:', "{{ item }}"]
+      register: mm_services_range
+      changed_when: false
+      failed_when: mm_services_range.rc > 1
+      loop: [/etc/subuid, /etc/subgid]
+      when: mm_runtime == 'podman-compose' and not mm_runtime_rootless
+
+    - name: Reserve the user ids of the services mmd runs
+      ansible.builtin.lineinfile:
+        path: "{{ item.item }}"
+        line: 'mm-services:3221225472:1073676288'
+        create: true
+        owner: root
+        group: root
+        mode: '0644'
+      loop: "{{ mm_services_range.results }}"
+      when: mm_runtime == 'podman-compose' and not mm_runtime_rootless and item.rc != 0
+
+    - name: Create Podman's directory of configuration drop-ins
+      ansible.builtin.file:
+        path: /etc/containers/containers.conf.d
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      when: mm_runtime == 'podman-compose' and not mm_runtime_rootless
+
+    - name: Make user namespaces of their own Podman's default
+      ansible.builtin.copy:
+        dest: /etc/containers/containers.conf.d/50-mm.conf
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          # Written by mm: every container gets user ids of its own. The
+          # services mmd runs get theirs from mm-services in /etc/subuid
+          # unless one sets host-user-namespace; others from containers.
+          [containers]
+          userns = "auto"
+      when: mm_runtime == 'podman-compose' and not mm_runtime_rootless
+
+    - name: Read how Podman starts containers at boot
+      ansible.builtin.command:
+        argv: [systemctl, cat, podman-restart.service]
+      register: mm_podman_restart
+      changed_when: false
+      when: mm_runtime == 'podman-compose' and not mm_runtime_rootless
+
+    - name: Create the drop-in directory of Podman's restart at boot
+      ansible.builtin.file:
+        path: /etc/systemd/system/podman-restart.service.d
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      when: mm_runtime == 'podman-compose' and not mm_runtime_rootless
+
+    # Podman before 5.6 starts only `restart: always` containers at boot; mm
+    # gives the services of a cluster node `unless-stopped`.
+    - name: Have Podman start unless-stopped containers at boot too
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/podman-restart.service.d/50-mm.conf
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          # Written by mm.
+          [Service]
+          ExecStart=
+          ExecStart=/usr/bin/podman $LOGGING start --all --filter restart-policy=always --filter restart-policy=unless-stopped
+          ExecStop=
+          ExecStop=/usr/bin/podman $LOGGING stop --all --filter restart-policy=always --filter restart-policy=unless-stopped
+      when:
+        - mm_runtime == 'podman-compose' and not mm_runtime_rootless
+        - "'should-start-on-boot' not in mm_podman_restart.stdout"
+
+    - name: Start Podman's API socket and its restart at boot
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        enabled: true
+        state: started
+        daemon_reload: true
+      loop: [podman.socket, podman-restart.service]
+      when: mm_runtime == 'podman-compose' and not mm_runtime_rootless
+
+    - name: Put the new relay in place
+      ansible.builtin.copy:
+        src: "{{ mm_relay_next }}"
+        dest: /usr/bin/mm
+        remote_src: true
+        owner: root
+        group: root
+        mode: '0755'
+      register: mm_relay
+
+    - name: Start mmd
+      ansible.builtin.systemd_service:
+        name: mmd.service
+        daemon_reload: true
+        enabled: true
+        state: "{{ 'restarted' if (mm_binaries.changed or mm_relay.changed or mm_daemon_config.changed or mm_daemon_unit.changed or mm_enrollment.changed) else 'started' }}"
+
+    - name: Reload sshd
+      ansible.builtin.command:
+        argv: [systemctl, try-reload-or-restart, "{{ mm_ssh_service }}"]
+      when: mm_sshd_config.changed
+      changed_when: true
+
+    - name: Wait for the daemon socket
+      ansible.builtin.wait_for:
+        path: /run/mm/mm.sock
+        timeout: 30
+
+    - name: Require mmd to stay running
+      ansible.builtin.command:
+        argv: [systemctl, is-active, mmd.service]
+      changed_when: false
+
+    - name: Read the daemon identity
+      ansible.builtin.command:
+        argv: [/usr/libexec/mmd, --print-identity]
+      register: mm_daemon_identity
+      changed_when: false
+
+    - name: Read the host's SSH key
+      ansible.builtin.slurp:
+        src: /etc/ssh/ssh_host_ed25519_key.pub
+      register: mm_host_key
+
+    - name: Report the host facts to mm
+      become: false
+      delegate_to: localhost
+      ansible.builtin.copy:
+        dest: "{{ mm_access_report }}"
+        mode: '0600'
+        content: >-
+          {{ {'version': mm_version.stdout.split()[1],
+              'host-key': (mm_host_key.content | b64decode).split()[:2] | join(' '),
+              'daemon-fingerprint': mm_daemon_identity.stdout | trim,
+              'deploy-key': (mm_enrollment.stdout | from_json)['deploy-key']} | to_json }}

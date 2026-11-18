@@ -1,0 +1,71 @@
+name: Property, fuzz, and mutation evidence
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  MM_RUST_IMAGE: rust:1.98-bookworm@sha256:e70e2eec3d495fd5c8e0be74adda86507dfac7f51a724fbf9813ff59b2b247c7
+
+jobs:
+  property-and-fuzz:
+    name: Deterministic property and protocol corpus
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: core/ui/package-lock.json
+      - name: Build embedded dashboard
+        run: npm --prefix core/ui ci && npm --prefix core/ui run build
+      - name: Run bounded deterministic robustness evidence
+        run: |
+          mkdir -p .modmon/artifacts/robustness
+          docker run --rm --cpus=1 --memory=2g --pids-limit=256 \
+            -e CARGO_BUILD_JOBS=1 -e RUST_TEST_THREADS=1 -e CARGO_PROFILE_TEST_DEBUG=0 -e RUSTUP_TOOLCHAIN=1.98.0 \
+            -v "$PWD:/workspace" -w /workspace "$MM_RUST_IMAGE" \
+            sh -c "cargo test --package mm --test properties --all-features --locked --jobs 1 -- --test-threads=1 && cargo test --package mm --test remote_protocol strict_frames_reject_unknown_fields_and_fuzz_corpus_without_panicking --all-features --locked --jobs 1 -- --test-threads=1" \
+            >.modmon/artifacts/robustness/property-fuzz.log 2>&1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: property-fuzz-evidence
+          path: .modmon/artifacts/robustness/property-fuzz.log
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 30
+
+  bounded-mutation:
+    name: Representative remote-codec mutation
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: core/ui/package-lock.json
+      - name: Build embedded dashboard
+        run: npm --prefix core/ui ci && npm --prefix core/ui run build
+      - name: Run pinned single-function mutation proof
+        run: |
+          mkdir -p .modmon/artifacts/robustness
+          docker run --rm --cpus=1 --memory=2g --pids-limit=256 \
+            -e CARGO_BUILD_JOBS=1 -e RUST_TEST_THREADS=1 -e CARGO_PROFILE_TEST_DEBUG=0 -e RUSTUP_TOOLCHAIN=1.98.0 \
+            -v "$PWD:/workspace" -w /workspace "$MM_RUST_IMAGE" \
+            sh -c "cargo install cargo-mutants --version 25.3.1 --locked --jobs 1 && cargo test --package mm --all-features --locked --jobs 1 --no-run && cargo mutants --in-place --file core/src/adapters/remote/codec.rs --re decode_frame --build-timeout 120 --timeout 120" \
+            >.modmon/artifacts/robustness/mutation.log 2>&1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: bounded-mutation-evidence
+          path: |
+            .modmon/artifacts/robustness/mutation.log
+            .modmon/artifacts/mutation/mutants.out
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 30

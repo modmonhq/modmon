@@ -1,0 +1,5 @@
+services:
+  frontend:
+    image: example.invalid/mm/node-frontend:validation@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  backend:
+    image: example.invalid/mm/node-backend:validation@sha256:0000000000000000000000000000000000000000000000000000000000000000

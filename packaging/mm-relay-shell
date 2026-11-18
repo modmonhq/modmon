@@ -1,0 +1,3 @@
+#!/bin/sh
+# OpenSSH invokes the account shell with -c; all arguments are deliberately ignored.
+exec /usr/bin/mm relay serve --stdio --socket /run/mm/mm.sock --daemon-uid 0

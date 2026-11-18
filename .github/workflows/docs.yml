@@ -1,0 +1,74 @@
+name: Documentation
+
+on:
+  pull_request:
+    paths:
+      - "docs/**"
+      - "site/**"
+      - "packages/ui/**"
+      - "core/src/**"
+      - "core/ui/src/dashboard.schema.json"
+      - "core/ui/src/api.generated.ts"
+      - "core/ui/src/api.validator.generated.*"
+      - "contrib/**"
+      - "README.md"
+      - "CONTRIBUTING.md"
+      - "scripts/generate-artifacts.sh"
+      - "scripts/check-links.mjs"
+      - "scripts/check-built-links.mjs"
+      - "scripts/test-doc-checks.mjs"
+      - "scripts/check-doc-snippets.mjs"
+      - ".github/workflows/docs.yml"
+  push:
+    branches:
+      - master
+      - main
+    paths:
+      - "docs/**"
+      - "site/**"
+      - "packages/ui/**"
+      - "core/src/**"
+      - "core/ui/src/dashboard.schema.json"
+      - "core/ui/src/api.generated.ts"
+      - "core/ui/src/api.validator.generated.*"
+      - "contrib/**"
+      - "README.md"
+      - "CONTRIBUTING.md"
+      - "scripts/generate-artifacts.sh"
+      - "scripts/check-links.mjs"
+      - "scripts/check-built-links.mjs"
+      - "scripts/test-doc-checks.mjs"
+      - "scripts/check-doc-snippets.mjs"
+      - ".github/workflows/docs.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    name: Typecheck, lint, links, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - run: npm --prefix site ci
+      - name: Verify all generated public artifacts
+        env:
+          MM_RUST_IMAGE: rust:1.98-bookworm@sha256:e70e2eec3d495fd5c8e0be74adda86507dfac7f51a724fbf9813ff59b2b247c7
+        run: |
+          docker pull "$MM_RUST_IMAGE"
+          ./scripts/generate-artifacts.sh
+          git diff --exit-code -- \
+            site/public/schema \
+            docs/reference/cli.md \
+            contrib \
+            core/ui/src/dashboard.schema.json \
+            core/ui/src/api.generated.ts \
+            core/ui/src/api.validator.generated.js \
+            core/ui/src/api.validator.generated.d.ts
+      - run: npm --prefix site run check
+      - run: npm --prefix site run build

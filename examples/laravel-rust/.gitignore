@@ -1,0 +1,9 @@
+.env
+.env.*
+!.env.example
+/vendor/
+/target/
+/storage/*.key
+/storage/framework/cache/data/*
+/storage/framework/sessions/*
+/storage/framework/views/*

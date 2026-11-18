@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "mm configuration: bindings",
+  "type": "object",
+  "$comment": "The value of top-level 'bindings', for .config/mm/bindings.yaml. Generated from MmConfig; run ./scripts/generate-artifacts.sh. Do not edit.",
+  "additionalProperties": {
+    "$ref": "#/$defs/EnvironmentBinding"
+  },
+  "default": {},
+  "$defs": {
+    "CastBinding": {
+      "type": "object",
+      "properties": {
+        "cast": {
+          "$ref": "#/$defs/ValueCast"
+        },
+        "value-ref": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "cast",
+        "value-ref"
+      ]
+    },
+    "EnvScalar": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "format": "int64"
+        },
+        {
+          "type": "boolean"
+        }
+      ]
+    },
+    "EnvironmentBinding": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CastBinding"
+        },
+        {
+          "$ref": "#/$defs/SecretBinding"
+        },
+        {
+          "$ref": "#/$defs/ValueBinding"
+        },
+        {
+          "$ref": "#/$defs/ReferenceBinding"
+        }
+      ]
+    },
+    "ReferenceBinding": {
+      "description": "A release fact under another key: `value-ref: MM.RELEASE`.",
+      "type": "object",
+      "properties": {
+        "value-ref": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "value-ref"
+      ]
+    },
+    "SecretBinding": {
+      "type": "object",
+      "properties": {
+        "secret": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "secret"
+      ]
+    },
+    "ValueBinding": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "$ref": "#/$defs/EnvScalar"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "value"
+      ]
+    },
+    "ValueCast": {
+      "type": "string",
+      "enum": [
+        "url"
+      ]
+    }
+  }
+}

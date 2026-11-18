@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "mm configuration: users",
+  "description": "Who may reach each remote environment, reconciled on deploy.",
+  "type": "object",
+  "$comment": "The value of top-level 'users', for .config/mm/users.yaml. Generated from MmConfig; run ./scripts/generate-artifacts.sh. Do not edit.",
+  "additionalProperties": {
+    "$ref": "#/$defs/UserConfig"
+  },
+  "$defs": {
+    "AccessLevel": {
+      "description": "Access levels a repo grants per environment. Each includes the previous.",
+      "oneOf": [
+        {
+          "description": "Plan, status, inspect, and logs.",
+          "type": "string",
+          "const": "view"
+        },
+        {
+          "description": "`view` plus restart and job run, cancel, and retry.",
+          "type": "string",
+          "const": "operate"
+        },
+        {
+          "description": "`operate` plus deploy, rollback, and team sync.",
+          "type": "string",
+          "const": "deploy"
+        },
+        {
+          "description": "`deploy` plus exec, forward, setting secrets and variables,\nemergency blocks, and audit.",
+          "type": "string",
+          "const": "admin"
+        }
+      ]
+    },
+    "EnvironmentAccess": {
+      "description": "One user's effective access in one environment.",
+      "type": "object",
+      "properties": {
+        "exec": {
+          "$ref": "#/$defs/ServiceSelection"
+        },
+        "forward": {
+          "$ref": "#/$defs/ServiceSelection"
+        },
+        "level": {
+          "$ref": "#/$defs/AccessLevel"
+        },
+        "secrets": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "level"
+      ]
+    },
+    "ServiceSelection": {
+      "description": "Services an add-on applies to: all of them, none, or a named list.",
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      ]
+    },
+    "UserAccessConfig": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AccessLevel"
+        },
+        {
+          "$ref": "#/$defs/EnvironmentAccess"
+        }
+      ]
+    },
+    "UserConfig": {
+      "type": "object",
+      "properties": {
+        "access": {
+          "description": "Level per environment name, or `*` for every remote environment.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/UserAccessConfig"
+          },
+          "default": {}
+        },
+        "keys": {
+          "description": "OpenSSH public keys: `ssh-ed25519` or `sk-ssh-ed25519@openssh.com`.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/UserKeyConfig"
+          }
+        },
+        "machine": {
+          "description": "A CI or automation identity rather than a person.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "keys"
+      ]
+    },
+    "UserKeyConfig": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "agent": {
+              "description": "The key of this user's AI agent (`mm key create --agent`). It gets\nthe user's access limited by the `agents:` block, never more.",
+              "type": "boolean"
+            },
+            "expires": {
+              "description": "`YYYY-MM-DD`; the key stops working at the start of that UTC day.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "key"
+          ]
+        }
+      ]
+    }
+  }
+}

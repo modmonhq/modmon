@@ -1,0 +1,26 @@
+{
+  "$comment": "Generated from the MCP resource handler; run ./scripts/generate-artifacts.sh. Do not edit.",
+  "resources": [
+    {
+      "mime_type": "application/json",
+      "uri": "mm://context"
+    },
+    {
+      "mime_type": "application/json",
+      "uri": "mm://access"
+    },
+    {
+      "mime_type": "application/json",
+      "uri": "mm://schema/project"
+    },
+    {
+      "mime_type": "application/json",
+      "uri": "mm://schema/tools"
+    },
+    {
+      "mime_type": "text/markdown",
+      "uri": "mm://docs/workflow"
+    }
+  ],
+  "schema_version": "mm-mcp-resources-v2"
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "mm configuration: runtime",
+  "$comment": "The value of top-level 'runtime', for .config/mm/runtime.yaml. Generated from MmConfig; run ./scripts/generate-artifacts.sh. Do not edit.",
+  "$ref": "#/$defs/RuntimeConfig",
+  "default": {},
+  "$defs": {
+    "RuntimeConfig": {
+      "type": "object",
+      "properties": {
+        "driver": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RuntimeKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "RuntimeKind": {
+      "type": "string",
+      "enum": [
+        "podman-compose",
+        "docker-compose"
+      ]
+    }
+  }
+}

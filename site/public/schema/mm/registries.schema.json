@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "mm configuration: registries",
+  "description": "Image registries and the credentials deploys pull with, by host.",
+  "type": "object",
+  "$comment": "The value of top-level 'registries', for .config/mm/registries.yaml. Generated from MmConfig; run ./scripts/generate-artifacts.sh. Do not edit.",
+  "additionalProperties": {
+    "$ref": "#/$defs/RegistryConfig"
+  },
+  "$defs": {
+    "RegistryConfig": {
+      "description": "A registry, keyed by its host (`ghcr.io`, `registry.example.com:5000`).",
+      "type": "object",
+      "properties": {
+        "password": {
+          "description": "The secret holding the password or access token; set it per environment.",
+          "$ref": "#/$defs/RegistryPassword"
+        },
+        "username": {
+          "description": "The account the token belongs to. GHCR accepts any name with a token.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "username",
+        "password"
+      ]
+    },
+    "RegistryPassword": {
+      "type": "object",
+      "properties": {
+        "secret": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "secret"
+      ]
+    }
+  }
+}

@@ -1,0 +1,71 @@
+.\" Generated from the canonical Clap tree by ./scripts/generate-artifacts.sh. Do not edit.
+.TH MM 1 "2026-08-24" "mm 0.1.1" "User Commands"
+.SH NAME
+mm \- reviewed monorepo development and deployment
+.SH SYNOPSIS
+.B mm
+[GLOBAL OPTIONS] [COMMAND]
+.SH DESCRIPTION
+Plans are deterministic and secret-safe. Mutations require review hashes; configuration and runtime changes reject stale input.
+.SH COMMANDS
+.TP
+\fBinit\fR
+Initialize a project through a reviewed plan or interactive onboarding
+.TP
+\fBdev\fR
+Set up and operate the local development environment
+.TP
+\fBconfig\fR
+Validate and edit desired project configuration through typed reviews
+.TP
+\fBdoctor\fR
+Check configuration health and resolved runtime capabilities
+.TP
+\fBingress\fR
+Start or stop this workstation's global public HTTP/HTTPS forwarding
+.TP
+\fBservice\fR
+Inspect and operate deployed services
+.TP
+\fBjob\fR
+Run finite jobs and operate their schedules
+.TP
+\fBenv\fR
+Inspect and deliver non-secret environment values
+.TP
+\fBsecret\fR
+Manage secret values, rotation, and provider instances
+.TP
+\fBaccess\fR
+Manage application access policies, users, routes, and sessions
+.TP
+\fBbuild\fR
+Plan and execute deterministic OCI image builds
+.TP
+\fBdeploy\fR
+Plan and apply the selected environment to its target
+.TP
+\fBteam\fR
+Show who may reach remote environments, join, and sync access
+.TP
+\fBforward\fR
+Reach a remote service's port on localhost; save forwards for reuse
+.TP
+\fBkey\fR
+Create, show, protect, replace, or remove this device's SSH keys for remote environments
+.TP
+\fBtarget\fR
+Manage targets, private selection, setup, ingress, and remote access
+.TP
+\fBagent\fR
+Show and trust what AI agents may do, and connect coding tools
+.TP
+\fBhistory\fR
+List the commands run in this project on this machine, and show what one printed
+.TP
+\fBmcp\fR
+Serve the Model Context Protocol server that AI agents use
+.SH EXIT STATUS
+0 success; 1 local I/O, state, or terminal failure; 2 invalid request or configuration; 3 security, runtime, or provider failure.
+.SH SECURITY
+Secret plaintext must be submitted only through hidden input or stdin on dedicated secret commands. Remote bootstrap and trust changes disclose privilege escalation before apply.

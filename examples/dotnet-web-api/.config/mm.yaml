@@ -1,0 +1,99 @@
+schema-version: 1
+project:
+  id: 3f1d0fb6-63fa-4836-947c-f9d5d95ea122
+  name: dotnet-web-api
+  development-environment: local
+default-environment: local
+target: local
+
+environment-delivery:
+  default: direct
+  development-default: env-file
+
+development-mail:
+  enabled: true
+
+networks:
+  backend: {}
+
+stacks:
+  app:
+    files:
+      - compose.yaml
+    networks:
+      - backend
+    ingress:
+      domain: api
+      service: api
+      environments: [production]
+
+modules:
+  api:
+    path: src/Example.Api
+    env:
+      template: .env.example
+    build:
+      image: ghcr.io/example/mm-dotnet-web-api
+      default-variant: production
+      targets:
+        production: ""
+        development: development
+    development-mount:
+      source: .
+      target: /source
+      preset: dotnet
+      services: [api]
+      preserve:
+        - path: /source/bin
+        - path: /source/obj
+      protected: [.env]
+    services:
+      api:
+        stack: app
+        role: http
+        http-port: 8080
+        development-mail: true
+  postgres:
+    path: infrastructure/postgres
+    env:
+      template: .env.example
+    services:
+      postgres:
+        stack: app
+        role: database
+
+secrets:
+  database.password:
+    storage:
+      provider: age
+      location: local/database-password
+    generate:
+      preset: password
+      length: 40
+
+bindings:
+  DB.PASSWORD:
+    secret: database.password
+  DB.HOST:
+    value: postgres
+  DB.PORT:
+    value: 5432
+  DB.NAME:
+    value: widgets
+  DB.USER:
+    value: widgets
+
+environments:
+  local:
+    build-variant: development
+    bindings:
+      DOTNET.ENVIRONMENT:
+        value: Development
+  production:
+    environment-delivery: direct
+    build-variant: production
+    domains:
+      api: api.example.com
+    bindings:
+      DOTNET.ENVIRONMENT:
+        value: Production

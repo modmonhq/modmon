@@ -1,0 +1,65 @@
+/*
+ * mm design tokens.
+ *
+ * The palette is the terminal interface's own (core/src/presentation/tui/view/theme.rs),
+ * so the TUI, the local dashboard, the docs and the lander share one material.
+ * Consumers load the fonts themselves; the stacks below fall back cleanly without them.
+ */
+:root {
+  /* Surfaces: near-black with a faint green cast, never neutral grey. */
+  --mm-bg: #070908;
+  --mm-bg-sunk: #040504;
+  --mm-surface: #0c0f0d;
+  --mm-surface-2: #121613;
+  --mm-surface-3: #191e1a;
+  --mm-line: rgb(232 246 214 / 8%);
+  --mm-line-strong: rgb(232 246 214 / 15%);
+  --mm-border: #3a3f44;
+  --mm-selection: #242a1e;
+
+  /* Ink */
+  --mm-ink: #f1f3f2;
+  --mm-ink-soft: #b9c0bc;
+  --mm-muted: #7f8883;
+  --mm-faint: #59615c;
+
+  /* Tones: status meaning shared by every badge, glyph and accent. */
+  --mm-accent: #c6f24e;
+  --mm-accent-strong: #d9ff6b;
+  --mm-accent-ink: #0d1203;
+  --mm-ok: var(--mm-accent);
+  --mm-warn: #ffb547;
+  --mm-bad: #ff6464;
+  --mm-info: #8fd3ff;
+  --mm-idle: #7f8883;
+
+  --mm-accent-rgb: 198 242 78;
+  --mm-warn-rgb: 255 181 71;
+  --mm-bad-rgb: 255 100 100;
+  --mm-info-rgb: 143 211 255;
+
+  /* Type */
+  --mm-font-display: "Barlow", "Barlow Fallback", "Arial Narrow", system-ui, sans-serif;
+  --mm-font-sans: "Geist", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mm-font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --mm-text-xs: 0.75rem;
+  --mm-text-sm: 0.875rem;
+  --mm-text-md: 1rem;
+  --mm-text-lg: 1.125rem;
+  --mm-text-xl: 1.375rem;
+
+  /*
+   * Shape. Nested corners stay concentric: an element inside a rounded container uses
+   * the container's radius minus the gap between their edges (padding plus border).
+   * Components expose their radius and gap as custom properties so this holds by calc.
+   */
+  --mm-radius-sm: 6px;
+  --mm-radius: 10px;
+  --mm-radius-lg: 16px;
+
+  /* Motion */
+  --mm-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --mm-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --mm-focus: 0 0 0 2px var(--mm-bg), 0 0 0 4px var(--mm-accent);
+}

@@ -1,0 +1,128 @@
+schema-version: 1
+project:
+  id: 2c50a76e-1882-4fb1-97d8-9213af2b0f70
+  name: node-fullstack
+  development-environment: local
+default-environment: local
+target: local
+
+environment-delivery:
+  default: direct
+  development-default: env-file
+
+development-mail:
+  enabled: true
+
+networks:
+  application: {}
+
+stacks:
+  app:
+    files:
+      - compose.yaml
+    networks:
+      - application
+    ingress:
+      - domain: frontend
+        service: frontend
+        environments: [production]
+      - domain: backend
+        service: backend
+        environments: [production]
+
+modules:
+  frontend:
+    path: frontend
+    env:
+      template: .env.example
+    build:
+      image: ghcr.io/example/mm-node-fullstack-frontend
+    development-mount:
+      source: .
+      target: /app
+      preset: node
+      services: [frontend]
+      preserve:
+        - path: /app/node_modules
+      protected: [.env]
+    services:
+      frontend:
+        stack: app
+        role: http
+        http-port: 8080
+        development-mail: false
+  backend:
+    path: backend
+    env:
+      template: .env.example
+    build:
+      image: ghcr.io/example/mm-node-fullstack-backend
+    development-mount:
+      source: .
+      target: /app
+      preset: node
+      services: [backend]
+      preserve:
+        - path: /app/node_modules
+      protected: [.env]
+    services:
+      backend:
+        stack: app
+        role: http
+        http-port: 3000
+        development-mail: true
+  mongo:
+    path: infrastructure/mongo
+    env:
+      template: .env.example
+    services:
+      mongo:
+        stack: app
+        role: database
+
+secrets:
+  mongo.password:
+    storage:
+      provider: age
+      location: local/mongo-password
+    generate:
+      preset: password
+      length: 40
+
+bindings:
+  MONGO.PASSWORD:
+    secret: mongo.password
+  MONGO.HOST:
+    value: mongo
+  MONGO.PORT:
+    value: 27017
+  MONGO.DATABASE:
+    value: notes
+  MONGO.USER:
+    value: notes
+  MONGO.AUTH.SOURCE:
+    value: admin
+
+environments:
+  local:
+    bindings:
+      NODE.ENV:
+        value: development
+      FRONTEND.URL:
+        value: https://frontend.node-fullstack.test
+      API.PUBLIC.URL:
+        value: https://backend.node-fullstack.test
+  production:
+    environment-delivery: direct
+    domains:
+      frontend: notes.example.com
+      backend: api.notes.example.com
+    bindings:
+      NODE.ENV:
+        value: production
+      FRONTEND.URL:
+        cast: url
+        value-ref: domains.frontend
+      API.PUBLIC.URL:
+        cast: url
+        value-ref: domains.backend
