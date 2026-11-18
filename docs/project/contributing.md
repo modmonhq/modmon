@@ -8,7 +8,7 @@ Run commands from the repository root. You need Docker for the Rust check
 scripts, plus Node.js 24 and npm 11 for docs and dashboard work.
 
 ```sh
-docker build -f Dockerfile.cargo -t mm-rust:1.98.0 .
+docker build -f Dockerfile.cargo -t mm-rust:1.99.1 .
 ```
 
 ## Choose your checks

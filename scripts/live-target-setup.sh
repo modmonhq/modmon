@@ -47,12 +47,12 @@ else
     -e CARGO_TARGET_DIR=/build -e CARGO_BUILD_JOBS=1 -e CARGO_PROFILE_DEV_DEBUG=0 \
     -e CARGO_PROFILE_DEV_CODEGEN_UNITS=256 \
     -v "$ROOT:/workspace:ro" -v "$TMP/build:/build" -w /workspace \
-    mm-rust:1.98.0 cargo build --locked --all-features --bin mm --bin mmd
+    mm-rust:1.99.1 cargo build --locked --all-features --bin mm --bin mmd
   BIN_DIR="$TMP/build/debug"
 fi
 # Setup copies both binaries to the host; stripped copies keep that quick.
 docker run --rm --user "$(id -u):$(id -g)" -v "$BIN_DIR:/in:ro" -v "$TMP/release:/out" \
-  mm-rust:1.98.0 sh -c 'strip -o /out/mm /in/mm && strip -o /out/mmd /in/mmd'
+  mm-rust:1.99.1 sh -c 'strip -o /out/mm /in/mm && strip -o /out/mmd /in/mmd'
 
 step "building the host (systemd, sshd, a sudo admin) and the client (Ansible)"
 docker build -q -t mm-live-setup-target:bookworm - >/dev/null <<'DOCKERFILE'

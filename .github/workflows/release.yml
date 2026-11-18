@@ -19,7 +19,7 @@ permissions: {}
 
 env:
   RELEASE_BRANCH: master
-  RUSTUP_TOOLCHAIN: 1.98.0
+  RUSTUP_TOOLCHAIN: 1.99.1
   CARGO_TERM_COLOR: always
 
 jobs:
@@ -128,7 +128,7 @@ jobs:
         run: npm --prefix core/ui ci && npm --prefix core/ui run build
       - name: Build mm and mmd
         run: |
-          rustup toolchain install 1.98.0 --profile minimal --target ${{ matrix.target }}
+          rustup toolchain install 1.99.1 --profile minimal --target ${{ matrix.target }}
           cargo build --locked --release --features unstable --package mm --bin mm --bin mmd --target ${{ matrix.target }}
       - name: Check that both binaries report the tagged version
         env:
@@ -185,7 +185,7 @@ jobs:
           RELEASE_COMMIT: ${{ needs.validate.outputs.commit }}
           RELEASE_EPOCH: ${{ needs.validate.outputs.epoch }}
         run: |
-          rustup toolchain install 1.98.0 --profile minimal
+          rustup toolchain install 1.99.1 --profile minimal
           cargo metadata --format-version 1 --all-features --locked > cargo-metadata.json
           node ./scripts/release/assemble.mjs --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT" --epoch "$RELEASE_EPOCH" \
             --packages release --source "release/mm-$RELEASE_TAG-source.tar.gz" --cargo-metadata cargo-metadata.json --output assembled

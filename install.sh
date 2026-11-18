@@ -281,7 +281,7 @@ mac_toolchains() {
 }
 build() {
     if [[ $system == Linux ]]; then
-        local image=mm-local-builder:rust-1.98.0-$arch
+        local image=mm-local-builder:rust-1.99.1-$arch
         docker build -t "$image" -f "$work/packaging/local/Dockerfile" "$work/packaging/local"
         container=mm-install-$(id -u)-$$
         docker run --rm --name "$container" --cpus=1 --memory=4g --memory-swap=4g --pids-limit=512 \

@@ -8,12 +8,12 @@ updated docs in the same PR.
 
 Run commands from the repository root. You need Docker for the repository's
 build/check scripts, and Node.js 24 with npm 11 for the website and dashboard.
-Rust 1.98.0 is pinned in `rust-toolchain.toml`.
+Rust 1.99.1 is pinned in `rust-toolchain.toml`.
 
 Build the Rust toolchain image once:
 
 ```sh
-docker build -f Dockerfile.cargo -t mm-rust:1.98.0 .
+docker build -f Dockerfile.cargo -t mm-rust:1.99.1 .
 ```
 
 The `mm` binary embeds the web dashboard from `core/ui/dist`, which is not

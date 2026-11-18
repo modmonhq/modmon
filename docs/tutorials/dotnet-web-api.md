@@ -3,7 +3,7 @@ title: .NET web API example
 description: Run ASP.NET Core with an SDK live mount, PostgreSQL, HTTPS, and Mailpit.
 ---
 
-`examples/dotnet-web-api` is an ASP.NET Core 10 minimal API backed by PostgreSQL 17. Locked NuGet restore and pinned images keep builds deterministic.
+`examples/dotnet-web-api` is an ASP.NET Core 11 minimal API backed by PostgreSQL 17. Locked NuGet restore and pinned images keep builds deterministic.
 
 ## Before you start
 

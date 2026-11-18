@@ -66,10 +66,10 @@ jobs:
         run: >-
           docker run --rm --cpus=2 --memory=4g --pids-limit=512
           -e CARGO_BUILD_JOBS=2
-          -e RUSTUP_TOOLCHAIN=1.98.0
+          -e RUSTUP_TOOLCHAIN=1.99.1
           -v "$PWD:/workspace"
           -w /workspace/examples/laravel-rust/services/pricing
-          rust:1.98-slim-bookworm@sha256:94e9efa4033213dbb70d4f665527e7ece3944ddb7ba1dd2e43f6fd6e2490af58
+          rust:1.99-slim-bookworm@sha256:f2c004e3d2d8b547e8cf7ffbc29205385f4e71d23e53e4e383065db5e9f822cd
           sh -c "cargo check --locked && cargo test --all-targets --locked"
       - name: Validate Composer lockfile
         run: >-

@@ -3,7 +3,7 @@ set -euo pipefail
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 root=$(CDPATH= cd -- "$script_dir/.." && pwd -P)
-rust_image=${MM_RUST_IMAGE:-mm-rust:1.98.0}
+rust_image=${MM_RUST_IMAGE:-mm-rust:1.99.1}
 node_image=node:24-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03
 
 if ! docker image inspect "$rust_image" >/dev/null 2>&1; then
