@@ -68,7 +68,7 @@ while (( $# )); do
         --release) build_profile=release; profile_directory=release; keep_work=0; shift ;;
         --rebuild) force_build=1; shift ;;
         --install-dir|--jobs)
-            (( $# >= 2 )) && [[ -n $2 && $2 != --* ]] || fail "$1 requires a value"
+            if (( $# < 2 )) || [[ -z $2 || $2 == --* ]]; then fail "$1 requires a value"; fi
             if [[ $1 == --install-dir ]]; then install_dir=$2; else jobs=$2; fi
             shift 2 ;;
         -h|--help) usage; exit 0 ;;
@@ -142,7 +142,7 @@ lock_owner() {
     [[ $owner_pid =~ ^[1-9][0-9]*$ && -n $owner_host ]]
 }
 # Invoked indirectly by the EXIT trap's cleanup.
-# shellcheck disable=SC2329
+# shellcheck disable=SC2317,SC2329
 release_lock() {
     if lock_owner "$1" && [[ $owner_pid == "$$" && $owner_host == "${HOSTNAME:-unknown}" ]]; then
         rm -f "$1/owner"
@@ -174,7 +174,7 @@ acquire_lock() {
     fail "another installer is using $description (lock has no owner metadata; check running installers before removing $path)"
 }
 # Invoked indirectly by the EXIT trap below.
-# shellcheck disable=SC2329
+# shellcheck disable=SC2317,SC2329
 cleanup() {
     status=$?
     set +e

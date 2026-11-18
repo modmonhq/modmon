@@ -487,24 +487,20 @@ fn a_nodes_release_is_read_from_the_way_engines_name_themselves() {
 fn a_node_records_the_engine_setup_installed_and_hosts_before_it_run_docker() -> TestResult {
     let temporary = temp_dirs::tempdir()?;
     let config = |node_env: &Path| -> Result<DaemonConfig, Box<dyn std::error::Error>> {
-        let path = temporary.path().join("mmd.json");
-        std::fs::write(
-            &path,
-            serde_json::json!({
-                "schema_version": 2,
-                "socket_path": "/run/mm/mm.sock",
-                "state_root": temporary.path().join("state"),
-                "mm_home": temporary.path().join("home"),
-                "socket_uid": 0,
-                "socket_gid": 0,
-                "idle_timeout_ms": 30000,
-                "host_policy_path": temporary.path().join("host.yaml"),
-                "relay_uid": 0,
-                "node_env_path": node_env,
-            })
-            .to_string(),
-        )?;
-        Ok(DaemonConfig::load(&path)?)
+        let config: DaemonConfig = serde_json::from_value(serde_json::json!({
+            "schema_version": 2,
+            "socket_path": "/run/mm/mm.sock",
+            "state_root": temporary.path().join("state"),
+            "mm_home": temporary.path().join("home"),
+            "socket_uid": 0,
+            "socket_gid": 0,
+            "idle_timeout_ms": 30000,
+            "host_policy_path": temporary.path().join("host.yaml"),
+            "relay_uid": 0,
+            "node_env_path": node_env,
+        }))?;
+        config.validate()?;
+        Ok(config)
     };
     let node_env = temporary.path().join("node.env");
     std::fs::write(

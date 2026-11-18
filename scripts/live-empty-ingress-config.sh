@@ -5,6 +5,7 @@ root=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 mkdir -p "$root/.modmon"
 work=$(mktemp -d "$root/.modmon/empty-ingress.XXXXXX")
 container=
+# shellcheck disable=SC2317,SC2329
 cleanup() {
     [[ -z $container ]] || docker rm -f "$container" >/dev/null 2>&1 || true
     rm -rf "$work"

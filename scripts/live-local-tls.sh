@@ -38,8 +38,10 @@ else
   "${MM_BIN}" --mm-home "${MM_TLS_HOME}" dev setup
 fi
 mkdir -p "${MM_TLS_PROJECT}/.config" "${MM_TLS_PROJECT}/app"
+INIT_PLAN=$("${MM_BIN}" --root "${MM_TLS_PROJECT}" --mm-home "${MM_TLS_HOME}" \
+  --output json init --name live-evidence | sed -n 's/^  "plan_hash": "\([0-9a-f]*\)".*/\1/p')
 "${MM_BIN}" --root "${MM_TLS_PROJECT}" --mm-home "${MM_TLS_HOME}" \
-  init --name live-evidence >/dev/null
+  init --name live-evidence --plan "${INIT_PLAN}" --yes >/dev/null
 read -r _ PROJECT_ID < <(grep '^  id: ' "${MM_TLS_PROJECT}/.config/mm.yaml")
 cat >"${MM_TLS_PROJECT}/compose.yaml" <<'YAML'
 services:
@@ -48,6 +50,7 @@ services:
     expose: [8080]
 YAML
 cat >"${MM_TLS_PROJECT}/.config/mm.yaml" <<YAML
+schema-version: 1
 project:
   id: ${PROJECT_ID}
   name: live-evidence

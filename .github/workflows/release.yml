@@ -84,20 +84,20 @@ jobs:
         run: |
           git fetch --no-tags origin "$RELEASE_BRANCH:refs/remotes/origin/$RELEASE_BRANCH"
           git rev-parse -q --verify "refs/tags/$RELEASE_TAG" >/dev/null || git tag "$RELEASE_TAG" HEAD
-          ./scripts/release/build-linux.sh "$RELEASE_TAG" packages
-          ./scripts/release/verify.sh --checksums-only packages
+          ./scripts/release/build-linux.sh "$RELEASE_TAG" "target/dist/$RELEASE_TAG"
+          ./scripts/release/verify.sh --checksums-only "target/dist/$RELEASE_TAG"
       - name: POSIX installer against a local release
         run: node ./scripts/release/test-install-sh.mjs
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-linux
           path: |
-            packages/mm-${{ needs.validate.outputs.tag }}-x86_64-unknown-linux-gnu.tar.gz
-            packages/mm-${{ needs.validate.outputs.tag }}-aarch64-unknown-linux-gnu.tar.gz
-            packages/mm-${{ needs.validate.outputs.tag }}-source.tar.gz
-            packages/x86_64-unknown-linux-gnu.metadata.json
-            packages/aarch64-unknown-linux-gnu.metadata.json
-            packages/release-notes.md
+            target/dist/${{ needs.validate.outputs.tag }}/mm-${{ needs.validate.outputs.tag }}-x86_64-unknown-linux-gnu.tar.gz
+            target/dist/${{ needs.validate.outputs.tag }}/mm-${{ needs.validate.outputs.tag }}-aarch64-unknown-linux-gnu.tar.gz
+            target/dist/${{ needs.validate.outputs.tag }}/mm-${{ needs.validate.outputs.tag }}-source.tar.gz
+            target/dist/${{ needs.validate.outputs.tag }}/x86_64-unknown-linux-gnu.metadata.json
+            target/dist/${{ needs.validate.outputs.tag }}/aarch64-unknown-linux-gnu.metadata.json
+            target/dist/${{ needs.validate.outputs.tag }}/release-notes.md
           if-no-files-found: error
           retention-days: 7
 
@@ -143,13 +143,13 @@ jobs:
           SOURCE_DATE_EPOCH: ${{ needs.validate.outputs.epoch }}
         run: |
           brew install gnu-tar
-          ./scripts/release/package-unix.sh "${{ needs.validate.outputs.tag }}" "${{ matrix.target }}" packages
+          ./scripts/release/package-unix.sh "${{ needs.validate.outputs.tag }}" "${{ matrix.target }}" "target/dist/${{ needs.validate.outputs.tag }}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-${{ matrix.target }}
           path: |
-            packages/mm-${{ needs.validate.outputs.tag }}-${{ matrix.target }}.tar.gz
-            packages/${{ matrix.target }}.metadata.json
+            target/dist/${{ needs.validate.outputs.tag }}/mm-${{ needs.validate.outputs.tag }}-${{ matrix.target }}.tar.gz
+            target/dist/${{ needs.validate.outputs.tag }}/${{ matrix.target }}.metadata.json
           if-no-files-found: error
           retention-days: 7
 

@@ -167,12 +167,19 @@ pub fn free_tcp(address: SocketAddr) -> std::io::Result<std::net::TcpListener> {
 
 /// An IPv4 socket that may bind an address the host does not have yet.
 fn free_socket(kind: rustix::net::SocketType) -> std::io::Result<std::os::fd::OwnedFd> {
+    #[cfg(not(target_vendor = "apple"))]
     let socket = rustix::net::socket_with(
         rustix::net::AddressFamily::INET,
         kind,
         rustix::net::SocketFlags::CLOEXEC,
         None,
     )?;
+    #[cfg(target_vendor = "apple")]
+    let socket = {
+        let socket = rustix::net::socket(rustix::net::AddressFamily::INET, kind, None)?;
+        rustix::io::fcntl_setfd(&socket, rustix::io::FdFlags::CLOEXEC)?;
+        socket
+    };
     #[cfg(target_os = "linux")]
     rustix::net::sockopt::set_ip_freebind(&socket, true)?;
     Ok(socket)
