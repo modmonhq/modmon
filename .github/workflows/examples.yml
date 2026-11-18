@@ -83,7 +83,7 @@ jobs:
           docker run --rm --cpus=2 --memory=4g --pids-limit=512
           -v "$PWD/examples/dotnet-web-api/src/Example.Api:/source"
           -w /source
-          mcr.microsoft.com/dotnet/sdk:10.0@sha256:e1ffd2a92ae84c1291bc1b6887501f8af98e6331e7af6d4c8d37168c5e87a64c
+          mcr.microsoft.com/dotnet/sdk:11.0-alpine@sha256:52556c0fb9d0f609ae9aeab9efeeba96f4acc2f7038f7696f2235ccbdbb8e290
           sh -c "dotnet restore --locked-mode && dotnet build --no-restore"
       - name: Disposable live mm example smoke
         run: |

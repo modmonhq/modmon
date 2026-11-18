@@ -336,8 +336,8 @@ impl BundleReceiver {
         };
         let file = std::fs::File::open(&self.path)
             .map_err(|source| io("reading the bundle file", &self.path, source))?;
-        let files = unpack(file, staging).map_err(&refused)?;
-        let tree = git_tree::tree_id(&files).map_err(&refused)?;
+        let files = unpack(file, staging).map_err(refused)?;
+        let tree = git_tree::tree_id(&files).map_err(refused)?;
         if git_tree::hex(&tree) != self.tree {
             return Err(refused(format!(
                 "its files are not the files of that commit (they hash to tree {}, the commit's tree is {})",

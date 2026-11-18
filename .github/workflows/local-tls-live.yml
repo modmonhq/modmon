@@ -59,6 +59,7 @@ jobs:
         shell: bash
         env:
           MM_BIN: target/debug/mm
+          MM_NO_SYSTEM_TRUST: ${{ runner.os == 'macOS' && '1' || '0' }}
         run: ./scripts/live-local-tls.sh 2>&1 | tee local-tls-live.log
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
