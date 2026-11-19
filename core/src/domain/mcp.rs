@@ -117,8 +117,11 @@ impl McpServerConfig {
     /// for applying a deployment, a build, or a job.
     #[must_use]
     pub fn call_bound(&self, operation: &str) -> Option<std::time::Duration> {
-        (!matches!(operation, "deploy_apply" | "build_apply" | "job_apply"))
-            .then(|| std::time::Duration::from_millis(self.request_timeout_ms))
+        (!matches!(
+            operation,
+            "deploy_apply" | "build_apply" | "job_apply" | "setup_apply"
+        ))
+        .then(|| std::time::Duration::from_millis(self.request_timeout_ms))
     }
 }
 
@@ -431,6 +434,102 @@ pub struct McpDevelopmentUnitRequest {
     pub unit: String,
     /// `true` turns it on, `false` off.
     pub on: bool,
+}
+
+/// A step that sets up this machine for an environment that runs here, as
+/// the command line takes it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum McpSetupStep {
+    /// The shared local services `mm dev setup --services` installs:
+    /// ingress, Mailpit, and the dashboard. Trusting mm's local certificate
+    /// authority stays the user's (`mm dev setup`).
+    DevServices {
+        /// Publish SMTP on this loopback port.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        smtp_port: Option<u16>,
+    },
+    /// Install a managed provider declared under `providers:` on this
+    /// machine, as `mm secret provider plan NAME --operation install` plans it.
+    SecretProvider { name: String },
+    /// Create the project's local age store, as `mm secret init age` does.
+    SecretInit,
+    /// Create a configured secret with a generator that has no value yet, as
+    /// `mm secret generate NAME` does, or every missing one without `name`
+    /// (`--missing`). An existing value is never replaced or shown.
+    SecretGenerate {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+    },
+}
+
+impl McpSetupStep {
+    /// What applying the step needs.
+    #[must_use]
+    pub const fn action(&self) -> AgentAction {
+        match self {
+            Self::DevServices { .. } => AgentAction::DevelopmentSetup,
+            _ => AgentAction::SecretSetup,
+        }
+    }
+}
+
+/// `mm_setup_plan`: review a step that sets up this machine.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpSetupPlanRequest {
+    pub scope: McpScope,
+    pub step: McpSetupStep,
+}
+
+/// `mm_setup_apply`: apply the step just reviewed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpSetupApplyRequest {
+    pub scope: McpScope,
+    /// The step the plan was made for.
+    pub step: McpSetupStep,
+    pub plan_hash: String,
+    pub approval_token: String,
+    pub confirmation: String,
+}
+
+/// The review of a secret setup step, which the command line runs without
+/// one: whether the local store exists, and the environment's secrets as
+/// `mm secret status` shows them, without a value.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct McpSecretSetupPlan {
+    pub plan_hash: String,
+    pub environment: String,
+    pub step: McpSetupStep,
+    pub store_initialized: bool,
+    pub current: Vec<crate::domain::secret::SecretBindingStatus>,
+}
+
+impl McpSecretSetupPlan {
+    #[must_use]
+    pub fn new(
+        environment: String,
+        step: McpSetupStep,
+        store_initialized: bool,
+        current: Vec<crate::domain::secret::SecretBindingStatus>,
+    ) -> Self {
+        let bytes = serde_json::to_vec(&(
+            "mm-mcp-secret-setup-v1",
+            &environment,
+            &step,
+            store_initialized,
+            &current,
+        ))
+        .unwrap_or_default();
+        Self {
+            plan_hash: blake3::hash(&bytes).to_hex().to_string(),
+            environment,
+            step,
+            store_initialized,
+            current,
+        }
+    }
 }
 
 /// `mm_stage_value`: a secret or variable change staged on every host of a

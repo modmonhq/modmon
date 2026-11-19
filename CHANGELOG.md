@@ -388,6 +388,13 @@ installations `mm target setup` upgrades in place and what it refuses.
   Such a service has no routes, joins no network, and keeps the host's user
   namespace. See
   [run a service on the host's network](docs/remote-access.md#run-a-service-on-the-hosts-network).
+- `mm_setup_plan` and `mm_setup_apply` let an agent set up this machine within
+  its grant, through the services the command line uses: the shared local
+  services (`mm dev setup --services`), a managed secret provider's install,
+  the local age store (`mm secret init age`), and missing generated secrets
+  (`mm secret generate`). The secret steps need `secrets: true` with level
+  `deploy` on an environment that runs here; trusting the local certificate
+  authority and `mm agent trust` stay the user's.
 - Releases are published by the release workflow when a `vX.Y.Z` tag is
   pushed to `master`: the Linux x86-64 and ARM64 archives are built from the
   tag in pinned containers by `scripts/release/build-linux.sh` (which also

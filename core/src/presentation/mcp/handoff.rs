@@ -109,6 +109,47 @@ pub(super) fn handoff_result(denial: &McpDenial, requested: UserCommands) -> Cal
     }))
 }
 
+/// The user's commands for a step that sets up this machine.
+pub(super) fn setup_commands(
+    environment: &str,
+    step: &crate::domain::mcp::McpSetupStep,
+) -> UserCommands {
+    use crate::domain::mcp::McpSetupStep as S;
+    match step {
+        S::DevServices { smtp_port } => {
+            let port = smtp_port.map(|port| port.to_string());
+            let mut words = vec!["dev", "setup", "--services"];
+            if let Some(port) = &port {
+                words.extend(["--smtp-port", port.as_str()]);
+            }
+            UserCommands::of([mm_command(environment, &words)])
+                .with_note("It also trusts mm's local certificate authority, and shows each plan before it applies it.")
+        }
+        S::SecretProvider { name } => {
+            let install = ["--operation", "install"];
+            let mut plan = vec!["secret", "provider", "plan", name.as_str()];
+            plan.extend(install);
+            let mut apply = vec!["secret", "provider", "apply", name.as_str()];
+            apply.extend(install);
+            apply.extend(["--plan", "HASH", "--yes"]);
+            UserCommands::of([
+                mm_command(environment, &plan),
+                mm_command(environment, &apply),
+            ])
+            .with_note("HASH is the plan hash the first command prints.")
+        }
+        S::SecretInit => UserCommands::of([mm_command(environment, &["secret", "init", "age"])]),
+        S::SecretGenerate { name: Some(name) } => UserCommands::of([mm_command(
+            environment,
+            &["secret", "generate", name.as_str()],
+        )]),
+        S::SecretGenerate { name: None } => UserCommands::of([mm_command(
+            environment,
+            &["secret", "generate", "--missing"],
+        )]),
+    }
+}
+
 /// The user's commands for a build: review, then apply the reviewed hash.
 pub(super) fn build_commands(environment: &str, publish: bool) -> UserCommands {
     let publish = if publish {

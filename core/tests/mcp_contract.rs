@@ -754,11 +754,17 @@ fn applying_a_deployment_runs_to_its_end_and_every_other_call_keeps_its_bound() 
     // Found integrating: `mm_build_apply` on a local environment ended
     // MM_TIMEOUT after the bound and the build it had begun was dropped, so no
     // image was ever built and the operation stayed recorded as running.
-    for operation in ["deploy_apply", "build_apply", "job_apply"] {
+    for operation in ["deploy_apply", "build_apply", "job_apply", "setup_apply"] {
         assert_eq!(config.call_bound(operation), None, "{operation}");
     }
     let bound = Some(std::time::Duration::from_millis(config.request_timeout_ms));
-    for operation in ["deploy_plan", "build_plan", "config_apply", "read"] {
+    for operation in [
+        "deploy_plan",
+        "build_plan",
+        "config_apply",
+        "read",
+        "setup_plan",
+    ] {
         assert_eq!(config.call_bound(operation), bound, "{operation}");
     }
 }
@@ -1466,5 +1472,209 @@ fn an_agent_reads_the_managed_store_as_provider_status_prints_it()
         codes(&read),
         [serde_json::json!("MM_SECRET_STORE_DEGRADED")]
     );
+    Ok(())
+}
+
+/// The project of the setup tests: `local` keeps a generated password in
+/// the project's age store, and agents have `secrets: true` there when
+/// `secrets` is set.
+fn setup_project(secrets: bool) -> Result<Project, Box<dyn std::error::Error>> {
+    let project = Project::new()?;
+    project.edit(|config| {
+        config["secrets"] = serde_yaml_ng::from_str(
+            "database.password: {storage: {provider: age, location: local/database-password}, generate: {preset: password, length: 40}}",
+        )
+        .unwrap_or_default();
+        if secrets {
+            config["agents"]["local"]["secrets"] = true.into();
+        }
+    })?;
+    project.trust()?;
+    Ok(project)
+}
+
+fn apply_setup(
+    session: &mut Session,
+    step: &serde_json::Value,
+    plan: &serde_json::Value,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    let hash = plan["plan_hash"].as_str().unwrap_or_default();
+    session.call(
+        "mm_setup_apply",
+        serde_json::json!({
+            "scope": {"environment": "local"},
+            "step": step,
+            "plan_hash": hash,
+            "approval_token": plan["approval_token"],
+            "confirmation": format!("apply:{hash}"),
+        }),
+    )
+}
+
+/// With `secrets: true` an agent creates the project's local secret store
+/// and generates what is missing, each from a reviewed plan; a plan the
+/// store moved past is refused, and no result holds a value.
+#[test]
+fn an_agent_sets_up_the_local_secret_store_within_its_grant()
+-> Result<(), Box<dyn std::error::Error>> {
+    use mm::app::ports::SecretMaterialResolver as _;
+
+    let project = setup_project(true)?;
+    let mut session = Session::start_with(&project, &engine_off())?;
+    let scope = serde_json::json!({"environment": "local"});
+    let mut results = Vec::new();
+
+    let init = serde_json::json!({"kind": "secret_init"});
+    let planned = session.call(
+        "mm_setup_plan",
+        serde_json::json!({"scope": scope, "step": init}),
+    )?;
+    assert_eq!(planned["applied_by"], "agent", "{planned}");
+    assert_eq!(planned["plan"]["store_initialized"], false, "{planned}");
+    let initialized = apply_setup(&mut session, &init, &planned)?;
+    assert!(
+        initialized["recipient"]
+            .as_str()
+            .is_some_and(|recipient| recipient.starts_with("age1")),
+        "{initialized}"
+    );
+    results.extend([planned, initialized.clone()]);
+
+    let generate = serde_json::json!({"kind": "secret_generate"});
+    let planned = session.call(
+        "mm_setup_plan",
+        serde_json::json!({"scope": scope, "step": generate}),
+    )?;
+    assert_eq!(planned["plan"]["store_initialized"], true, "{planned}");
+    assert_eq!(
+        planned["plan"]["current"][0]["key"], "database.password",
+        "{planned}"
+    );
+    let generated = apply_setup(&mut session, &generate, &planned)?;
+    assert_eq!(
+        generated["generated"][0]["name"], "database.password",
+        "{generated}"
+    );
+    assert_eq!(
+        generated["generated"][0]["status"], "generated",
+        "{generated}"
+    );
+    results.extend([planned, generated]);
+
+    let path = |key: &str| PathBuf::from(initialized[key].as_str().unwrap_or_default());
+    let identity = fs::read_to_string(path("identity_path"))?;
+    let store =
+        mm::adapters::secrets::AgeSecretStore::new(path("identity_path"), path("store_path"));
+    let reference = mm::domain::secret::SecretReference::new(
+        mm::domain::secret_contract::StorageProviderId::new("age")?,
+        "local/database-password",
+    )?;
+    let resolved = tokio::runtime::Builder::new_current_thread()
+        .build()?
+        .block_on(store.resolve(&mm::domain::secret::SecretScope::new("local"), &reference))?;
+    let value = resolved
+        .material
+        .map(|material| material.expose(str::to_owned))
+        .unwrap_or_default();
+    assert_eq!(value.len(), 40);
+    for result in &results {
+        let text = result.to_string();
+        assert!(!text.contains(&value), "{text}");
+        assert!(!text.contains(identity.trim()), "{text}");
+    }
+
+    let replanned = session.call(
+        "mm_setup_plan",
+        serde_json::json!({"scope": scope, "step": generate}),
+    )?;
+    project
+        .mm()
+        .args([
+            "--environment",
+            "local",
+            "secret",
+            "unset",
+            "database.password",
+            "--yes",
+        ])
+        .assert()
+        .success();
+    let stale = apply_setup(&mut session, &generate, &replanned)?;
+    assert_eq!(stale["error"]["code"], "MM_STATE", "{stale}");
+    assert!(
+        stale["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("setup plan changed")),
+        "{stale}"
+    );
+    Ok(())
+}
+
+/// Without the grant, a setup plan is the user's to apply, and applying it
+/// hands the user the command line's commands for the step.
+#[test]
+fn setup_outside_the_grant_is_handed_to_the_user() -> Result<(), Box<dyn std::error::Error>> {
+    let project = setup_project(false)?;
+    let mut session = Session::start_with(&project, &engine_off())?;
+    let scope = serde_json::json!({"environment": "local"});
+    let init = serde_json::json!({"kind": "secret_init"});
+    let planned = session.call(
+        "mm_setup_plan",
+        serde_json::json!({"scope": scope, "step": init}),
+    )?;
+    assert_eq!(planned["applied_by"], "user", "{planned}");
+    assert!(planned["approval_token"].is_null(), "{planned}");
+    assert_eq!(
+        planned["user_commands"],
+        serde_json::json!(["mm --environment local secret init age"])
+    );
+
+    for (environment, step, commands) in [
+        (
+            "local",
+            init,
+            serde_json::json!(["mm --environment local secret init age"]),
+        ),
+        (
+            "local",
+            serde_json::json!({"kind": "secret_generate", "name": "database.password"}),
+            serde_json::json!(["mm --environment local secret generate database.password"]),
+        ),
+        (
+            "production",
+            serde_json::json!({"kind": "dev_services"}),
+            serde_json::json!(["mm --environment production dev setup --services"]),
+        ),
+        (
+            "local",
+            serde_json::json!({"kind": "secret_provider", "name": "vault"}),
+            serde_json::json!([
+                "mm --environment local secret provider plan vault --operation install",
+                "mm --environment local secret provider apply vault --operation install --plan HASH --yes",
+            ]),
+        ),
+    ] {
+        let refused = session.call(
+            "mm_setup_apply",
+            serde_json::json!({
+                "scope": {"environment": environment},
+                "step": step,
+                "plan_hash": "0".repeat(64),
+                "approval_token": "none",
+                "confirmation": format!("apply:{}", "0".repeat(64)),
+            }),
+        )?;
+        assert_eq!(refused["error"]["code"], "MM_AGENT_HANDOFF", "{refused}");
+        assert_eq!(
+            refused["error"]["handoff"]["user_commands"], commands,
+            "{refused}"
+        );
+        if environment == "local" {
+            assert_eq!(
+                refused["error"]["handoff"]["requires"], "level deploy and secrets: true",
+                "{refused}"
+            );
+        }
+    }
     Ok(())
 }

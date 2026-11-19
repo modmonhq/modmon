@@ -1,4 +1,5 @@
 use super::*;
+use crate::composition::{declared_provider_locations, managed_provider_request};
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum SecretProviderCommand {
@@ -377,7 +378,7 @@ async fn add_provider(
         context.document,
         context.environment,
         name,
-        ProviderLifecycleOperationArg::Install,
+        ProviderLifecycleOperationArg::Install.into(),
         false,
     )?;
     apply_provider_lifecycle(context.manager, request, None, provider.yes, context.format).await
@@ -472,7 +473,7 @@ fn plan_provider(
         context.document,
         context.environment,
         provider_name(arguments.name)?,
-        arguments.operation,
+        arguments.operation.into(),
         arguments.purge,
     )?;
     let plan = context.manager.plan_managed(request)?;
@@ -490,7 +491,7 @@ async fn apply_provider(
         context.document,
         context.environment,
         provider_name(request.name)?,
-        request.operation,
+        request.operation.into(),
         request.purge,
     )?;
     apply_provider_lifecycle(context.manager, request, Some(plan), yes, context.format).await
@@ -507,7 +508,7 @@ async fn remove_provider(
         context.document,
         context.environment,
         provider_name(name)?,
-        ProviderLifecycleOperationArg::Remove,
+        ProviderLifecycleOperationArg::Remove.into(),
         purge,
     )?;
     apply_provider_lifecycle(context.manager, request, Some(plan), yes, context.format).await
@@ -526,71 +527,6 @@ async fn provider_data(
         context.format,
     )
     .await
-}
-
-pub(super) fn managed_provider_request(
-    document: &crate::domain::config::ConfigDocument,
-    environment: &str,
-    name: crate::domain::secret_backend::ProviderInstanceName,
-    operation: ProviderLifecycleOperationArg,
-    purge: bool,
-) -> Result<crate::domain::secret_backend::ManagedSecretBackendPlanRequest, MmError> {
-    let instance = document
-        .config
-        .providers
-        .get(&name)
-        .ok_or_else(|| MmError::Secret {
-            message: format!("provider instance '{name}' is not configured"),
-        })?;
-    let Some(managed) = instance.configuration.local_managed(name.as_str()) else {
-        return Err(MmError::Secret {
-            message: format!("provider instance '{name}' is external and has no managed lifecycle"),
-        });
-    };
-    if crate::domain::secret_store::is_cluster_store(instance)
-        && crate::app::cluster_target(document, environment).is_some()
-    {
-        return Err(MmError::Secret {
-            message: format!(
-                "provider '{name}' is the store mm runs on the nodes of environment '{environment}'; `mm -e {environment} target setup plan` installs and upgrades it"
-            ),
-        });
-    }
-    Ok(
-        crate::domain::secret_backend::ManagedSecretBackendPlanRequest {
-            instance: name.clone(),
-            action: operation.into(),
-            installation: managed.installation,
-            project_id: document.config.project.id,
-            environment: environment.to_owned(),
-            locations: declared_provider_locations(&document.config, &name)?,
-            release: managed.release,
-            management_port: managed.management_port,
-            purge_data: purge,
-            target: document.config.target.clone(),
-            config_hash: document.source_hash.clone(),
-        },
-    )
-}
-
-pub(super) fn declared_provider_locations(
-    config: &crate::domain::config::MmConfig,
-    provider: &crate::domain::secret_backend::ProviderInstanceName,
-) -> Result<Vec<String>, MmError> {
-    let mut locations = config
-        .secrets
-        .values()
-        .filter(|declaration| declaration.storage.provider.as_str() == provider.as_str())
-        .map(|declaration| declaration.storage.location.clone())
-        .collect::<Vec<_>>();
-    locations.sort();
-    locations.dedup();
-    if locations.is_empty() {
-        return Err(MmError::Secret {
-            message: format!("provider instance '{provider}' has no logical secret declarations"),
-        });
-    }
-    Ok(locations)
 }
 
 pub(super) fn provider_name(

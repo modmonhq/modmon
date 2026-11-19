@@ -568,6 +568,23 @@ impl McpUseCases for McpApplicationAdapter {
         json_value(report.nodes.pop().and_then(|node| node.result))
     }
 
+    async fn plan_setup(
+        &self,
+        context: &McpRequestContext,
+        step: &crate::domain::mcp::McpSetupStep,
+    ) -> Result<serde_json::Value, MmError> {
+        self.plan_setup_step(context, step).await
+    }
+
+    async fn apply_setup(
+        &self,
+        context: &McpRequestContext,
+        step: &crate::domain::mcp::McpSetupStep,
+        plan_hash: &str,
+    ) -> Result<serde_json::Value, MmError> {
+        self.apply_setup_step(context, step, plan_hash).await
+    }
+
     async fn plan_job(
         &self,
         context: &McpRequestContext,
@@ -722,6 +739,8 @@ mod jobs;
 mod plans;
 #[path = "mcp/reads.rs"]
 mod reads;
+#[path = "mcp/setup.rs"]
+mod setup;
 #[path = "mcp/values.rs"]
 mod values;
 

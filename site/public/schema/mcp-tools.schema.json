@@ -1391,6 +1391,299 @@
       "name": "mm_read"
     },
     {
+      "description": "Apply the exact setup step you just reviewed, with the same step, its token, and the confirmation apply:<plan_hash>. A step whose plan changed since is refused; plan it again.",
+      "inputSchema": {
+        "$defs": {
+          "McpScope": {
+            "additionalProperties": false,
+            "description": "Where a tool call applies. Only the environment is required; the target\nand runtime default to what the project and this device select.",
+            "properties": {
+              "environment": {
+                "type": "string"
+              },
+              "runtime": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/RuntimeKind"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "target": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "environment"
+            ],
+            "type": "object"
+          },
+          "McpSetupStep": {
+            "description": "A step that sets up this machine for an environment that runs here, as\nthe command line takes it.",
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "The shared local services `mm dev setup --services` installs:\ningress, Mailpit, and the dashboard. Trusting mm's local certificate\nauthority stays the user's (`mm dev setup`).",
+                "properties": {
+                  "kind": {
+                    "const": "dev_services",
+                    "type": "string"
+                  },
+                  "smtp_port": {
+                    "description": "Publish SMTP on this loopback port.",
+                    "format": "uint16",
+                    "maximum": 65535,
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Install a managed provider declared under `providers:` on this\nmachine, as `mm secret provider plan NAME --operation install` plans it.",
+                "properties": {
+                  "kind": {
+                    "const": "secret_provider",
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Create the project's local age store, as `mm secret init age` does.",
+                "properties": {
+                  "kind": {
+                    "const": "secret_init",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Create a configured secret with a generator that has no value yet, as\n`mm secret generate NAME` does, or every missing one without `name`\n(`--missing`). An existing value is never replaced or shown.",
+                "properties": {
+                  "kind": {
+                    "const": "secret_generate",
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "RuntimeKind": {
+            "enum": [
+              "podman-compose",
+              "docker-compose"
+            ],
+            "type": "string"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "approval_token": {
+            "type": "string"
+          },
+          "confirmation": {
+            "type": "string"
+          },
+          "plan_hash": {
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/$defs/McpScope"
+          },
+          "step": {
+            "$ref": "#/$defs/McpSetupStep",
+            "description": "The step the plan was made for."
+          }
+        },
+        "required": [
+          "scope",
+          "step",
+          "plan_hash",
+          "approval_token",
+          "confirmation"
+        ],
+        "type": "object"
+      },
+      "name": "mm_setup_apply"
+    },
+    {
+      "description": "Review a step that sets up this machine for an environment that runs here: dev_services (the shared local services `mm dev setup --services` installs: ingress, Mailpit, the dashboard), secret_provider (install a managed provider declared under providers:), secret_init (the project's local age store, `mm secret init age`), or secret_generate (create a configured secret that has a generator and no value yet, or every missing one without name; a value is never shown). Planning is read-only. Applying dev_services needs level deploy, the secret steps level deploy and secrets: true; otherwise the plan names the commands for the user. Trusting mm's local certificate authority and `mm agent trust` stay the user's.",
+      "inputSchema": {
+        "$defs": {
+          "McpScope": {
+            "additionalProperties": false,
+            "description": "Where a tool call applies. Only the environment is required; the target\nand runtime default to what the project and this device select.",
+            "properties": {
+              "environment": {
+                "type": "string"
+              },
+              "runtime": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/RuntimeKind"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "target": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "environment"
+            ],
+            "type": "object"
+          },
+          "McpSetupStep": {
+            "description": "A step that sets up this machine for an environment that runs here, as\nthe command line takes it.",
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "The shared local services `mm dev setup --services` installs:\ningress, Mailpit, and the dashboard. Trusting mm's local certificate\nauthority stays the user's (`mm dev setup`).",
+                "properties": {
+                  "kind": {
+                    "const": "dev_services",
+                    "type": "string"
+                  },
+                  "smtp_port": {
+                    "description": "Publish SMTP on this loopback port.",
+                    "format": "uint16",
+                    "maximum": 65535,
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Install a managed provider declared under `providers:` on this\nmachine, as `mm secret provider plan NAME --operation install` plans it.",
+                "properties": {
+                  "kind": {
+                    "const": "secret_provider",
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Create the project's local age store, as `mm secret init age` does.",
+                "properties": {
+                  "kind": {
+                    "const": "secret_init",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Create a configured secret with a generator that has no value yet, as\n`mm secret generate NAME` does, or every missing one without `name`\n(`--missing`). An existing value is never replaced or shown.",
+                "properties": {
+                  "kind": {
+                    "const": "secret_generate",
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "RuntimeKind": {
+            "enum": [
+              "podman-compose",
+              "docker-compose"
+            ],
+            "type": "string"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "scope": {
+            "$ref": "#/$defs/McpScope"
+          },
+          "step": {
+            "$ref": "#/$defs/McpSetupStep"
+          }
+        },
+        "required": [
+          "scope",
+          "step"
+        ],
+        "type": "object"
+      },
+      "name": "mm_setup_plan"
+    },
+    {
       "description": "Stage a secret or a per-environment variable on every host of a remote environment for its next deployment: set a value, stage its removal, or discard what is staged. Every host takes the change or none does. Running services keep their values until a deployment; mm_deploy_plan with redeploy makes the change live. The value is sealed to each host and never returned, logged or recorded. Needs secrets: true for this environment in the agents: block and for your user; otherwise the result is the command for the user to run.",
       "inputSchema": {
         "$defs": {

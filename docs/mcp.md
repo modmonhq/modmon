@@ -56,7 +56,7 @@ Each environment takes a level, and optionally `exec`:
 | `deploy`         | `operate` plus apply configuration edits, builds, and deployments, reconcile schedules, and enable or disable them |
 | `exec: true`     | run a command in any service container                                                                             |
 | `exec: [api, …]` | run a command in the listed services only                                                                          |
-| `secrets: true`  | stage secrets and variables on a remote environment's hosts, when your user may too                                |
+| `secrets: true`  | stage secrets and variables on a remote environment's hosts, when your user may too; with `deploy` on an environment on this machine, also [set up its secrets](#set-up-this-machine) |
 
 Rules:
 
@@ -263,6 +263,39 @@ running commit that makes it live, and `mm_deploy_apply` applies it.
 `mm_read` kind `secrets` lists, per host, each declared secret and variable
 with its live and staged revision and who changed it.
 
+## Set up this machine
+
+`mm_setup_plan` reviews a step that sets up this machine for an environment
+that runs here, and `mm_setup_apply` applies it with the same `step`, the
+plan's token, and the confirmation `apply:<plan_hash>`, like any other plan.
+The `step` is one of:
+
+| `step`                                         | Does what this command does                                                                 | Applying needs               |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------- |
+| `{"kind": "dev_services"}`                     | `mm dev setup --services`: installs or repairs the shared local services; `smtp_port` publishes SMTP on that loopback port | `deploy`                     |
+| `{"kind": "secret_provider", "name": "vault"}` | `mm secret provider plan vault --operation install`, then its `apply`                       | `deploy` and `secrets: true` |
+| `{"kind": "secret_init"}`                      | `mm secret init age`: creates the project's local age store                                 | `deploy` and `secrets: true` |
+| `{"kind": "secret_generate"}`                  | `mm secret generate --missing`, or `mm secret generate NAME` with `"name": "NAME"`          | `deploy` and `secrets: true` |
+
+```yaml
+agents:
+  local: { level: deploy, exec: true, secrets: true }
+```
+
+The plan of `dev_services` and `secret_provider` is the one the command line
+prints. The command line runs `secret init` and `secret generate` without a
+plan; their plan says whether the local store exists and lists the
+environment's secrets as `mm secret status` shows them, so if a secret
+changes before the apply, the apply is refused with `MM_STATE` and you plan
+again. A generated value goes into the store and is never returned.
+
+Outside the grant the plan says `applied_by: user` and lists the user's
+commands, and `mm_setup_apply` returns `MM_AGENT_HANDOFF`. On a remote
+environment the steps are refused: they act on this machine only. Trusting
+mm's local certificate authority, which changes this machine's trust store
+and can ask for `sudo` (`mm dev setup`), and `mm agent trust` stay the
+user's.
+
 ## Read what commands printed
 
 Every `mm` command run in the project on this machine is kept in its command
@@ -349,6 +382,8 @@ delete it or replace it with the form above.
 | `mm_job_apply`                                                     | `operate` or `deploy`  | Runs, cancels, or retries a job (`operate`); reconciles or toggles schedules (`deploy`)                                  |
 | `mm_config_apply`, `mm_build_apply`, `mm_deploy_apply`             | `deploy`               | Applies the plan just reviewed                                                                                           |
 | `mm_stage_value`                                                   | `secrets`              | Stages a secret or variable on a remote environment's hosts for the next deployment                                      |
+| `mm_setup_plan`                                                    | `view`                 | Reviews a step that [sets up this machine](#set-up-this-machine)                                                         |
+| `mm_setup_apply`                                                   | `deploy`, and `secrets` for a secret step | Applies the setup step just reviewed                                                                  |
 | `mm_dev_unit`                                                      | `deploy`               | Turns an [optional unit](./onboarding.md#run-part-of-a-large-project) on or off in the development environment, as `mm dev enable` and `mm dev disable` do |
 
 Only the environment is required in a tool's `scope`; the target and runtime
