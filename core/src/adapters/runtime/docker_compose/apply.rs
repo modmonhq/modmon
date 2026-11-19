@@ -212,10 +212,10 @@ impl LocalDeploymentRuntime for DockerComposeRuntime {
         }
         self.run_volume_helper(
             volume_name,
-            None,
             file_name,
             mode,
             "if [ ! -e \"/volume/$1\" ]; then umask 077; : > \"/volume/$1\"; chmod \"$2\" \"/volume/$1\"; fi",
+            &format!("creating '{file_name}' in volume '{volume_name}'"),
         )
         .await
     }
@@ -237,12 +237,17 @@ impl LocalDeploymentRuntime for DockerComposeRuntime {
                 message: format!("owned volume '{volume_name}' does not exist"),
             });
         }
-        self.run_volume_helper(
+        self.copy_volume_file(
             volume_name,
-            Some(source),
-            file_name,
-            mode,
-            "temporary=\"/volume/.mm-$1-$$\"; cp /source \"$temporary\"; chmod \"$2\" \"$temporary\"; mv -f \"$temporary\" \"/volume/$1\"",
+            source,
+            OwnedVolumeFile {
+                name: file_name,
+                ownership: VolumeOwnership {
+                    uid: 0,
+                    gid: 0,
+                    mode,
+                },
+            },
         )
         .await
     }
@@ -263,15 +268,7 @@ impl LocalDeploymentRuntime for DockerComposeRuntime {
                 message: format!("owned volume '{volume_name}' does not exist"),
             });
         }
-        self.copy_volume_file(
-            volume_name,
-            source,
-            file.name,
-            file.ownership.mode,
-            file.ownership.uid,
-            file.ownership.gid,
-        )
-        .await
+        self.copy_volume_file(volume_name, source, file).await
     }
 
     async fn remove_volume_file(
@@ -289,8 +286,14 @@ impl LocalDeploymentRuntime for DockerComposeRuntime {
                 message: format!("owned volume '{volume_name}' does not exist"),
             });
         }
-        self.run_volume_helper(volume_name, None, file_name, 0, "rm -f -- \"/volume/$1\"")
-            .await
+        self.run_volume_helper(
+            volume_name,
+            file_name,
+            0,
+            "rm -f -- \"/volume/$1\"",
+            &format!("removing '{file_name}' from volume '{volume_name}'"),
+        )
+        .await
     }
 
     async fn apply(&self, target: &RuntimeTarget) -> Result<(), MmError> {

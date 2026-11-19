@@ -219,20 +219,18 @@ impl DockerComposeRuntime {
     async fn run_volume_helper(
         &self,
         volume_name: &str,
-        source: Option<&Path>,
         file_name: &str,
         mode: u32,
         script: &str,
+        step: &str,
     ) -> Result<(), MmError> {
         validate_volume_file(file_name)?;
-        if let Some(source) = source {
-            return self
-                .copy_volume_file(volume_name, source, file_name, mode, 0, 0)
-                .await;
-        }
+        let owner = self.volume_root_owner(volume_name).await?;
         let mut args = vec!["run".to_owned(), "--rm".to_owned()];
         args.extend(Self::volume_helper_args(volume_name));
         args.extend([
+            "--user".to_owned(),
+            owner,
             VOLUME_HELPER_IMAGE.to_owned(),
             "sh".to_owned(),
             "-c".to_owned(),
@@ -241,11 +239,11 @@ impl DockerComposeRuntime {
             file_name.to_owned(),
             format!("{mode:o}"),
         ]);
-        let output = self
-            .process
-            .run(self.command_spec(args).timeout(Duration::from_secs(90)))
-            .await?;
-        self.ensure_success(output)?;
+        self.volume_step(
+            self.command_spec(args).timeout(Duration::from_secs(90)),
+            step,
+        )
+        .await?;
         Ok(())
     }
 
@@ -269,69 +267,103 @@ impl DockerComposeRuntime {
         ]
     }
 
+    async fn volume_root_owner(&self, volume_name: &str) -> Result<String, MmError> {
+        let mut args = vec!["run".to_owned(), "--rm".to_owned()];
+        args.extend(Self::volume_helper_args(volume_name));
+        args.extend([
+            VOLUME_HELPER_IMAGE.to_owned(),
+            "stat".to_owned(),
+            "-c".to_owned(),
+            "%u:%g".to_owned(),
+            "/volume".to_owned(),
+        ]);
+        let output = self
+            .volume_step(
+                self.command_spec(args).timeout(Duration::from_secs(90)),
+                &format!("reading the owner of volume '{volume_name}'"),
+            )
+            .await?;
+        numeric_owner(&output.stdout).ok_or_else(|| MmError::RuntimeResponse {
+            message: format!(
+                "Docker returned no numeric owner for the root of volume '{volume_name}'"
+            ),
+        })
+    }
+
+    async fn volume_step(
+        &self,
+        specification: CommandSpec,
+        step: &str,
+    ) -> Result<CommandOutput, MmError> {
+        let program = format!("Docker ({step})");
+        match self.process.run(specification).await {
+            Ok(output) if output.success() => Ok(output),
+            Ok(output) => Err(MmError::ProcessFailed {
+                program,
+                code: output.code,
+                stderr: output.stderr.trim().to_owned(),
+            }),
+            Err(MmError::ProcessTimeout { seconds, .. }) => {
+                Err(MmError::ProcessTimeout { program, seconds })
+            }
+            Err(MmError::ProcessSpawn { source, .. }) => {
+                Err(MmError::ProcessSpawn { program, source })
+            }
+            Err(error) => Err(error),
+        }
+    }
+
     async fn copy_volume_file(
         &self,
         volume_name: &str,
         source: &Path,
-        file_name: &str,
-        mode: u32,
-        uid: u32,
-        gid: u32,
+        file: OwnedVolumeFile<'_>,
     ) -> Result<(), MmError> {
         let source = canonical_volume_source(source)?;
         let staging_name = format!(
             ".mm-source-{}",
-            &blake3::hash(file_name.as_bytes()).to_hex()[..16]
+            &blake3::hash(file.name.as_bytes()).to_hex()[..16]
         );
+        let archive = volume_file_archive(&source, &staging_name, file)?;
+        let owner = self.volume_root_owner(volume_name).await?;
         let mut create = vec!["create".to_owned()];
         create.extend(Self::volume_helper_args(volume_name));
         create.extend([
-            "--cap-add".to_owned(),
-            "CHOWN".to_owned(),
-            "--cap-add".to_owned(),
-            "FOWNER".to_owned(),
-        ]);
-        create.extend([
+            "--user".to_owned(),
+            owner,
             VOLUME_HELPER_IMAGE.to_owned(),
             "sh".to_owned(),
             "-c".to_owned(),
-            "set -eu; trap 'rm -f -- \"/volume/$1\"' EXIT; chown \"$4:$5\" \"/volume/$1\"; chmod \"$2\" \"/volume/$1\"; mv -f \"/volume/$1\" \"/volume/$3\"".to_owned(),
+            "set -eu; trap 'rm -f -- \"/volume/$1\"' EXIT; mv -f -T \"/volume/$1\" \"/volume/$2\"".to_owned(),
             "mm-volume-helper".to_owned(),
-            staging_name.clone(),
-            format!("{mode:o}"),
-            file_name.to_owned(),
-            uid.to_string(),
-            gid.to_string(),
+            staging_name,
+            file.name.to_owned(),
         ]);
         let created = self
-            .process
-            .run(self.command_spec(create).timeout(Duration::from_secs(90)))
+            .volume_step(
+                self.command_spec(create).timeout(Duration::from_secs(90)),
+                &format!("creating the helper for volume '{volume_name}'"),
+            )
             .await?;
-        let created = self.ensure_success(created)?;
-        let container_id = created.stdout.trim();
-        if container_id.is_empty()
-            || container_id.len() > 64
-            || !container_id
-                .chars()
-                .all(|character| character.is_ascii_hexdigit())
-        {
-            return Err(MmError::RuntimeResponse {
-                message: "Docker helper create returned an invalid container ID".to_owned(),
-            });
-        }
+        let container_id = helper_container_id(&created.stdout, volume_name)?;
         let copied = self
-            .command(vec![
-                "cp".to_owned(),
-                source.display().to_string(),
-                format!("{container_id}:/volume/{staging_name}"),
-            ])
+            .volume_step(
+                self.command_spec(vec![
+                    "cp".to_owned(),
+                    "-".to_owned(),
+                    format!("{container_id}:/volume"),
+                ])
+                .stdin_file(archive)
+                .timeout(Duration::from_secs(30)),
+                &format!("copying '{}' into volume '{volume_name}'", file.name),
+            )
             .await;
-        if let Err(error) = copied.and_then(|output| self.ensure_success(output).map(|_| ())) {
-            let cleanup = self.remove_volume_helper(container_id).await;
+        if let Err(error) = copied {
+            let cleanup = self.remove_volume_helper(volume_name, &container_id).await;
             return Err(match cleanup {
                 Ok(()) => error,
                 Err(cleanup) => MmError::operation_failure(
-                    container_id,
+                    &container_id,
                     crate::domain::error::MutationStatus::NotStarted,
                     error,
                     vec![cleanup.to_string()],
@@ -339,33 +371,114 @@ impl DockerComposeRuntime {
                 ),
             });
         }
-        let started = self
-            .process
-            .run(
+        let moved = self
+            .volume_step(
                 self.command_spec(vec![
                     "start".to_owned(),
                     "--attach".to_owned(),
-                    container_id.to_owned(),
+                    container_id.clone(),
                 ])
                 .timeout(Duration::from_secs(90)),
+                &format!("moving '{}' into place in volume '{volume_name}'", file.name),
             )
             .await;
-        let removed = self.remove_volume_helper(container_id).await;
-        let started = started.and_then(|output| self.ensure_success(output).map(|_| ()));
-        started?;
-        removed?;
-        Ok(())
+        let removed = self.remove_volume_helper(volume_name, &container_id).await;
+        moved?;
+        removed
     }
 
-    async fn remove_volume_helper(&self, container_id: &str) -> Result<(), MmError> {
-        self.command(vec![
-            "rm".to_owned(),
-            "--force".to_owned(),
-            container_id.to_owned(),
-        ])
+    async fn remove_volume_helper(
+        &self,
+        volume_name: &str,
+        container_id: &str,
+    ) -> Result<(), MmError> {
+        self.volume_step(
+            self.command_spec(vec![
+                "rm".to_owned(),
+                "--force".to_owned(),
+                container_id.to_owned(),
+            ])
+            .timeout(Duration::from_secs(30)),
+            &format!("removing the helper for volume '{volume_name}'"),
+        )
         .await
-        .and_then(|output| self.ensure_success(output).map(|_| ()))
+        .map(|_| ())
     }
+}
+
+fn numeric_owner(stdout: &str) -> Option<String> {
+    let (uid, gid) = stdout.trim().split_once(':')?;
+    let uid = uid.parse::<u32>().ok()?;
+    let gid = gid.parse::<u32>().ok()?;
+    Some(format!("{uid}:{gid}"))
+}
+
+fn helper_container_id(stdout: &str, volume_name: &str) -> Result<String, MmError> {
+    let container_id = stdout.trim();
+    if container_id.is_empty()
+        || container_id.len() > 64
+        || !container_id
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
+    {
+        return Err(MmError::RuntimeResponse {
+            message: format!(
+                "Docker returned an invalid container ID for the helper of volume '{volume_name}'"
+            ),
+        });
+    }
+    Ok(container_id.to_owned())
+}
+
+/// `source` as the tar entry `entry` with the file's owner and mode, for `docker cp -`.
+fn volume_file_archive(
+    source: &Path,
+    entry: &str,
+    file: OwnedVolumeFile<'_>,
+) -> Result<std::fs::File, MmError> {
+    use std::io::{Read, Seek};
+
+    if file.ownership.mode & !0o777 != 0 {
+        return Err(MmError::Security {
+            message: format!(
+                "invalid Unix file mode {:#o} for volume file '{}'",
+                file.ownership.mode, file.name
+            ),
+        });
+    }
+    let failed = |context: &str| {
+        let context = format!("{context} {}", source.display());
+        move |source| MmError::Io { context, source }
+    };
+    let mut contents = std::fs::File::open(source).map_err(failed("opening volume file source"))?;
+    let metadata = contents
+        .metadata()
+        .map_err(failed("reading volume file source"))?;
+    let mut header = tar::Header::new_gnu();
+    header.set_entry_type(tar::EntryType::Regular);
+    header.set_size(metadata.len());
+    header.set_mode(file.ownership.mode);
+    header.set_uid(u64::from(file.ownership.uid));
+    header.set_gid(u64::from(file.ownership.gid));
+    header.set_mtime(
+        metadata
+            .modified()
+            .ok()
+            .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
+            .map_or(0, |since| since.as_secs()),
+    );
+    let staged = tempfile::tempfile().map_err(failed("staging volume file source"))?;
+    let mut archive = tar::Builder::new(staged);
+    archive
+        .append_data(&mut header, entry, (&mut contents).take(metadata.len()))
+        .map_err(failed("archiving volume file source"))?;
+    let mut staged = archive
+        .into_inner()
+        .map_err(failed("archiving volume file source"))?;
+    staged
+        .rewind()
+        .map_err(failed("archiving volume file source"))?;
+    Ok(staged)
 }
 
 fn canonical_volume_source(source: &Path) -> Result<std::path::PathBuf, MmError> {
