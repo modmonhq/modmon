@@ -12,6 +12,8 @@ mod build_manager;
 mod dashboard_query;
 #[path = "units/drained_restart.rs"]
 mod drained_restart;
+#[path = "units/environment_redaction.rs"]
+mod environment_redaction;
 #[path = "units/job_scheduler.rs"]
 mod job_scheduler;
 #[path = "units/local_ca.rs"]
