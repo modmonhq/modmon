@@ -1,0 +1,81 @@
+{
+  "request_id": "00000000-0000-4000-8000-000000000001",
+  "result": {
+    "result": "access_applied",
+    "value": {
+      "deploy-from-after": [
+        "web"
+      ],
+      "deploy-from-before": [
+        "web"
+      ],
+      "entries": [
+        {
+          "after": {
+            "exec": true,
+            "forward": true,
+            "level": "view",
+            "secrets": true
+          },
+          "before": {
+            "exec": true,
+            "forward": true,
+            "level": "view",
+            "secrets": true
+          },
+          "keys-added": [
+            "web"
+          ],
+          "keys-removed": [
+            "web"
+          ],
+          "user": "web"
+        }
+      ],
+      "environment": "web",
+      "previous-commit": "web",
+      "record": {
+        "commit": "web",
+        "deploy-from": [
+          "web"
+        ],
+        "environment": "web",
+        "project-id": "00000000-0000-4000-8000-000000000001",
+        "reconciled-at-unix-ms": 1,
+        "reconciled-by": "web",
+        "schema-version": 1,
+        "users": {
+          "web": {
+            "access": {
+              "exec": true,
+              "forward": true,
+              "level": "view",
+              "secrets": true
+            },
+            "agent": {
+              "access": {
+                "level": "view"
+              },
+              "keys": [
+                {
+                  "fingerprint": "web",
+                  "public-key": "web"
+                }
+              ]
+            },
+            "keys": [
+              {
+                "expires-at-unix-ms": 1,
+                "fingerprint": "web",
+                "public-key": "web"
+              }
+            ],
+            "machine": true
+          }
+        }
+      }
+    }
+  },
+  "type": "result",
+  "version": 19
+}

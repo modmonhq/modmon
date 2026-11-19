@@ -1,0 +1,12 @@
+{
+  "request_id": "00000000-0000-4000-8000-000000000001",
+  "result": {
+    "result": "store_restored",
+    "value": {
+      "node": "web",
+      "sealed": true
+    }
+  },
+  "type": "result",
+  "version": 19
+}

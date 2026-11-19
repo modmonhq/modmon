@@ -1,0 +1,44 @@
+{
+  "request_id": "00000000-0000-4000-8000-000000000001",
+  "result": {
+    "result": "networks",
+    "value": {
+      "drift": [
+        {
+          "detail": "web",
+          "kind": "firewall"
+        }
+      ],
+      "host-ranges": [
+        {
+          "interface": "web",
+          "kind": "address",
+          "range": "10.0.0.0/24"
+        }
+      ],
+      "node": "web",
+      "stored": {
+        "mesh-interface": "web",
+        "mtu": 1,
+        "node": "web",
+        "space": "10.0.0.0/24",
+        "table": {
+          "networks": {
+            "web": {
+              "block": "10.0.0.0/24",
+              "internal": true,
+              "nodes": {
+                "web": {
+                  "network": "web",
+                  "slice": "10.0.0.0/24"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "type": "result",
+  "version": 19
+}

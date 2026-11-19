@@ -1,0 +1,34 @@
+{
+  "request_id": "00000000-0000-4000-8000-000000000001",
+  "result": {
+    "result": "storage_status",
+    "value": {
+      "address": "10.0.0.1",
+      "exported": true,
+      "free_bytes": 1,
+      "mounted": [
+        {
+          "stack": "web",
+          "volume": "web"
+        }
+      ],
+      "node": "web",
+      "problem": "web",
+      "reach_ms": 1,
+      "reachable": true,
+      "serves": true,
+      "total_bytes": 1,
+      "volumes": [
+        {
+          "bytes": 1,
+          "files": 1,
+          "path": "web",
+          "stack": "web",
+          "volume": "web"
+        }
+      ]
+    }
+  },
+  "type": "result",
+  "version": 19
+}

@@ -1,0 +1,23 @@
+{
+  "request_id": "00000000-0000-4000-8000-000000000001",
+  "result": {
+    "result": "identity",
+    "value": {
+      "access": {
+        "exec": true,
+        "forward": true,
+        "level": "view",
+        "secrets": true
+      },
+      "access_commit": "web",
+      "break_glass": true,
+      "deployed_commit": "web",
+      "environment": "web",
+      "key_fingerprint": "web",
+      "principal": "web",
+      "principal_id": "00000000-0000-4000-8000-000000000001"
+    }
+  },
+  "type": "result",
+  "version": 19
+}

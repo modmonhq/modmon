@@ -1,0 +1,269 @@
+{
+  "request_id": "00000000-0000-4000-8000-000000000001",
+  "result": {
+    "result": "status",
+    "value": {
+      "config_hash": "web",
+      "deployment": {
+        "build_receipt": "web",
+        "commit": "web",
+        "deployed_at_unix_ms": 1,
+        "deployed_by": "web",
+        "plan_hash": "web"
+      },
+      "drift": [
+        "web"
+      ],
+      "environment": "web",
+      "ingress": [
+        {
+          "certificate_reference": {
+            "kind": "none"
+          },
+          "module": "web",
+          "ownership": {
+            "environment": "web",
+            "kind": "project",
+            "project_id": "00000000-0000-4000-8000-000000000001",
+            "service": "web",
+            "stack": "web"
+          },
+          "provenance": "explicit_config",
+          "reason": "web",
+          "selected_port": 1,
+          "service": "web",
+          "service_slug": "web",
+          "stack": "web",
+          "tls": true,
+          "url": "web",
+          "warning": "web"
+        }
+      ],
+      "names": {
+        "names": [
+          {
+            "addresses": [
+              {
+                "address": "10.0.0.1",
+                "health": "healthy",
+                "node": "web",
+                "restart-limit": true
+              }
+            ],
+            "fail-open": true,
+            "lookups": [
+              {
+                "addresses": [],
+                "local": true,
+                "node": "web"
+              }
+            ],
+            "name": "web",
+            "network": "web"
+          }
+        ],
+        "networks": [
+          "web"
+        ],
+        "problems": [
+          {
+            "detail": "web",
+            "node": "web"
+          }
+        ]
+      },
+      "network_drift": [
+        "web"
+      ],
+      "nodes": [
+        {
+          "deployment": {
+            "build_receipt": "web",
+            "commit": "web",
+            "deployed_at_unix_ms": 1,
+            "deployed_by": "web",
+            "plan_hash": "web"
+          },
+          "drift": [
+            "web"
+          ],
+          "name": "web",
+          "network_drift": [
+            "web"
+          ],
+          "problem": "web",
+          "reachable": true,
+          "tunnel": {
+            "connections": 1,
+            "public-ports": true,
+            "token": "web"
+          }
+        }
+      ],
+      "optional": [
+        {
+          "enabled": true,
+          "jobs": [
+            "web"
+          ],
+          "kind": "module",
+          "name": "web",
+          "on": true,
+          "services": [
+            "web"
+          ],
+          "this_run": true
+        }
+      ],
+      "project_name": "web",
+      "recent_operations": [
+        {
+          "environment": "web",
+          "error_code": "web",
+          "finished_at_unix_ms": 1,
+          "id": "00000000-0000-4000-8000-000000000001",
+          "kind": "build",
+          "requested_at_unix_ms": 1,
+          "state": "planned"
+        }
+      ],
+      "runtime": {
+        "available": true,
+        "capabilities": [
+          "render_compose"
+        ],
+        "compose_provider": {
+          "executable": "web",
+          "name": "web",
+          "version": "web"
+        },
+        "diagnostics": [
+          {
+            "code": "web",
+            "column": 1,
+            "help": "web",
+            "line": 1,
+            "message": "web",
+            "path": "web",
+            "severity": "info"
+          }
+        ],
+        "engine_version": "web",
+        "kind": "podman-compose",
+        "rootless": true,
+        "socket_path": "web"
+      },
+      "runtime_kind": "podman-compose",
+      "runtime_source": "web",
+      "stacks": [
+        {
+          "artifact_hash": "web",
+          "compose_project_name": "web",
+          "name": "web",
+          "owned_resources": [
+            {
+              "kind": "network",
+              "logical_name": "web"
+            }
+          ],
+          "rendered_config_hash": "web",
+          "services": [
+            {
+              "containers": [
+                {
+                  "health": null,
+                  "id": "web",
+                  "image": "web",
+                  "labels": {},
+                  "name": "web",
+                  "service": "web",
+                  "state": "web",
+                  "status": "web"
+                }
+              ],
+              "created_at": "web",
+              "desired_count": 1,
+              "diagnostic_code": "web",
+              "error": "web",
+              "exit_code": 1,
+              "finished_at": "web",
+              "healthy_count": 1,
+              "image": "web",
+              "module": "web",
+              "name": "web",
+              "nodes": [
+                {
+                  "desired_count": 1,
+                  "healthy_count": 1,
+                  "node": "web",
+                  "running_count": 1,
+                  "starting": false,
+                  "state": "missing"
+                }
+              ],
+              "restart_count": 1,
+              "restarts": {},
+              "revision": "web",
+              "running_count": 1,
+              "scale": {
+                "autoscale": true,
+                "decider": "web",
+                "generation": 1,
+                "holding": "web",
+                "last-change": {
+                  "at-unix-ms": 1,
+                  "from": 1,
+                  "reason": "web",
+                  "to": 1
+                },
+                "max": 1,
+                "min": 1,
+                "reading": {
+                  "age-seconds": 1,
+                  "metric": "cpu",
+                  "sampled-seconds": 1,
+                  "step-seconds": 1,
+                  "window-seconds": 1
+                },
+                "running": 1,
+                "wanted": 1
+              },
+              "stack": "web",
+              "started_at": "web",
+              "starting": true,
+              "state": "missing"
+            }
+          ]
+        }
+      ],
+      "target": "web",
+      "target_source": "web",
+      "tunnel": {
+        "connections": 1,
+        "public-ports": true,
+        "token": "web"
+      },
+      "validation": {
+        "diagnostics": [
+          {
+            "code": "web",
+            "column": 1,
+            "help": "web",
+            "line": 1,
+            "message": "web",
+            "path": "web",
+            "severity": "info"
+          }
+        ]
+      },
+      "workspace": {
+        "config_path": "web",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "project_id": "00000000-0000-4000-8000-000000000001",
+        "root": "web"
+      }
+    }
+  },
+  "type": "result",
+  "version": 19
+}

@@ -1,0 +1,147 @@
+{
+  "deadline_unix_ms": 1,
+  "method": {
+    "method": "plan_deployment",
+    "payload": {
+      "commit": "web",
+      "receipt": {
+        "plan": {
+          "config_hash": "web",
+          "engine": "docker",
+          "environment": "web",
+          "plan_hash": "web",
+          "platforms": [
+            "web"
+          ],
+          "project_id": "00000000-0000-4000-8000-000000000001",
+          "publish": true,
+          "schema": "web",
+          "source": {
+            "branch": "web",
+            "commit": "web",
+            "default_branch": true,
+            "dirty": true,
+            "repository_tags": [
+              "web"
+            ],
+            "tags_at_head": [
+              "web"
+            ],
+            "tags_complete": true
+          },
+          "tag_strategy": "auto",
+          "units": [
+            {
+              "args": {
+                "web": "web"
+              },
+              "context": "web",
+              "context_hash": "web",
+              "credential_secret_ids": [
+                "web"
+              ],
+              "dependencies": [
+                {
+                  "dependent_module": "web",
+                  "producer_module": "web",
+                  "reference": {
+                    "arg": "web",
+                    "instruction_index": 1,
+                    "kind": "build-argument",
+                    "source_line": 1
+                  },
+                  "stage": null
+                }
+              ],
+              "dockerfile": "web",
+              "dockerfile_hash": "web",
+              "extra_inputs": [
+                {
+                  "digest": "web",
+                  "path": "web"
+                }
+              ],
+              "image": "web",
+              "input_fingerprint": "web",
+              "module": "web",
+              "reuse_policy": "allowed",
+              "secret_ids": [
+                "web"
+              ],
+              "upstream_node_ids": [
+                "web"
+              ],
+              "variants": [
+                {
+                  "tag_suffix": "web",
+                  "tags": [],
+                  "target": null
+                }
+              ],
+              "version_embedded": true
+            }
+          ]
+        },
+        "receipt_hash": "web",
+        "result": {
+          "dependencies": [
+            {
+              "dependent_target": "web",
+              "digest": "web",
+              "edge": {
+                "dependent_module": "web",
+                "producer_module": "web",
+                "reference": {
+                  "arg": "web",
+                  "instruction_index": 1,
+                  "kind": "build-argument",
+                  "source_line": 1
+                },
+                "stage": "web"
+              },
+              "immutable_reference": "web"
+            }
+          ],
+          "images": [
+            {
+              "archive": "web",
+              "digest": "web",
+              "execution_fingerprint": "web",
+              "module": "web",
+              "repository": "web",
+              "reused": true,
+              "secret_revisions": {
+                "web": "web"
+              },
+              "tags": [
+                "web"
+              ],
+              "target": "web"
+            }
+          ],
+          "operation_id": "00000000-0000-4000-8000-000000000001",
+          "plan_hash": "web"
+        },
+        "schema": "web"
+      },
+      "release": {
+        "inputs": {
+          "web": "web"
+        },
+        "name": "web"
+      }
+    }
+  },
+  "operation_nonce": "00000000-0000-4000-8000-000000000001",
+  "request_id": "00000000-0000-4000-8000-000000000001",
+  "scope": {
+    "environment": "web",
+    "node": "web",
+    "project_id": "00000000-0000-4000-8000-000000000001",
+    "runtime": "podman-compose",
+    "target": "web",
+    "target_fingerprint": "web"
+  },
+  "type": "request",
+  "version": 19
+}

@@ -1,0 +1,19 @@
+{
+  "request_id": "00000000-0000-4000-8000-000000000001",
+  "result": {
+    "result": "volume_delete_plan",
+    "value": {
+      "bytes": 1,
+      "counted": true,
+      "declared": true,
+      "files": 1,
+      "node": "web",
+      "path": "web",
+      "plan_hash": "web",
+      "stack": "web",
+      "volume": "web"
+    }
+  },
+  "type": "result",
+  "version": 19
+}

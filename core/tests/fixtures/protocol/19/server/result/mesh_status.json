@@ -1,0 +1,35 @@
+{
+  "request_id": "00000000-0000-4000-8000-000000000001",
+  "result": {
+    "result": "mesh_status",
+    "value": {
+      "address": "10.0.0.1",
+      "guard_drift": [
+        "web"
+      ],
+      "interface": "web",
+      "mtu": 1,
+      "node": "web",
+      "peers": [
+        {
+          "allowed_ips": [
+            "web"
+          ],
+          "configured_endpoint": "web",
+          "endpoint": "web",
+          "handshake_age_seconds": 1,
+          "name": "web",
+          "on_interface": true,
+          "public_key": "web",
+          "received_bytes": 1,
+          "sent_bytes": 1
+        }
+      ],
+      "port": 1,
+      "public_key": "web",
+      "up": true
+    }
+  },
+  "type": "result",
+  "version": 19
+}

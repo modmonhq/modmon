@@ -1,0 +1,1016 @@
+{
+  "request_id": "00000000-0000-4000-8000-000000000001",
+  "result": {
+    "result": "deployment_plan",
+    "value": {
+      "access": {
+        "deploy-from-after": [
+          "web"
+        ],
+        "deploy-from-before": [
+          "web"
+        ],
+        "entries": [
+          {
+            "after": {
+              "exec": true,
+              "forward": true,
+              "level": "view",
+              "secrets": true
+            },
+            "before": {
+              "exec": true,
+              "forward": true,
+              "level": "view",
+              "secrets": true
+            },
+            "keys-added": [
+              "web"
+            ],
+            "keys-removed": [
+              "web"
+            ],
+            "user": "web"
+          }
+        ],
+        "environment": "web",
+        "previous-commit": "web",
+        "record": {
+          "commit": "web",
+          "deploy-from": [
+            "web"
+          ],
+          "environment": "web",
+          "project-id": "00000000-0000-4000-8000-000000000001",
+          "reconciled-at-unix-ms": 1,
+          "reconciled-by": "web",
+          "schema-version": 1,
+          "users": {
+            "web": {
+              "access": {
+                "level": "view"
+              },
+              "agent": {
+                "access": {
+                  "level": "view"
+                },
+                "keys": []
+              },
+              "keys": [
+                {
+                  "fingerprint": "web",
+                  "public-key": "web"
+                }
+              ],
+              "machine": true
+            }
+          }
+        }
+      },
+      "binding": {
+        "access_change_hash": "web",
+        "authorization_hash": "web",
+        "authorization_revision": 1,
+        "bundle_hash": "web",
+        "commit": "web",
+        "daemon_fingerprint": "web",
+        "daemon_version": "web",
+        "deployment_plan_hash": "web",
+        "environment": "web",
+        "expires_at_unix_ms": 1,
+        "kind": "deployment",
+        "node": "web",
+        "plan_hash": "web",
+        "plan_nonce": "00000000-0000-4000-8000-000000000001",
+        "principal_id": "00000000-0000-4000-8000-000000000001",
+        "project_id": "00000000-0000-4000-8000-000000000001",
+        "protocol_version": 1,
+        "runtime": "podman-compose",
+        "target": "web",
+        "target_fingerprint": "web"
+      },
+      "once": {
+        "web": {
+          "at_unix_ms": 1,
+          "node": "web",
+          "plan_hash": "web",
+          "run": "00000000-0000-4000-8000-000000000001"
+        }
+      },
+      "plan": {
+        "build_receipt": {
+          "commit": "web",
+          "environment": "web",
+          "receipt_hash": "web"
+        },
+        "complete_route_claims": [
+          {
+            "artifact_hash": "web",
+            "backend_alias": "web",
+            "certificate_reference": {
+              "kind": "none"
+            },
+            "environment": "web",
+            "host": "web",
+            "middlewares": [
+              "web"
+            ],
+            "ownership": {
+              "environment": "web",
+              "kind": "project",
+              "project_id": "00000000-0000-4000-8000-000000000001",
+              "service": "web",
+              "stack": "web"
+            },
+            "path_prefix": "web",
+            "port": 1,
+            "priority": 1,
+            "project_id": "00000000-0000-4000-8000-000000000001",
+            "project_name": "web",
+            "provenance": "explicit_config",
+            "route": "web",
+            "router_name": "web",
+            "service": "web",
+            "stack": "web",
+            "target": "web",
+            "target_id": "00000000-0000-4000-8000-000000000001",
+            "tls": true
+          }
+        ],
+        "config_files": [
+          {
+            "previous": "web",
+            "service": "web",
+            "source": "web",
+            "stack": "web",
+            "target": "web",
+            "template": true,
+            "version": "web"
+          }
+        ],
+        "desired_middlewares": {
+          "web": {
+            "replacePathRegex": {
+              "regex": "web",
+              "replacement": "web"
+            }
+          }
+        },
+        "desired_route_claims": [
+          {
+            "artifact_hash": "web",
+            "backend_alias": "web",
+            "certificate_reference": {
+              "kind": "none"
+            },
+            "environment": "web",
+            "host": "web",
+            "middlewares": [
+              "web"
+            ],
+            "ownership": {
+              "environment": "web",
+              "kind": "project",
+              "project_id": "00000000-0000-4000-8000-000000000001",
+              "service": "web",
+              "stack": "web"
+            },
+            "path_prefix": "web",
+            "port": 1,
+            "priority": 1,
+            "project_id": "00000000-0000-4000-8000-000000000001",
+            "project_name": "web",
+            "provenance": "explicit_config",
+            "route": "web",
+            "router_name": "web",
+            "service": "web",
+            "stack": "web",
+            "target": "web",
+            "target_id": "00000000-0000-4000-8000-000000000001",
+            "tls": true
+          }
+        ],
+        "dynamic_config": {
+          "manifest": {
+            "claim_count": 1,
+            "digest": "web",
+            "router_count": 1,
+            "service_count": 1,
+            "target_id": "00000000-0000-4000-8000-000000000001"
+          },
+          "path": "web",
+          "root": "web"
+        },
+        "environment": "web",
+        "environment_bundle_root": "web",
+        "environment_review": {
+          "delivery": {
+            "mode": "direct",
+            "provenance": "environment-override"
+          },
+          "input_hash": "web",
+          "secret_revisions": {
+            "web": "web"
+          },
+          "services": [
+            {
+              "module": "web",
+              "secret_count": 1,
+              "service": "web",
+              "stack": "web",
+              "variable_count": 1
+            }
+          ]
+        },
+        "excluded_services": [
+          {
+            "module": "web",
+            "off_locally": {
+              "development": "on",
+              "environment": "web",
+              "unit": "web"
+            },
+            "service": "web",
+            "stack": "web"
+          }
+        ],
+        "expected_previous_plan_hash": "web",
+        "expected_route_config_digest": "web",
+        "expected_route_generation": 1,
+        "ingress": [
+          {
+            "certificate_reference": {
+              "kind": "none"
+            },
+            "module": "web",
+            "ownership": {
+              "environment": "web",
+              "kind": "project",
+              "project_id": "00000000-0000-4000-8000-000000000001",
+              "service": "web",
+              "stack": "web"
+            },
+            "provenance": "explicit_config",
+            "reason": "web",
+            "selected_port": 1,
+            "service": "web",
+            "service_slug": "web",
+            "stack": "web",
+            "tls": true,
+            "url": "web",
+            "warning": "web"
+          }
+        ],
+        "local_build": {
+          "engine": "docker",
+          "modules": [
+            {
+              "module": "web",
+              "reason": "not-built"
+            }
+          ],
+          "plan_hash": "web"
+        },
+        "local_certificates": [
+          {
+            "expires_at_unix": 1,
+            "fingerprint": "web",
+            "generation": 1,
+            "hosts": [
+              "web"
+            ]
+          }
+        ],
+        "networks": [
+          {
+            "internal": true,
+            "logical_name": "web",
+            "members": [
+              {
+                "service": "web",
+                "stack": "web"
+              }
+            ],
+            "physical_name": "web"
+          }
+        ],
+        "node": {
+          "dropped_dependencies": [
+            {
+              "depends_on": "web",
+              "nodes": [
+                "web"
+              ],
+              "service": "web",
+              "stack": "web"
+            }
+          ],
+          "health": [
+            {
+              "restart": {
+                "after-ms": 1,
+                "max-restarts": 1,
+                "window-ms": 1
+              },
+              "service": "web",
+              "stack": "web"
+            }
+          ],
+          "ingress": {
+            "certificate": {
+              "certificate": "web",
+              "key": "web"
+            },
+            "tunnel": {
+              "id": "web",
+              "image": "web",
+              "token": "web"
+            }
+          },
+          "leaving": [
+            {
+              "compose_project_name": "web",
+              "moves_to": [
+                "web"
+              ],
+              "service": "web",
+              "stack": "web"
+            }
+          ],
+          "networks": [
+            {
+              "internal": true,
+              "key": "web",
+              "name": "web",
+              "network": "web",
+              "observed": {
+                "addresses": "web",
+                "current": true
+              },
+              "services": [
+                "web"
+              ]
+            }
+          ],
+          "node": "web",
+          "restart_defaults": [
+            {
+              "service": "web",
+              "stack": "web"
+            }
+          ],
+          "scaled": [
+            {
+              "autoscale": {
+                "down": {
+                  "hold-seconds": 1,
+                  "threshold": 1.5
+                },
+                "initial": 1,
+                "max": 1,
+                "metric": "cpu",
+                "min": 1,
+                "up": {
+                  "hold-seconds": 1,
+                  "threshold": 1.5
+                }
+              },
+              "compose-project": "web",
+              "drain-ms": 1,
+              "key": "web",
+              "nodes": [
+                "web"
+              ],
+              "now": 1,
+              "replicas": 1,
+              "service": "web",
+              "stack": "web"
+            }
+          ],
+          "services": [
+            {
+              "service": "web",
+              "stack": "web"
+            }
+          ],
+          "shared_volumes": [
+            {
+              "directory": "web",
+              "engine_volume": "web",
+              "local": true,
+              "services": [
+                "web"
+              ],
+              "stack": "web",
+              "storage_node": "web",
+              "volume": "web"
+            }
+          ],
+          "starting": [
+            {
+              "service": "web",
+              "stack": "web"
+            }
+          ]
+        },
+        "plan_hash": "web",
+        "preserved_volumes": [
+          {
+            "container_path": "web",
+            "logical_name": "web",
+            "module": "web",
+            "physical_name": "web",
+            "resource": "web"
+          }
+        ],
+        "previous_dynamic_config": {
+          "manifest": {
+            "claim_count": 1,
+            "digest": "web",
+            "router_count": 1,
+            "service_count": 1,
+            "target_id": "00000000-0000-4000-8000-000000000001"
+          },
+          "path": "web",
+          "root": "web"
+        },
+        "previous_owner_claims": [
+          {
+            "artifact_hash": "web",
+            "backend_alias": "web",
+            "certificate_reference": {
+              "kind": "none"
+            },
+            "environment": "web",
+            "host": "web",
+            "middlewares": [
+              "web"
+            ],
+            "ownership": {
+              "environment": "web",
+              "kind": "project",
+              "project_id": "00000000-0000-4000-8000-000000000001",
+              "service": "web",
+              "stack": "web"
+            },
+            "path_prefix": "web",
+            "port": 1,
+            "priority": 1,
+            "project_id": "00000000-0000-4000-8000-000000000001",
+            "project_name": "web",
+            "provenance": "explicit_config",
+            "route": "web",
+            "router_name": "web",
+            "service": "web",
+            "stack": "web",
+            "target": "web",
+            "target_id": "00000000-0000-4000-8000-000000000001",
+            "tls": true
+          }
+        ],
+        "project_id": "00000000-0000-4000-8000-000000000001",
+        "project_name": "web",
+        "registries": {
+          "web": {
+            "password": {
+              "secret": "web"
+            },
+            "username": "web"
+          }
+        },
+        "release": {
+          "commit": "web",
+          "images": {
+            "web": "web"
+          },
+          "inputs": {
+            "web": "web"
+          },
+          "name": "web"
+        },
+        "removed_ingress": {
+          "artifact": {
+            "compose_path": "web",
+            "manifest": {
+              "acme_email": "web",
+              "acme_file_mode": "web",
+              "acme_storage_path": "web",
+              "acme_volume_name": "web",
+              "artifact_hash": "web",
+              "certificate_resolver": "web",
+              "compose_digest": "web",
+              "compose_project_name": "web",
+              "dynamic_config_directory": "web",
+              "dynamic_config_volume_name": "web",
+              "image": "web",
+              "macos_host": {
+                "docker_executable": "web",
+                "docker_host": "web",
+                "haproxy_executable": "web",
+                "home": "web",
+                "network_gateway": "web",
+                "network_subnet": "web"
+              },
+              "network_name": "web",
+              "provider": "web",
+              "proxy_http_port": 1,
+              "proxy_https_port": 1,
+              "proxy_verify_port": 1,
+              "public_http_port": 1,
+              "public_https_port": 1,
+              "steps": [],
+              "support_files": [],
+              "target_compose_path": "web",
+              "target_fingerprint": "web",
+              "target_id": "00000000-0000-4000-8000-000000000001",
+              "target_name": "web"
+            },
+            "manifest_path": "web",
+            "root": "web",
+            "support_paths": [
+              "web"
+            ]
+          },
+          "plan_hash": "web",
+          "target_id": "00000000-0000-4000-8000-000000000001",
+          "target_name": "web"
+        },
+        "removed_preserved_volumes": [
+          {
+            "container_path": "web",
+            "logical_name": "web",
+            "module": "web",
+            "physical_name": "web",
+            "resource": "web"
+          }
+        ],
+        "removed_stacks": [
+          {
+            "artifact": {
+              "compose_files": [
+                "web"
+              ],
+              "generated_overlay_path": "web",
+              "manifest": {
+                "artifact_hash": "web",
+                "compose_project_name": "web",
+                "environment": "web",
+                "generated_overlay_digest": "web",
+                "project_id": "00000000-0000-4000-8000-000000000001",
+                "project_name": "web",
+                "routes": [],
+                "services": [],
+                "stack": "web",
+                "target": "web",
+                "target_id": "00000000-0000-4000-8000-000000000001",
+                "user_files": []
+              },
+              "manifest_path": "web",
+              "root": "web"
+            },
+            "artifact_hash": "web",
+            "compose_project_name": "web",
+            "project_directory": "web",
+            "stack": "web"
+          }
+        ],
+        "rollout": {
+          "ahead": [
+            {
+              "service": "web",
+              "stack": "web"
+            }
+          ],
+          "convergence_timeout_seconds": 1,
+          "drains": [
+            {
+              "milliseconds": 1,
+              "service": "web",
+              "stack": "web"
+            }
+          ],
+          "jobs": [
+            {
+              "job": "web",
+              "run": "before-deploy",
+              "service": "web",
+              "stack": "web",
+              "timeout_seconds": 1
+            }
+          ],
+          "services": [
+            {
+              "failure": "rollback",
+              "order": "stop-first",
+              "parallelism": 1,
+              "service": "web",
+              "stack": "web"
+            }
+          ],
+          "stack_order": [
+            "web"
+          ]
+        },
+        "route_diff": {
+          "added": [
+            {
+              "behavior": {
+                "backend_alias": "web",
+                "certificate_reference": {
+                  "kind": "none"
+                },
+                "ownership": {
+                  "environment": "web",
+                  "kind": "project",
+                  "project_id": "00000000-0000-4000-8000-000000000001",
+                  "service": "web",
+                  "stack": "web"
+                },
+                "port": 1,
+                "provenance": "explicit_config",
+                "router_name": "web",
+                "service": "web",
+                "stack": "web",
+                "tls": true
+              },
+              "host": "web",
+              "path_prefix": "web"
+            }
+          ],
+          "changed": [
+            {
+              "after": {
+                "backend_alias": "web",
+                "certificate_reference": {
+                  "kind": "none"
+                },
+                "ownership": {
+                  "environment": "web",
+                  "kind": "project",
+                  "project_id": "00000000-0000-4000-8000-000000000001",
+                  "service": "web",
+                  "stack": "web"
+                },
+                "port": 1,
+                "provenance": "explicit_config",
+                "router_name": "web",
+                "service": "web",
+                "stack": "web",
+                "tls": true
+              },
+              "before": {
+                "backend_alias": "web",
+                "certificate_reference": {
+                  "kind": "none"
+                },
+                "ownership": {
+                  "environment": "web",
+                  "kind": "project",
+                  "project_id": "00000000-0000-4000-8000-000000000001",
+                  "service": "web",
+                  "stack": "web"
+                },
+                "port": 1,
+                "provenance": "explicit_config",
+                "router_name": "web",
+                "service": "web",
+                "stack": "web",
+                "tls": true
+              },
+              "host": "web",
+              "path_prefix": "web"
+            }
+          ],
+          "removed": [
+            {
+              "behavior": {
+                "backend_alias": "web",
+                "certificate_reference": {
+                  "kind": "none"
+                },
+                "ownership": {
+                  "environment": "web",
+                  "kind": "project",
+                  "project_id": "00000000-0000-4000-8000-000000000001",
+                  "service": "web",
+                  "stack": "web"
+                },
+                "port": 1,
+                "provenance": "explicit_config",
+                "router_name": "web",
+                "service": "web",
+                "stack": "web",
+                "tls": true
+              },
+              "host": "web",
+              "path_prefix": "web"
+            }
+          ]
+        },
+        "route_state_changed": true,
+        "runtime": "podman-compose",
+        "runtime_changes": [
+          {
+            "after": "web",
+            "before": "web",
+            "service": "web",
+            "stack": "web"
+          }
+        ],
+        "runtime_secret_plan": {
+          "environment": "web",
+          "first_host_ids": {
+            "web": 1
+          },
+          "items": [
+            {
+              "backend": "web",
+              "consumers": [
+                {
+                  "gid": "web",
+                  "mode": 1,
+                  "service": "web",
+                  "stack": "web",
+                  "target": "web",
+                  "uid": "web"
+                }
+              ],
+              "delivery": "web",
+              "logical_name": "web",
+              "previous_source_revision": "web",
+              "source_revision": "web"
+            }
+          ],
+          "plan_hash": "web",
+          "project_id": "web",
+          "runtime": "podman-compose",
+          "schema": "web",
+          "target_id": "web"
+        },
+        "runtime_source": "web",
+        "scheduler_reconciliation": {
+          "changes": [
+            {
+              "action": "create_job",
+              "desired_hash": "web",
+              "name": "web",
+              "previous_hash": "web"
+            }
+          ],
+          "config_hash": "web",
+          "environment": "web",
+          "plan_hash": "web",
+          "project_id": "00000000-0000-4000-8000-000000000001",
+          "schema": "web"
+        },
+        "schema": "web",
+        "stacks": [
+          {
+            "artifact": {
+              "compose_files": [
+                "web"
+              ],
+              "generated_overlay_path": "web",
+              "manifest": {
+                "artifact_hash": "web",
+                "compose_project_name": "web",
+                "environment": "web",
+                "generated_overlay_digest": "web",
+                "project_id": "00000000-0000-4000-8000-000000000001",
+                "project_name": "web",
+                "routes": [],
+                "services": [],
+                "stack": "web",
+                "target": "web",
+                "target_id": "00000000-0000-4000-8000-000000000001",
+                "user_files": []
+              },
+              "manifest_path": "web",
+              "root": "web"
+            },
+            "artifact_hash": "web",
+            "compose_project_name": "web",
+            "project_directory": "web",
+            "stack": "web"
+          }
+        ],
+        "static_ingress": {
+          "artifact": {
+            "compose_path": "web",
+            "manifest": {
+              "acme_email": "web",
+              "acme_file_mode": "web",
+              "acme_storage_path": "web",
+              "acme_volume_name": "web",
+              "artifact_hash": "web",
+              "certificate_resolver": "web",
+              "compose_digest": "web",
+              "compose_project_name": "web",
+              "dynamic_config_directory": "web",
+              "dynamic_config_volume_name": "web",
+              "image": "web",
+              "macos_host": {
+                "docker_executable": "web",
+                "docker_host": "web",
+                "haproxy_executable": "web",
+                "home": "web",
+                "network_gateway": "web",
+                "network_subnet": "web"
+              },
+              "network_name": "web",
+              "provider": "web",
+              "proxy_http_port": 1,
+              "proxy_https_port": 1,
+              "proxy_verify_port": 1,
+              "public_http_port": 1,
+              "public_https_port": 1,
+              "steps": [],
+              "support_files": [],
+              "target_compose_path": "web",
+              "target_fingerprint": "web",
+              "target_id": "00000000-0000-4000-8000-000000000001",
+              "target_name": "web"
+            },
+            "manifest_path": "web",
+            "root": "web",
+            "support_paths": [
+              "web"
+            ]
+          },
+          "plan_hash": "web",
+          "target_id": "00000000-0000-4000-8000-000000000001",
+          "target_name": "web"
+        },
+        "target_fingerprint": "web",
+        "target_id": "00000000-0000-4000-8000-000000000001",
+        "target_name": "web",
+        "workload_intent_hash": "web"
+      },
+      "receipt": {
+        "plan": {
+          "config_hash": "web",
+          "engine": "docker",
+          "environment": "web",
+          "plan_hash": "web",
+          "platforms": [
+            "web"
+          ],
+          "project_id": "00000000-0000-4000-8000-000000000001",
+          "publish": true,
+          "schema": "web",
+          "source": {
+            "branch": "web",
+            "commit": "web",
+            "default_branch": true,
+            "dirty": true,
+            "repository_tags": [
+              "web"
+            ],
+            "tags_at_head": [
+              "web"
+            ],
+            "tags_complete": true
+          },
+          "tag_strategy": "auto",
+          "units": [
+            {
+              "args": {
+                "web": "web"
+              },
+              "context": "web",
+              "context_hash": "web",
+              "credential_secret_ids": [
+                "web"
+              ],
+              "dependencies": [
+                {
+                  "dependent_module": "web",
+                  "producer_module": "web",
+                  "reference": {
+                    "arg": "web",
+                    "instruction_index": 1,
+                    "kind": "build-argument",
+                    "source_line": 1
+                  },
+                  "stage": null
+                }
+              ],
+              "dockerfile": "web",
+              "dockerfile_hash": "web",
+              "extra_inputs": [
+                {
+                  "digest": "web",
+                  "path": "web"
+                }
+              ],
+              "image": "web",
+              "input_fingerprint": "web",
+              "module": "web",
+              "reuse_policy": "allowed",
+              "secret_ids": [
+                "web"
+              ],
+              "upstream_node_ids": [
+                "web"
+              ],
+              "variants": [
+                {
+                  "tag_suffix": "web",
+                  "tags": [],
+                  "target": null
+                }
+              ],
+              "version_embedded": true
+            }
+          ]
+        },
+        "receipt_hash": "web",
+        "result": {
+          "dependencies": [
+            {
+              "dependent_target": "web",
+              "digest": "web",
+              "edge": {
+                "dependent_module": "web",
+                "producer_module": "web",
+                "reference": {
+                  "arg": "web",
+                  "instruction_index": 1,
+                  "kind": "build-argument",
+                  "source_line": 1
+                },
+                "stage": null
+              },
+              "immutable_reference": "web"
+            }
+          ],
+          "images": [
+            {
+              "archive": "web",
+              "digest": "web",
+              "execution_fingerprint": "web",
+              "module": "web",
+              "repository": "web",
+              "reused": true,
+              "secret_revisions": {
+                "web": "web"
+              },
+              "tags": [
+                "web"
+              ],
+              "target": "web"
+            }
+          ],
+          "operation_id": "00000000-0000-4000-8000-000000000001",
+          "plan_hash": "web"
+        },
+        "schema": "web"
+      },
+      "release": {
+        "commit": "web",
+        "images": {
+          "web": "web"
+        },
+        "inputs": {
+          "web": "web"
+        },
+        "name": "web"
+      },
+      "staged": [
+        {
+          "change": "added",
+          "key": "web",
+          "kind": "secret",
+          "revision": "web",
+          "services": [
+            "web"
+          ],
+          "staged_by": "web"
+        }
+      ],
+      "unfinished": {
+        "active": true,
+        "commit": "web",
+        "failure": {
+          "code": "web",
+          "log": [
+            "web"
+          ],
+          "reason": "web",
+          "service": "web",
+          "stack": "web"
+        },
+        "heard_at_unix_ms": 1,
+        "plan_hash": "web",
+        "stacks": [
+          "web"
+        ],
+        "started_at_unix_ms": 1,
+        "started_by": "web",
+        "state": "finished"
+      }
+    }
+  },
+  "type": "result",
+  "version": 19
+}

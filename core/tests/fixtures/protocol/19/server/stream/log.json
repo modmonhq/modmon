@@ -1,0 +1,27 @@
+{
+  "item": {
+    "item": "log",
+    "value": {
+      "container": "web",
+      "identity": {
+        "environment": "web",
+        "module": "web",
+        "project_id": "00000000-0000-4000-8000-000000000001",
+        "service": "web",
+        "stack": "web"
+      },
+      "lossy_utf8": true,
+      "message": "web",
+      "node": "web",
+      "reconnect": 1,
+      "sequence": 1,
+      "source": "stdout",
+      "timestamp": "web",
+      "truncated": true
+    }
+  },
+  "request_id": "00000000-0000-4000-8000-000000000001",
+  "sequence": 1,
+  "type": "stream",
+  "version": 19
+}
