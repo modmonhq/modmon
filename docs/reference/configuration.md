@@ -321,6 +321,11 @@ modules:
             environments: [staging] # optional, as on secret-files
 ```
 
+A build sends `context` without what the Dockerfile's own ignore file
+(`<dockerfile>.dockerignore`) or, without one, the context's `.dockerignore`
+excludes; see
+[Choose the files a build sends](../concepts/builds-and-deployments.md#choose-the-files-a-build-sends).
+
 Each entry of `build.targets` is a build variant that an environment's
 `build-variant` selects (else `default-variant`, else the only target). The
 string form names the image tag suffix and builds the Dockerfile stage of the

@@ -49,8 +49,9 @@ local settings into the override, then run
 settings in the shared file. Preserve unrelated edits.
 
 For repository-root build contexts, also exclude `.config/mm.overrides.yaml`
-through `.dockerignore` (or an existing `.config` rule). Git ignore rules do not
-control which files are copied into an image.
+through the context's ignore file (or an existing `.config` rule): see
+[Choose the files a build sends](#choose-the-files-a-build-sends). Git ignore
+rules do not control which files are copied into an image.
 
 ### Review and apply
 
@@ -64,6 +65,63 @@ mm build --publish apply --plan BUILD_PLAN_HASH --yes
 Replace `BUILD_PLAN_HASH` with the hash printed by the plan command. With
 `--publish`, Buildx pushes the images to your registry. Without it, the build
 produces a local OCI image archive, which mm cannot use for deployment.
+
+### Choose the files a build sends
+
+A build sends its context, the `build.context` directory (the module
+directory by default), to Buildx without the files its ignore file excludes.
+mm reads the ignore file Docker reads:
+
+- the file next to the Dockerfile named after it with `.dockerignore`
+  appended, such as `web/Dockerfile.dockerignore` for `web/Dockerfile`, when
+  it exists;
+- otherwise `.dockerignore` at the top of the context.
+
+When an image has its own ignore file, the context's `.dockerignore` does not
+apply to it. In a monorepo where several images build from the repository
+root, give each image its own list of what it needs:
+
+```yaml
+modules:
+  web:
+    path: .
+    build:
+      image: registry.example.com/web
+      dockerfile: web/Dockerfile
+```
+
+```text
+# web/Dockerfile.dockerignore
+*
+!web
+!ui
+```
+
+The `web` image then sees `web/`, `ui/`, its Dockerfile, and its ignore file,
+and its context hash covers nothing else: a change under `api/` does not
+rebuild it.
+
+Patterns follow Docker's rules. They start at the top of the context, so
+`node_modules` excludes only the top-level directory and `**/node_modules`
+excludes it at any depth. `*` matches within one directory, and a later
+`!pattern` sends again what an earlier pattern excluded. `.git` at the top of
+the context is never sent.
+
+The plan refuses a file that would be sent when it is a symlink, a socket or
+other special file, or looks like a secret (`.env`, `.env.*`, SSH private
+keys, `age-identity.txt`). The refusal names the path in the context and the
+ignore file to exclude it in:
+
+```text
+error[MM_SECURITY]: security policy rejected the operation: symlink web/dist
+-> .output/public would be sent in build context . (exclude it in
+web/Dockerfile.dockerignore)
+```
+
+An excluded file is never checked, so an excluded `web/dist` symlink or `.env`
+file does not stop a build. Give a build the values it needs as
+[build secrets](../secret-delivery.md#build-secrets), not as files in its
+context.
 
 ## Deploy the build
 
@@ -134,8 +192,8 @@ secrets can hold a different value in each environment. The deployment plan's
 was built for.
 
 The build context is hashed from the files in the checkout, so files that are
-not committed but are not excluded by `.dockerignore` also make the units
-differ.
+not committed but are not excluded by the context's ignore file also make the
+units differ.
 
 ### Import a build
 

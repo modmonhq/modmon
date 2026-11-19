@@ -185,7 +185,7 @@ fn immutable_snapshot_rejects_a_changed_context() -> Result<(), Box<dyn std::err
     let snapshot = project.path().join("snapshot");
 
     assert!(matches!(
-        snapshot_build_context(&context, &dockerfile, &snapshot, &hash),
+        snapshot_build_context(project.path(), &context, &dockerfile, &snapshot, &hash),
         Err(MmError::State { .. })
     ));
     Ok(())
@@ -345,7 +345,7 @@ fn module_planning_rejects_reserved_snapshots_and_missing_authoritative_images()
         .ok_or("build missing")?
         .extra_inputs
         .push(PathBuf::from(".env"));
-    assert!(matches!(
+    assert!(
         plan_module(
             &document,
             ("website", &sensitive_input),
@@ -353,9 +353,9 @@ fn module_planning_rejects_reserved_snapshots_and_missing_authoritative_images()
             &tags,
             "version",
             &[]
-        ),
-        Err(MmError::Security { .. })
-    ));
+        )
+        .is_err_and(|error| error.code() == "MM_SECURITY")
+    );
     Ok(())
 }
 

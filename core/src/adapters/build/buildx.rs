@@ -212,6 +212,7 @@ fn prepare_build_staging(
         })?;
     let snapshot = temporary.path().join("context");
     let dockerfile = snapshot_build_context(
+        request.project_root,
         &request.project_root.join(&request.unit.context),
         &request.project_root.join(&request.unit.dockerfile),
         &snapshot,

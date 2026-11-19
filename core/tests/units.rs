@@ -6,6 +6,8 @@
 
 mod temp_dirs;
 
+#[path = "units/build_context.rs"]
+mod build_context;
 #[path = "units/build_manager.rs"]
 mod build_manager;
 #[path = "units/dashboard_query.rs"]

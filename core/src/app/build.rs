@@ -4,16 +4,15 @@ use std::io::{BufReader, Read};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
-use ignore::gitignore::{Gitignore, GitignoreBuilder};
-
 use crate::app::WorkspaceSelection;
 use crate::app::config_validation::validate;
 use crate::app::dockerfile::{DockerfileBaseKind, ParsedDockerfile, parse as parse_dockerfile};
 use crate::app::ports::{BuildSourceInspector, ProjectDocumentStore};
 use crate::domain::build::{
-    BuildDependencyReference, BuildReceipt, BuildReusePolicy, FirstPartyBuildEdge, ImageBuildPlan,
-    ImageBuildScope, ImageBuildTrigger, ImageBuildUnitPlan, ImageBuildVariantPlan, PromotedReceipt,
-    automatic_tags, build_version, is_image_repository, suffixed_tags, unit_input_fingerprint,
+    BuildDependencyReference, BuildReceipt, BuildReusePolicy, ContextIgnore, FirstPartyBuildEdge,
+    IgnoreVerdict, ImageBuildPlan, ImageBuildScope, ImageBuildTrigger, ImageBuildUnitPlan,
+    ImageBuildVariantPlan, PromotedReceipt, automatic_tags, build_version, is_image_repository,
+    suffixed_tags, unit_input_fingerprint,
 };
 use crate::domain::config::{
     BuildTarget, BuildTargetSelection, ConfigDocument, ModuleBuildConfig, ModuleConfig,
@@ -26,7 +25,10 @@ use crate::domain::path_policy::ensure_no_symlink_components;
 const MAX_CONTEXT_FILE_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_CONTEXT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const MAX_CONTEXT_FILES: usize = 100_000;
+const MAX_IGNORE_FILE_BYTES: u64 = 1024 * 1024;
 const SNAPSHOT_DOCKERFILE: &str = ".mm-external.Dockerfile";
+const SNAPSHOT_DOCKERIGNORE: &str = ".mm-external.Dockerfile.dockerignore";
+const DOCKERIGNORE: &str = ".dockerignore";
 
 mod graph;
 use graph::*;
@@ -253,12 +255,14 @@ fn plan_module(
     }
     ensure_build_path(&document.root, &context, true, "build context")?;
     ensure_build_path(&document.root, &dockerfile, false, "Dockerfile")?;
-    if context.join(SNAPSHOT_DOCKERFILE).exists() {
-        return Err(MmError::Security {
-            message: format!(
-                "build context reserves the path {SNAPSHOT_DOCKERFILE} for immutable snapshots"
-            ),
-        });
+    for reserved in [SNAPSHOT_DOCKERFILE, SNAPSHOT_DOCKERIGNORE] {
+        if context.join(reserved).exists() {
+            return Err(MmError::Security {
+                message: format!(
+                    "build context reserves the path {reserved} for immutable snapshots"
+                ),
+            });
+        }
     }
 
     let image = configured
@@ -267,7 +271,7 @@ fn plan_module(
             message: format!("module '{module_name}' requires an authoritative build.image"),
         })?;
     let image = normalize_image_repository(&image)?;
-    let context_hash = hash_context_excluding(&context, &dockerfile, excluded)?;
+    let context_hash = hash_context_excluding(&document.root, &context, &dockerfile, excluded)?;
     let mut args = configured.map_or_else(BTreeMap::new, |build| {
         build
             .args

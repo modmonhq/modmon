@@ -39,7 +39,15 @@ pub(super) fn hash_extra_inputs(
     for input in inputs {
         let path = root.join(input);
         ensure_build_path(root, &path, false, "build extra input")?;
-        reject_sensitive_context_file(root, &path)?;
+        if is_sensitive_file(input) {
+            return Err(MmError::Security {
+                message: format!(
+                    "sensitive file {} cannot be a build extra input; remove it from build.extra-inputs",
+                    input.display()
+                ),
+            }
+            .in_own_words());
+        }
         let mut hasher = blake3::Hasher::new();
         hash_file(&path, &mut hasher)?;
         triggers.push(ImageBuildTrigger {
@@ -169,40 +177,40 @@ pub(super) fn project_relative(root: &Path, path: &Path, kind: &str) -> Result<P
 }
 
 pub(crate) fn hash_context(context: &Path, dockerfile: &Path) -> Result<String, MmError> {
-    hash_context_excluding(context, dockerfile, &[])
+    hash_context_excluding(context, context, dockerfile, &[])
 }
 
 /// The context hash without the `excluded` files, such as a marker a remote
-/// checkout adds that the built commit does not contain.
+/// checkout adds that the built commit does not contain. Messages name paths
+/// relative to `root`.
 pub(crate) fn hash_context_excluding(
+    root: &Path,
     context: &Path,
     dockerfile: &Path,
     excluded: &[PathBuf],
 ) -> Result<String, MmError> {
-    let matcher = dockerignore(context)?;
-    let mut files = Vec::new();
-    collect_context_files(context, context, &matcher, &mut files)?;
-    files.retain(|file| !excluded.contains(file));
-    if !dockerfile.starts_with(context) || !files.iter().any(|path| path == dockerfile) {
-        files.push(dockerfile.to_path_buf());
-    }
-    files.sort_by(|left, right| {
-        context_hash_path(context, left).cmp(context_hash_path(context, right))
-    });
-    files.dedup();
-    hash_context_files(context, &files)
+    let scan = ContextScan::new(root, context, dockerfile)?;
+    let mut files = scan.inputs()?;
+    files.retain(|_, source| !excluded.contains(source));
+    files.insert(scan.dockerfile_name(), dockerfile.to_path_buf());
+    hash_context_files(Path::new(&scan.name), &files)
 }
 
-fn hash_context_files(context: &Path, files: &[PathBuf]) -> Result<String, MmError> {
+fn hash_context_files(
+    context: &Path,
+    files: &BTreeMap<PathBuf, PathBuf>,
+) -> Result<String, MmError> {
     validate_context_file_count(context, files.len())?;
 
     let mut total = 0_u64;
     let mut reviewed = Vec::with_capacity(files.len());
-    for file in files {
-        reject_sensitive_context_file(context, file)?;
-        let relative = context_hash_path(context, file);
+    for (relative, file) in files {
         let relative = relative.to_str().ok_or_else(|| MmError::Security {
-            message: "build context paths must be valid UTF-8".to_owned(),
+            message: format!(
+                "{} in build context {} is not a valid UTF-8 path",
+                relative.display(),
+                context.display()
+            ),
         })?;
         let metadata = fs::symlink_metadata(file).map_err(|source| MmError::Io {
             context: format!("reading build context metadata for {}", file.display()),
@@ -211,14 +219,17 @@ fn hash_context_files(context: &Path, files: &[PathBuf]) -> Result<String, MmErr
         if !metadata.is_file() || metadata.file_type().is_symlink() {
             return Err(MmError::Security {
                 message: format!(
-                    "build context entry must be a regular file without symlinks: {}",
-                    file.display()
+                    "{relative} in build context {} must be a regular file",
+                    context.display()
                 ),
             });
         }
         if metadata.len() > MAX_CONTEXT_FILE_BYTES {
             return Err(MmError::Build {
-                message: format!("build context file is too large: {}", file.display()),
+                message: format!(
+                    "{relative} in build context {} exceeds the {MAX_CONTEXT_FILE_BYTES} byte file safety limit",
+                    context.display()
+                ),
             });
         }
         total = checked_context_size(context, total, metadata.len())?;
@@ -230,7 +241,7 @@ fn hash_context_files(context: &Path, files: &[PathBuf]) -> Result<String, MmErr
         };
         #[cfg(not(unix))]
         let executable = 0;
-        reviewed.push((file, relative.to_owned(), executable));
+        reviewed.push((file, relative, executable));
     }
 
     let mut hasher = blake3::Hasher::new();
@@ -272,19 +283,8 @@ fn checked_context_size(context: &Path, total: u64, next: u64) -> Result<u64, Mm
     Ok(total)
 }
 
-pub(super) fn context_hash_path<'a>(context: &'a Path, file: &'a Path) -> &'a Path {
-    if !file.starts_with(context)
-        || file
-            .strip_prefix(context)
-            .is_ok_and(|relative| relative == Path::new(SNAPSHOT_DOCKERFILE))
-    {
-        Path::new(SNAPSHOT_DOCKERFILE)
-    } else {
-        file.strip_prefix(context).unwrap_or(file)
-    }
-}
-
 pub(crate) fn snapshot_build_context(
+    root: &Path,
     context: &Path,
     dockerfile: &Path,
     destination: &Path,
@@ -320,61 +320,19 @@ pub(crate) fn snapshot_build_context(
         })?;
     }
 
-    let matcher = dockerignore(context)?;
-    let mut files = Vec::new();
-    collect_context_files(context, context, &matcher, &mut files)?;
-    for source in &files {
-        let relative = source
-            .components()
-            .skip(context.components().count())
-            .collect::<PathBuf>();
-        let target = destination.join(relative);
-        let parent = target.parent().unwrap_or(destination);
-        fs::create_dir_all(parent).map_err(|source| MmError::Io {
-            context: format!("creating build snapshot directory {}", parent.display()),
-            source,
-        })?;
-        fs::copy(source, &target).map_err(|error| MmError::Io {
-            context: format!("copying build context file {}", source.display()),
-            source: error,
-        })?;
+    let scan = ContextScan::new(root, context, dockerfile)?;
+    let files = scan.inputs()?;
+    for (relative, source) in &files {
+        copy_into_snapshot(destination, relative, source)?;
     }
-
-    let snapshot_dockerfile = if dockerfile.starts_with(context) {
-        let relative = dockerfile
-            .components()
-            .skip(context.components().count())
-            .collect::<PathBuf>();
-        let target = destination.join(relative);
-        if !files.iter().any(|source| source == dockerfile) {
-            let parent = target.parent().unwrap_or(destination);
-            fs::create_dir_all(parent).map_err(|source| MmError::Io {
-                context: format!(
-                    "creating Dockerfile snapshot directory {}",
-                    parent.display()
-                ),
-                source,
-            })?;
-            fs::copy(dockerfile, &target).map_err(|source| MmError::Io {
-                context: format!(
-                    "copying Dockerfile {} into its build snapshot",
-                    dockerfile.display()
-                ),
-                source,
-            })?;
-        }
-        target
-    } else {
-        let target = destination.join(SNAPSHOT_DOCKERFILE);
-        fs::copy(dockerfile, &target).map_err(|source| MmError::Io {
-            context: format!(
-                "copying Dockerfile {} into its build snapshot",
-                dockerfile.display()
-            ),
-            source,
-        })?;
-        target
-    };
+    let dockerfile_name = scan.dockerfile_name();
+    if files
+        .get(&dockerfile_name)
+        .is_none_or(|source| source != dockerfile)
+    {
+        copy_into_snapshot(destination, &dockerfile_name, dockerfile)?;
+    }
+    let snapshot_dockerfile = destination.join(dockerfile_name);
     let snapshot_hash = hash_context(destination, &snapshot_dockerfile)?;
     if snapshot_hash != expected_hash {
         return Err(MmError::State {
@@ -384,114 +342,295 @@ pub(crate) fn snapshot_build_context(
     Ok(snapshot_dockerfile)
 }
 
-pub(super) fn dockerignore(context: &Path) -> Result<Gitignore, MmError> {
-    let mut builder = GitignoreBuilder::new(context);
-    let path = context.join(".dockerignore");
-    if path.is_file()
-        && let Some(error) = builder.add(path)
-    {
-        return Err(MmError::Build {
-            message: format!("parsing .dockerignore: {error}"),
-        });
-    }
-    builder.build().map_err(|error| MmError::Build {
-        message: format!("parsing .dockerignore: {error}"),
-    })
-}
-
-pub(super) fn collect_context_files(
-    context: &Path,
-    directory: &Path,
-    matcher: &Gitignore,
-    files: &mut Vec<PathBuf>,
-) -> Result<(), MmError> {
-    let entries = fs::read_dir(directory).map_err(|source| MmError::Io {
-        context: format!("reading build context directory {}", directory.display()),
-        source,
+fn copy_into_snapshot(destination: &Path, relative: &Path, source: &Path) -> Result<(), MmError> {
+    let target = destination.join(relative);
+    let parent = target.parent().unwrap_or(destination);
+    fs::create_dir_all(parent).map_err(|error| MmError::Io {
+        context: format!("creating build snapshot directory {}", parent.display()),
+        source: error,
     })?;
-    collect_context_entries(context, directory, matcher, files, entries)
-}
-
-fn collect_context_entries(
-    context: &Path,
-    directory: &Path,
-    matcher: &Gitignore,
-    files: &mut Vec<PathBuf>,
-    entries: impl IntoIterator<Item = std::io::Result<fs::DirEntry>>,
-) -> Result<(), MmError> {
-    let mut entries = entries
-        .into_iter()
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|source| MmError::Io {
-            context: format!("reading build context directory {}", directory.display()),
-            source,
-        })?;
-    entries.sort_by_key(std::fs::DirEntry::file_name);
-
-    for entry in entries {
-        let path = entry.path();
-        let relative = path.strip_prefix(context).map_err(|_| MmError::Security {
-            message: "build context traversal escaped its root".to_owned(),
-        })?;
-        if relative
-            .components()
-            .next()
-            .is_some_and(|component| component == Component::Normal(".git".as_ref()))
-        {
-            continue;
-        }
-        let metadata = fs::symlink_metadata(&path).map_err(|source| MmError::Io {
-            context: format!("reading build context metadata for {}", path.display()),
-            source,
-        })?;
-        if metadata.file_type().is_symlink() {
-            return Err(MmError::Security {
-                message: format!("build contexts cannot contain symlinks: {}", path.display()),
-            });
-        }
-        let is_directory = metadata.is_dir();
-        let always_include = relative == Path::new(".dockerignore");
-        if !always_include
-            && matcher
-                .matched_path_or_any_parents(relative, is_directory)
-                .is_ignore()
-        {
-            continue;
-        }
-        if is_directory {
-            collect_context_files(context, &path, matcher, files)?;
-        } else if metadata.is_file() {
-            files.push(path);
-        } else {
-            return Err(MmError::Security {
-                message: format!("unsupported build context entry: {}", path.display()),
-            });
-        }
-    }
+    fs::copy(source, &target).map_err(|error| MmError::Io {
+        context: format!("copying build context file {}", source.display()),
+        source: error,
+    })?;
     Ok(())
 }
 
-pub(super) fn reject_sensitive_context_file(context: &Path, file: &Path) -> Result<(), MmError> {
+/// One build context as BuildKit sends it: the files its ignore file leaves
+/// in, the Dockerfile, and the ignore file itself.
+struct ContextScan<'a> {
+    context: &'a Path,
+    dockerfile: &'a Path,
+    name: String,
+    ignore: ContextIgnore,
+    ignore_file: Option<PathBuf>,
+    advice: String,
+}
+
+impl<'a> ContextScan<'a> {
+    fn new(root: &Path, context: &'a Path, dockerfile: &'a Path) -> Result<Self, MmError> {
+        let mut own = dockerfile.as_os_str().to_owned();
+        own.push(DOCKERIGNORE);
+        let own = PathBuf::from(own);
+        let shared = context.join(DOCKERIGNORE);
+        let ignore_file = if present(&own)? {
+            Some(own.clone())
+        } else if present(&shared)? {
+            Some(shared.clone())
+        } else {
+            None
+        };
+        let name = project_path(root, context);
+        let conventional = dockerfile.file_name() == Some("Dockerfile".as_ref())
+            && dockerfile
+                .parent()
+                .is_some_and(|parent| project_path(root, parent) == name);
+        let advice = if ignore_file.as_ref() == Some(&own) {
+            project_path(root, &own)
+        } else if conventional {
+            project_path(root, &shared)
+        } else {
+            format!(
+                "{} or {}",
+                project_path(root, &own),
+                project_path(root, &shared)
+            )
+        };
+        let ignore = match &ignore_file {
+            Some(file) => read_ignore(file, &project_path(root, file))?,
+            None => ContextIgnore::default(),
+        };
+        Ok(Self {
+            context,
+            dockerfile,
+            name,
+            ignore,
+            ignore_file,
+            advice,
+        })
+    }
+
+    /// The files sent from the context, and the ignore file, by their path
+    /// in the snapshot.
+    fn inputs(&self) -> Result<BTreeMap<PathBuf, PathBuf>, MmError> {
+        let mut files = BTreeMap::new();
+        self.collect(self.context, None, &mut files)?;
+        if let Some(file) = &self.ignore_file {
+            files.insert(
+                self.snapshot_name(file, SNAPSHOT_DOCKERIGNORE),
+                file.clone(),
+            );
+        }
+        Ok(files)
+    }
+
+    fn dockerfile_name(&self) -> PathBuf {
+        self.snapshot_name(self.dockerfile, SNAPSHOT_DOCKERFILE)
+    }
+
+    fn snapshot_name(&self, file: &Path, external: &str) -> PathBuf {
+        file.strip_prefix(self.context)
+            .map_or_else(|_| PathBuf::from(external), Path::to_path_buf)
+    }
+
+    fn collect(
+        &self,
+        directory: &Path,
+        parent: Option<&IgnoreVerdict>,
+        files: &mut BTreeMap<PathBuf, PathBuf>,
+    ) -> Result<(), MmError> {
+        let entries = fs::read_dir(directory).map_err(|source| MmError::Io {
+            context: format!("reading build context directory {}", directory.display()),
+            source,
+        })?;
+        self.collect_entries(directory, parent, files, entries)
+    }
+
+    fn collect_entries(
+        &self,
+        directory: &Path,
+        parent: Option<&IgnoreVerdict>,
+        files: &mut BTreeMap<PathBuf, PathBuf>,
+        entries: impl IntoIterator<Item = std::io::Result<fs::DirEntry>>,
+    ) -> Result<(), MmError> {
+        let mut entries = entries
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|source| MmError::Io {
+                context: format!("reading build context directory {}", directory.display()),
+                source,
+            })?;
+        entries.sort_by_key(std::fs::DirEntry::file_name);
+
+        for entry in entries {
+            let path = entry.path();
+            let relative = path
+                .strip_prefix(self.context)
+                .map_err(|_| MmError::Security {
+                    message: "build context traversal escaped its root".to_owned(),
+                })?;
+            if relative
+                .components()
+                .next()
+                .is_some_and(|component| component == Component::Normal(".git".as_ref()))
+            {
+                continue;
+            }
+            let shown = relative.to_string_lossy();
+            let verdict = self.ignore.verdict(&shown, parent);
+            if verdict.excluded() && self.ignore.skips_excluded_directory(&shown) {
+                continue;
+            }
+            let metadata = fs::symlink_metadata(&path).map_err(|source| MmError::Io {
+                context: format!("reading build context metadata for {}", path.display()),
+                source,
+            })?;
+            if metadata.is_dir() {
+                self.collect(&path, Some(&verdict), files)?;
+            } else if !verdict.excluded() {
+                self.admit(relative, &path, &metadata)?;
+                files.insert(relative.to_path_buf(), path);
+            }
+        }
+        Ok(())
+    }
+
+    fn admit(&self, relative: &Path, path: &Path, metadata: &fs::Metadata) -> Result<(), MmError> {
+        let shown = relative.to_string_lossy();
+        let entry = if metadata.file_type().is_symlink() {
+            let target = fs::read_link(path).map_err(|source| MmError::Io {
+                context: format!("reading build context symlink {}", path.display()),
+                source,
+            })?;
+            format!("symlink {shown} -> {}", target.display())
+        } else if !metadata.is_file() {
+            format!("special file {shown}")
+        } else if relative.to_str().is_none() {
+            format!("file {shown}, whose name is not valid UTF-8,")
+        } else if is_sensitive_file(relative) {
+            format!("sensitive file {shown}")
+        } else {
+            return Ok(());
+        };
+        Err(MmError::Security {
+            message: format!(
+                "{entry} would be sent in build context {} (exclude it in {})",
+                self.name, self.advice
+            ),
+        }
+        .in_own_words())
+    }
+}
+
+fn present(path: &Path) -> Result<bool, MmError> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(error)
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+            ) =>
+        {
+            Ok(false)
+        }
+        Err(source) => Err(MmError::Io {
+            context: format!("looking for ignore file {}", path.display()),
+            source,
+        }),
+    }
+}
+
+fn read_ignore(file: &Path, name: &str) -> Result<ContextIgnore, MmError> {
+    let metadata = fs::symlink_metadata(file).map_err(|source| MmError::Io {
+        context: format!("reading ignore file {}", file.display()),
+        source,
+    })?;
+    if !metadata.is_file() {
+        return Err(MmError::Security {
+            message: format!("ignore file {name} must be a regular file, not a symlink"),
+        }
+        .in_own_words());
+    }
+    let too_large = || {
+        MmError::Build {
+            message: format!(
+                "ignore file {name} exceeds the {MAX_IGNORE_FILE_BYTES} byte safety limit"
+            ),
+        }
+        .in_own_words()
+    };
+    if metadata.len() > MAX_IGNORE_FILE_BYTES {
+        return Err(too_large());
+    }
+    let mut bytes = Vec::new();
+    File::open(file)
+        .and_then(|opened| {
+            opened
+                .take(MAX_IGNORE_FILE_BYTES + 1)
+                .read_to_end(&mut bytes)
+        })
+        .map_err(|source| MmError::Io {
+            context: format!("reading ignore file {}", file.display()),
+            source,
+        })?;
+    if bytes.len() as u64 > MAX_IGNORE_FILE_BYTES {
+        return Err(too_large());
+    }
+    let text = String::from_utf8(bytes).map_err(|_| {
+        MmError::Build {
+            message: format!("ignore file {name} is not valid UTF-8"),
+        }
+        .in_own_words()
+    })?;
+    ContextIgnore::parse(&text).map_err(|invalid| {
+        MmError::Build {
+            message: format!("{name} {invalid}"),
+        }
+        .in_own_words()
+    })
+}
+
+fn project_path(root: &Path, path: &Path) -> String {
+    let path = lexical(path);
+    let shown = path
+        .strip_prefix(lexical(root))
+        .unwrap_or(&path)
+        .to_string_lossy()
+        .into_owned();
+    if shown.is_empty() {
+        ".".to_owned()
+    } else {
+        shown
+    }
+}
+
+fn lexical(path: &Path) -> PathBuf {
+    let mut tidy = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir
+                if matches!(tidy.components().next_back(), Some(Component::Normal(_))) =>
+            {
+                tidy.pop();
+            }
+            other => tidy.push(other),
+        }
+    }
+    tidy
+}
+
+fn is_sensitive_file(file: &Path) -> bool {
     let name = file
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or("");
-    let looks_sensitive = name == ".env"
+    name == ".env"
         || name.starts_with(".env.")
         || matches!(
             name,
             "id_rsa" | "id_ed25519" | "id_ecdsa" | "id_dsa" | "age-identity.txt"
-        );
-    if looks_sensitive {
-        return Err(MmError::Security {
-            message: format!(
-                "sensitive file {} is included in build context {}; exclude it with .dockerignore and use a build secret",
-                file.display(),
-                context.display()
-            ),
-        });
-    }
-    Ok(())
+        )
 }
 
 pub(super) fn hash_file(path: &Path, hasher: &mut blake3::Hasher) -> Result<(), MmError> {
