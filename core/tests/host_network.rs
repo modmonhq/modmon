@@ -182,6 +182,15 @@ fn a_variable_a_merge_key_a_route_or_a_network_is_refused() -> TestResult {
             "without writing `network_mode: host` on the service itself",
         ),
         (
+            format!("{VPN}  tunnel:\n    extends: vpn\n"),
+            format!(
+                "{}      tunnel:\n        stack: app\n        automatic-local-ingress: false\n",
+                declared()
+            ),
+            "",
+            "puts service 'tunnel' on the host's network without writing `network_mode: host`",
+        ),
+        (
             VPN.to_owned(),
             vpn(&format!(
                 "        host-network: {REASON}\n        networks: [backend]\n"
@@ -256,7 +265,8 @@ async fn a_host_plans_host_networking_only_for_a_service_its_policy_allows() -> 
     let (code, message) = host.ask(ALICE, plan()).await?.refusal(PROMPT).await?;
     assert_eq!(code, "MM_SECURITY", "{message}");
     assert!(
-        message.contains("refuses Compose features that reach the host in environment 'production'"),
+        message
+            .contains("refuses Compose features that reach the host in environment 'production'"),
         "{message}"
     );
     assert!(

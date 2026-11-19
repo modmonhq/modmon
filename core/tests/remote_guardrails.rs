@@ -176,6 +176,30 @@ fn a_feature_behind_a_yaml_merge_key_is_found() -> TestResult {
     Ok(())
 }
 
+#[test]
+fn a_feature_a_service_inherits_through_extends_is_found_under_its_own_name() -> TestResult {
+    let temporary = project(
+        "services:\n  web:\n    image: example/web\n  debug:\n    image: example/web\n    privileged: true\n  worker:\n    extends: debug\n",
+    )?;
+    let config = temporary.path().join("project/.config/mm.yaml");
+    std::fs::write(
+        &config,
+        CONFIG.replace(
+            "      web: {stack: app}\n",
+            "      web: {stack: app}\n      debug: {stack: app, environments: [local]}\n      worker: {stack: app}\n",
+        ),
+    )?;
+    let (status, findings) = validate(temporary.path(), &["-e", "staging"], &[])?;
+    assert_eq!(status, 2);
+    assert_eq!(
+        messages(&findings),
+        [
+            "MM_REMOTE_GUARDRAIL a remote host refuses this in environment 'staging': app/worker uses privileged (privileged: true)"
+        ]
+    );
+    Ok(())
+}
+
 fn host_policy(environments: &str, allow: &str) -> String {
     format!(
         "schema-version: 2

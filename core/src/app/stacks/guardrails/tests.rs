@@ -96,3 +96,58 @@ fn host_escapes_are_refused_unless_the_host_allows_them() -> Result<(), Box<dyn 
     );
     Ok(())
 }
+
+#[test]
+fn a_feature_inherited_through_extends_is_found_under_the_extending_service()
+-> Result<(), Box<dyn std::error::Error>> {
+    let mut source = compose(
+        "services:\n  base:\n    image: busybox\n    privileged: true\n    cap_add: [SYS_ADMIN]\n  child:\n    extends: base\n    cap_add: [NET_ADMIN]\n  grandchild:\n    extends: {service: child}\n  calm:\n    extends: {service: base}\n    privileged: false\n  loop-a:\n    extends: loop-b\n    pid: host\n  loop-b:\n    extends: loop-a\n",
+    )?;
+    resolve_extends(&mut source);
+    let findings = check_compose("app", &source, Path::new("/srv/project"), &[]);
+    let of = |subject: &str| {
+        findings
+            .iter()
+            .filter(|finding| finding.subject == subject)
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        of("app/child"),
+        [
+            "app/child uses privileged (privileged: true)",
+            "app/child uses cap-add (cap_add: SYS_ADMIN)",
+            "app/child uses cap-add (cap_add: NET_ADMIN)",
+        ]
+    );
+    assert_eq!(
+        of("app/grandchild"),
+        of("app/child")
+            .iter()
+            .map(|line| line.replace("app/child", "app/grandchild"))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        of("app/calm"),
+        ["app/calm uses cap-add (cap_add: SYS_ADMIN)"],
+        "the extending service's own value wins"
+    );
+    assert_eq!(of("app/loop-b"), ["app/loop-b uses pid-host (pid: host)"]);
+
+    let allowed = check_compose(
+        "app",
+        &source,
+        Path::new("/srv/project"),
+        &[GuardrailException {
+            service: "app/base".to_owned(),
+            features: BTreeSet::from(["privileged".to_owned(), "cap-add".to_owned()]),
+        }],
+    );
+    assert!(
+        allowed
+            .iter()
+            .any(|finding| finding.subject == "app/child" && finding.feature == "privileged"),
+        "a grant for the base is not one for what extends it"
+    );
+    Ok(())
+}

@@ -1352,6 +1352,12 @@ installations `mm target setup` upgrades in place and what it refuses.
 
 ### Security
 
+- A remote host checks a Compose service with what it inherits through
+  `extends` from another service of the same file, under the extending
+  service's own name, and a host's `allow` entry for the base does not cover
+  it. Before, `extends: {service: base}` let a service run a feature such as
+  `privileged` or `network_mode: host` that the host never allowed for it,
+  also when the base itself does not run in the environment.
 - On a cluster node, a container on a network of its own host (the engine's
   default bridge, a Compose network that is not under `networks:`) no longer
   reaches the other nodes through the mesh, where it arrived with its node's

@@ -449,7 +449,10 @@ project, and `build:` (remote hosts never build).
 A host checks only the services the environment it plans runs: the ones
 `mm deploy plan` renders. A service whose `environments:` leaves the
 environment out is not checked there, and neither is a stack left with no
-service. A service that only `local` runs, such as a developer tool with
+service. A service is checked with what it inherits through YAML merge keys
+and through `extends` from another service of the same file, under its own
+name: an `allow` entry for the service it extends does not cover it. A
+service that only `local` runs, such as a developer tool with
 `network_mode: host`, needs no exception on any host; on your machine it
 says why with
 [`host-network`](#run-a-service-on-the-hosts-network).
