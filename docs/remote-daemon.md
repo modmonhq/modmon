@@ -334,7 +334,7 @@ or a WireGuard key after review means planning again.
 
 The plan also says, for each node whose host key the repo records, which
 release of `mm` and `mmd` it replaces with this one's, such as `app-1: replaces
-mm and mmd 0.1.0 (remote protocol 15) with 0.2.0 (remote protocol 16)`. A node
+mm and mmd 0.1.1 (remote protocol 1) with 0.1.2 (remote protocol 1)`. A node
 that runs a newer release than the `mm` you run setup with is refused: setup
 would install the older `mm` and `mmd` there, and clients that are up to date
 could no longer reach it. Install that release or a later one of `mm` on your
@@ -346,8 +346,8 @@ running setup never swaps the `mm` and `mmd` that run your hosts by
 accident. Pass `--upgrade` to install this one, or pin the release with
 [`deploy.mm-version`](reference/configuration.md#bindings-environments-and-secrets),
 which lets setup install exactly that release. The plan names each node's
-build, such as `app-1: replaces mm and mmd 0.2.0 (remote protocol 17, build
-3f9a1c2e7b4d) with 0.2.0 (remote protocol 17, build 7d0e5a91c2f3)`. Nodes
+build, such as `app-1: replaces mm and mmd 0.1.2 (remote protocol 1, build
+3f9a1c2e7b4d) with 0.1.2 (remote protocol 1, build 7d0e5a91c2f3)`. Nodes
 report their release from this release of `mm` on, and only on a target whose
 `cluster.mesh` mm runs (WireGuard).
 

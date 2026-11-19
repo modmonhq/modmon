@@ -8,10 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [0.1.1] - 2026-11-18
 
-Remote protocol: 19. From this release on, `mm` and the `mmd` on your hosts
-use the newest remote protocol both speak: a newer `mm` works with hosts on
-0.1.1 or later, and a host upgraded first keeps serving older clients as long
-as it speaks their protocol. See
+Remote protocol: 1. This release is the baseline: from it on, `mm` and the
+`mmd` on your hosts use the newest remote protocol both speak, so a newer `mm`
+works with hosts on 0.1.1 or later, and a host upgraded first keeps serving
+older clients as long as it speaks their protocol. The protocol number
+changes only for a change an older release cannot read. Builds from before
+0.1.1 do not work with it: install `mm` with the installer and set their
+hosts up again with `mm target setup plan --upgrade`. See
 [compatibility between releases](docs/reference/compatibility.md);
 [upgrade mm and your hosts](docs/how-to/upgrade.md) says which installations
 `mm target setup` upgrades in place and what it refuses.
@@ -35,6 +38,10 @@ as it speaks their protocol. See
   it, instead of closing the connection. When `mm` and a host share no
   protocol, the refusal names the release and the protocols of each side, and
   the command for the side to upgrade.
+- `mm target setup` orders releases by version first and remote protocol
+  second, so a host from before 0.1.1 (version 0.1.0, protocol 16 to 19) is
+  older than 0.1.1 and is replaced with `--upgrade`; before, setup took it
+  for a newer release and refused it.
 - The installer is served at `https://modmon.dev/install.sh` (the site build
   copies `packaging/release/install.sh`) and installs from the releases on
   GitHub: the latest by default, or the one `--version` names, release

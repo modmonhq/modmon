@@ -13,74 +13,78 @@ these rules for any change to the types in `core/src/domain/remote.rs`,
 ## How the two sides agree
 
 - `PROTOCOL_VERSION` in `core/src/domain/remote.rs` is the newest protocol a
-  build speaks, `MINIMUM_PROTOCOL_VERSION` the oldest.
+  build speaks, `MINIMUM_PROTOCOL_VERSION` the oldest. Protocol 1 is the 0.1.1
+  baseline.
 - The client's hello says both (`version` and `minimum`) and its release
   (`client_version`). The daemon picks the newest protocol both speak and
   answers with it as the `version` of its hello, or refuses with
-  `MM_REMOTE_UPGRADE_REQUIRED` and the side to upgrade.
+  `MM_REMOTE_UPGRADE_REQUIRED` and the side to upgrade. A hello without
+  `minimum` comes from a build before 0.1.1 and is refused.
 - Every later frame of the session, both ways and through the relay, has the
   agreed version. The one exception is a read the client sends together with
   its hello, before it knows the answer: it has the version the hello offered.
 - The daemon reads a hello leniently, so a newer client's additions do no
   harm, and reads a request strictly: an unknown method or field fails the
-  whole request, which the daemon then answers with
-  `MM_REMOTE_UPGRADE_REQUIRED` and does not act on.
+  whole request. The daemon then answers `MM_REMOTE_UPGRADE_REQUIRED` when
+  the client is newer, by protocol or by release, and the reason otherwise,
+  and acts on none of it.
+- A client reads answers leniently: it leaves out the keys it does not know.
 
 ## Rules
 
-1. Never remove or rename a field, variant, method, result, or stream item
-   while `MINIMUM_PROTOCOL_VERSION` is at or below the protocol that has it,
-   and never change what an existing one means. Add a new one instead.
+1. A change that an older peer can read keeps the protocol number. Adding an
+   optional field, a method, or a result for a new method is such a change.
 2. A new field is `#[serde(default, skip_serializing_if = ...)]`. A peer that
    does not know it never sees it unless it is used, and a newer peer reading
    an older one gets the default.
-3. A new method, request field, result, stream item, or frame, or a new value
-   of an enum anywhere on the wire, belongs to a new protocol: raise
-   `PROTOCOL_VERSION` by one, say what it added in its doc comment, and write
-   its fixtures (see below).
-4. The client checks before it sends. `RemoteMethod::protocol` returns the
-   protocol a request needs, by method and by the fields it uses; a request
-   goes only to a host that agreed on at least that protocol, else `mm`
-   refuses it before sending and names the host and the upgrade. A request
-   that needs more than `MINIMUM_PROTOCOL_VERSION` is never sent with the
-   hello. For anything else, use `require_protocol`.
-5. The daemon answers in the agreed protocol. `RemoteRequestContext::protocol`
-   holds it. An answer never holds a result, stream item, or enum value the
-   agreed protocol does not have, and never a new field of a type the client
-   reads strictly: plans and their bindings, seals, configuration, and stored
-   records. Answer types only a daemon sends, such as `NodeFacts`, are read
-   leniently by every client from 0.1.1 on, so a new field there needs no
-   check.
-6. Every object a request carries rejects unknown fields
-   (`#[serde(deny_unknown_fields)]`), so a daemon never acts on a request it
-   read only in part. A build receipt is the exception: its hash covers all
-   of it.
-7. A new field of the hello goes inside `hello`, never beside it, and holds
-   nothing a daemon may ignore. Whatever a daemon must not ignore is a
-   protocol number.
-8. Raising `MINIMUM_PROTOCOL_VERSION` drops every client and host that speaks
-   only older protocols. It is a breaking release: the release notes say which
-   releases stop working with it and what their users run, and the fixtures of
-   the protocols it drops are deleted with it.
+3. Answer types ignore keys they do not know: no `deny_unknown_fields` on a
+   type only a daemon sends. Types that are also hashed, reviewed or stored
+   (plans and their bindings, seals, configuration, stored records) stay
+   exact; a new field there is only filled when it is used.
+4. Requests stay strict: every object a request carries rejects unknown
+   fields (`#[serde(deny_unknown_fields)]`), so a daemon never applies a
+   mutation from a request it read only in part. An older daemon refuses a
+   request with a new method or a new field whole, with
+   `MM_REMOTE_UPGRADE_REQUIRED`, which tells the user to upgrade the host. A
+   build receipt is the one exception: its hash covers all of it.
+5. A new value of an enum in an answer, or a new kind of answer, reaches only
+   a client that can read it: send it only in reply to something only such a
+   client sends, such as a new method or a field it set.
+6. Never remove or rename a field, variant, method, result, or stream item,
+   and never change what an existing one means. That is a breaking wire
+   change. It raises `PROTOCOL_VERSION`, the code keeps speaking the old
+   protocol for sessions that agreed on it (`RemoteRequestContext::protocol`
+   on the daemon, the connection's protocol on the client), and a request
+   whose meaning changed names the new protocol in `RemoteMethod::protocol`
+   so that it is never sent to a host that agreed on an older one.
+7. When `mm` must know before it sends anything that the host can take a
+   request, which is rare, it checks with `require_protocol` against the
+   session's protocol, which then has to be one that guarantees it.
+8. A new field of the hello goes inside `hello`, never beside it, and holds
+   nothing a daemon may ignore.
+9. `MINIMUM_PROTOCOL_VERSION` rises only with a breaking release, whose notes
+   say which releases stop working with it and what their users run. The
+   fixtures of the protocols it drops are deleted with it.
 
 ## Frozen fixtures
 
 `core/tests/fixtures/protocol/<N>/` holds one frame of each kind, method,
-result, and stream item of protocol N, with every field filled, as the release
-that introduced N wrote it. They are written once and never edited:
+result, and stream item of protocol N, with every field filled, as the build
+that added it wrote it. A fixture is added once and never edited:
 
 ```sh
 cargo test --test protocol_compatibility -- --ignored write_protocol_fixtures
 ```
 
 It writes only the files that are missing, under the current
-`PROTOCOL_VERSION`. Run it after raising the protocol, review the new files,
-and commit them with the change.
+`PROTOCOL_VERSION`. Run it after adding a frame, method, result, or stream
+item, or after raising the protocol, review the new files, and commit them
+with the change.
 
 `cargo test --test protocol_compatibility` then checks that the build reads
-and writes every frame of every protocol it speaks exactly as frozen, that the
-current protocol has a fixture for each frame, method, result, and stream item
-the build has, that every object a request carries is read strictly, and how a
-daemon answers a newer and an older client. A change that breaks a fixture
-breaks the peers that still speak that protocol: change the code, not the
-fixture.
+and writes every frozen frame of every protocol it speaks exactly as frozen,
+that the current protocol has a fixture for each frame, method, result, and
+stream item the build has, that every object a request carries is read
+strictly, and how a daemon answers a newer and an older client. A change that
+breaks a fixture breaks the peers that still speak that protocol: change the
+code, not the fixture.
