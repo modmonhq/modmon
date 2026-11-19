@@ -429,6 +429,7 @@
                     runtime_name: "mm-job-7".to_owned(),
                     runtime: kind,
                     target,
+                    job: "report".to_owned(),
                     module: "backend".to_owned(),
                     service: "api".to_owned(),
                     argv: vec!["migrate".to_owned()],

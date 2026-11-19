@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 use zeroize::{Zeroize, Zeroizing};
 
+use crate::adapters::runtime::launch_failure::{Launched, launch_error};
 use crate::app::ports::{
     CommandOutput, CommandSpec, ExecStream, LogStream, ProcessOutputSource, ProcessRunner,
     ProcessStreamEvent, RuntimeJobDriver, RuntimeOperationDriver, StreamCommandSpec,
@@ -539,7 +540,7 @@ impl RuntimeJobDriver for RuntimeOperationsAdapter {
         if let Some(user) = &launch.user {
             args.extend(["--user".to_owned(), user.clone()]);
         }
-        args.push(launch.service);
+        args.push(launch.service.clone());
         args.extend(launch.argv);
         let mut environment = launch.target.interpolation_environment.clone();
         for (name, value) in launch.environment.values() {
@@ -559,7 +560,17 @@ impl RuntimeJobDriver for RuntimeOperationsAdapter {
             )
             .await?;
         drop(auth);
-        require_success(&output, self.program(), "launch one-shot job")?;
+        if !output.success() {
+            return Err(launch_error(
+                self.kind,
+                format!("{} (launch one-shot job)", self.program()),
+                &Launched::Job {
+                    job: &launch.job,
+                    service: &launch.service,
+                },
+                &output,
+            ));
+        }
         let candidate = output.stdout.trim();
         let container = if valid_container_id(candidate) {
             candidate.to_owned()

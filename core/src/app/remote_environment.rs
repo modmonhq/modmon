@@ -463,6 +463,9 @@ fn with_message(error: MmError, named: impl FnOnce(String) -> String) -> MmError
         MmError::RuntimeResponse { message } => MmError::RuntimeResponse {
             message: named(message),
         },
+        MmError::Launch { message } => MmError::Launch {
+            message: named(message),
+        },
         MmError::Placement { message } => MmError::Placement {
             message: named(message),
         },

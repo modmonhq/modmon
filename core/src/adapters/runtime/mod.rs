@@ -7,6 +7,7 @@ mod factory;
 mod fake;
 mod ingress_verifier;
 mod inspect;
+pub mod launch_failure;
 mod observe;
 mod oci_runtime;
 mod operations;

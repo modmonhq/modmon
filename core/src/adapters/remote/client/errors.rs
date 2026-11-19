@@ -88,6 +88,7 @@ pub(super) fn server_error(error: RemoteError) -> MmError {
         "MM_TERMINAL" => MmError::Terminal {
             message: body("terminal error: "),
         },
+        "MM_RUNTIME_LAUNCH" => MmError::Launch { message: body("") },
         "MM_TIMEOUT" => MmError::Timeout { message: body("") },
         "MM_CANCELLED" => MmError::Cancelled { message: body("") },
         "MM_RELEASE_INPUT" => MmError::ReleaseInput { message: body("") },

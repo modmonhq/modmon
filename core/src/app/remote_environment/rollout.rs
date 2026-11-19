@@ -364,6 +364,9 @@ fn clone_error(error: &MmError) -> MmError {
         MmError::Cancelled { message } => MmError::Cancelled {
             message: message.clone(),
         },
+        MmError::Launch { message } => MmError::Launch {
+            message: message.clone(),
+        },
         other => MmError::Environment {
             message: other.to_string(),
         },

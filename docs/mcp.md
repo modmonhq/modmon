@@ -206,7 +206,11 @@ from a host or quotes another error. A program that failed
 (`MM_PROCESS_FAILED`) is named with its exit code; an answer from the engine
 or a host that mm could not use (`MM_RUNTIME_RESPONSE`, or a host's
 `MM_PROCESS_FAILED`) names only that step. The user sees the whole output by
-running the same `mm` command in a terminal.
+running the same `mm` command in a terminal. When mm recognizes why the engine
+could not start a service's or a job's container (a mount, an image, a
+network, a port, or a container name), it says so in its own words with
+`MM_RUNTIME_LAUNCH`, which an agent reads in full, and a job's run in
+`deploy_logs` carries the same message as its output.
 
 The rest is redacted the way the command log redacts what a command printed:
 a `NAME=value` pair whose name contains `password`, `secret`, `token`,

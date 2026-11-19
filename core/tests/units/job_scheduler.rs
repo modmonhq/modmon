@@ -337,6 +337,7 @@ impl SchedulerRepository for FakeRepository {
 
 struct FakeJobRuntime {
     observations: Mutex<VecDeque<Result<RuntimeJobState, MmError>>>,
+    refusals: Mutex<VecDeque<MmError>>,
     fail_cancel: AtomicBool,
     ordered: Arc<Mutex<Vec<String>>>,
 }
@@ -345,6 +346,7 @@ impl FakeJobRuntime {
     fn new(ordered: Arc<Mutex<Vec<String>>>) -> Self {
         Self {
             observations: Mutex::new(VecDeque::new()),
+            refusals: Mutex::new(VecDeque::new()),
             fail_cancel: AtomicBool::new(false),
             ordered,
         }
@@ -355,6 +357,14 @@ impl FakeJobRuntime {
             .lock()
             .map_err(|_| state_error("runtime event test lock was poisoned"))?
             .push(event.to_owned());
+        Ok(())
+    }
+
+    fn refuse(&self, error: MmError) -> Result<(), MmError> {
+        self.refusals
+            .lock()
+            .map_err(|_| state_error("runtime refusal test lock was poisoned"))?
+            .push_back(error);
         Ok(())
     }
 
@@ -377,7 +387,13 @@ impl RuntimeJobDriver for FakeJobRuntime {
                 .keys()
                 .any(|key| key == "MM_JOB_FENCE_TOKEN")
         );
-        Ok("runtime-id".to_owned())
+        assert_eq!(launch.job, "task");
+        let refused = self
+            .refusals
+            .lock()
+            .map_err(|_| state_error("runtime refusal test lock was poisoned"))?
+            .pop_front();
+        refused.map_or_else(|| Ok("runtime-id".to_owned()), Err)
     }
 
     async fn inspect(

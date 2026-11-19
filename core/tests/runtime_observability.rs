@@ -269,6 +269,7 @@ async fn compose_jobs_are_stable_owned_bounded_and_secret_safe()
         runtime_name: name.clone(),
         runtime: RuntimeKind::DockerCompose,
         target: target(RuntimeKind::DockerCompose),
+        job: "report".to_owned(),
         module: "backend".to_owned(),
         service: "api".to_owned(),
         argv: vec!["bin/job".to_owned(), "--once".to_owned()],
@@ -351,6 +352,7 @@ async fn podman_missing_container_exit_allows_first_job_launch()
             runtime_name,
             runtime: RuntimeKind::PodmanCompose,
             target: target(RuntimeKind::PodmanCompose),
+            job: "report".to_owned(),
             module: "backend".to_owned(),
             service: "api".to_owned(),
             argv: vec!["bin/job".to_owned()],
@@ -362,6 +364,71 @@ async fn podman_missing_container_exit_allows_first_job_launch()
         })
         .await?;
     assert_eq!(launched, container_id);
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_job_whose_container_cannot_start_says_why_in_mm_words()
+-> Result<(), Box<dyn std::error::Error>> {
+    let run_id = Uuid::from_u128(30);
+    let runtime_name = runtime_job_name(ProjectId(Uuid::from_u128(1)), run_id);
+    let process = QueueProcess::new([
+        failed_output("Error: No such container"),
+        failed_output(
+            " Container mm-job Creating \n Container mm-job Error response from daemon: No such image: registry.example.com/shop/api:1.4 \nError response from daemon: No such image: registry.example.com/shop/api:1.4\n",
+        ),
+        failed_output("Error: No such container"),
+        failed_output("Error response from daemon: an answer no recognizer knows"),
+    ]);
+    let adapter =
+        RuntimeOperationsAdapter::new(RuntimeKind::DockerCompose, process, QueueStreaming::new([]));
+    let launch = JobLaunch {
+        run_id,
+        fence_token: 1,
+        runtime_name,
+        runtime: RuntimeKind::DockerCompose,
+        target: target(RuntimeKind::DockerCompose),
+        job: "migrate".to_owned(),
+        module: "backend".to_owned(),
+        service: "api".to_owned(),
+        argv: vec!["bin/migrate".to_owned()],
+        user: None,
+        timeout: Duration::from_secs(30),
+        output_limit_bytes: 1024,
+        environment: RuntimeEnvironment::default(),
+        redactions: Vec::new(),
+    };
+
+    let error = adapter
+        .launch(launch.clone())
+        .await
+        .err()
+        .ok_or("the job started")?;
+    assert_eq!(error.code(), "MM_RUNTIME_LAUNCH");
+    assert_eq!(error.agent_message(), error.to_string());
+    assert!(
+        error.to_string().starts_with(
+            "job 'migrate' (service 'api') could not start: its image registry.example.com/shop/api:1.4 is not on this host"
+        ),
+        "{error}"
+    );
+    assert!(
+        error
+            .to_string()
+            .contains("`docker pull registry.example.com/shop/api:1.4`"),
+        "{error}"
+    );
+
+    let error = adapter
+        .launch(launch)
+        .await
+        .err()
+        .ok_or("the job started")?;
+    assert!(
+        matches!(error, MmError::ProcessFailed { ref program, .. } if program == "docker (launch one-shot job)"),
+        "{error:?}"
+    );
+    assert!(!error.agent_message().contains("no recognizer knows"));
     Ok(())
 }
 

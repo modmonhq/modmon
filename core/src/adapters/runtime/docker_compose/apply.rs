@@ -457,8 +457,7 @@ impl DockerComposeRuntime {
                     .timeout(Duration::from_secs(300)),
             )
             .await?;
-        self.ensure_success(output)?;
-        Ok(())
+        self.ensure_started(output, target, only)
     }
 
     async fn overlapping_network(&self, subnet: &str) -> Result<Option<String>, MmError> {

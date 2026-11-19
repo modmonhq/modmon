@@ -79,6 +79,7 @@ struct NewRunInput<'a> {
     approval: &'a ApprovalContext,
 }
 
+mod launch;
 mod manager;
 mod runs;
 
