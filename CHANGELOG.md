@@ -6,17 +6,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Fixed
-
-- `mm deploy plan` and `mm dev up` no longer stop with `existing route
-  ownership has no successful deployment snapshot; recover the target before
-  deploying` when an environment's routes on its target are not the ones its
-  last finished deployment recorded, such as after an apply cut off after it
-  saved its routes. The plan takes those routes back and says so
-  (`adopted_route_claims` in JSON); routes of other projects and environments
-  still stop it. Refusals about routes name the command to run next. See
-  [troubleshooting](docs/help/troubleshooting.md#route-ownership-has-no-successful-deployment-snapshot).
-
 ## [0.1.1] - 2026-11-19
 
 Remote protocol: 1. This release is the baseline: from it on, `mm` and the
@@ -1098,6 +1087,14 @@ hosts up again with `mm target setup plan --upgrade`. See
 
 ### Fixed
 
+- `mm deploy plan` and `mm dev up` no longer stop with `existing route
+  ownership has no successful deployment snapshot; recover the target before
+  deploying` when an environment's routes on its target are not the ones its
+  last finished deployment recorded, such as after an apply cut off after it
+  saved its routes. The plan takes those routes back and says so
+  (`adopted_route_claims` in JSON); routes of other projects and environments
+  still stop it. Refusals about routes name the command to run next. See
+  [troubleshooting](docs/help/troubleshooting.md#route-ownership-has-no-successful-deployment-snapshot).
 - `mm doctor`'s `MM_HOST_RELEASE_OLDER` said to run `mm target setup plan`
   without `--upgrade`, which setup refuses for hosts on an older release;
   `MM_HOST_RELEASE_NEWER` now says `mm update`.
