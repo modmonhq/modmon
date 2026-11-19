@@ -73,7 +73,9 @@ pub use process::{
     ProcessStreamEvent, RedactedCommandRecord, StreamCommandSpec, StreamingProcessRunner,
 };
 pub use readiness::{ReadinessProbe, StateInspector, StateRecoveryStore};
-pub use release::ReleaseManifestClient;
+pub use release::{
+    DownloadedFile, InstallationFiles, ReleaseCache, ReleaseFiles, ReleaseManifestClient,
+};
 pub use remote::{
     CommitBundles, PreparedBundle, RemoteRequestContext, RemoteTransport, RemoteUseCases,
 };

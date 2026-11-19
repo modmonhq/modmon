@@ -41,16 +41,16 @@ pub(super) fn stage(
         source,
     })?;
     super::set_private_directory_permissions(&directory)?;
-    copy_reviewed_binary(
-        &access.binary("mm"),
-        &directory.join("mm"),
-        &access.mm_digest,
-    )?;
-    copy_reviewed_binary(
-        &access.binary("mmd"),
-        &directory.join("mmd"),
-        &access.mmd_digest,
-    )?;
+    for set in &access.binaries {
+        let cpu = directory.join(&set.architecture);
+        fs::create_dir(&cpu).map_err(|source| MmError::Io {
+            context: "creating the remote access staging directory".to_owned(),
+            source,
+        })?;
+        super::set_private_directory_permissions(&cpu)?;
+        copy_reviewed_binary(&set.binary("mm"), &cpu.join("mm"), &set.mm_digest)?;
+        copy_reviewed_binary(&set.binary("mmd"), &cpu.join("mmd"), &set.mmd_digest)?;
+    }
     for (name, contents) in [
         ("mm-relay-shell", RELAY_SHELL),
         ("90-mm-relay.conf", SSHD_DROP_IN),
@@ -66,6 +66,11 @@ pub(super) fn stage(
     let values = serde_json::json!({
         "mm_access_files": utf8(&directory)?,
         "mm_access_report": utf8(&report)?,
+        "mm_access_architectures": access
+            .binaries
+            .iter()
+            .map(|set| set.architecture.as_str())
+            .collect::<Vec<_>>(),
         "mm_access_enroll_argv": enroll_arguments(plan, access),
     });
     reject_templating(&values)?;

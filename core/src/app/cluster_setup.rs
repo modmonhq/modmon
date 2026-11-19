@@ -61,8 +61,9 @@ pub struct ClusterSetupRequest {
     pub environment: Option<String>,
     /// Accept scanned host keys that differ from the recorded ones.
     pub trust_new_host_keys: bool,
-    /// Local directory with `mm` and `mmd` built for the hosts.
-    pub binaries: PathBuf,
+    /// `--host-binaries`: a directory with `mm` and `mmd` built for the
+    /// hosts. Without it, this mm's directory or this mm's release, per CPU.
+    pub binaries: Option<PathBuf>,
     /// The commit every node syncs the users file from.
     pub access_commit: String,
     /// `--nodes`: set up only these nodes; empty means every node. The
@@ -92,6 +93,8 @@ pub struct ClusterSetupService {
     bundles: Option<Arc<dyn crate::app::ports::CommitBundles>>,
     /// Keeps the managed secret store's authority and recovery copy.
     keeper: Option<Arc<dyn crate::app::ports::ClusterStoreKeeper>>,
+    /// Where the host binaries come from without `--host-binaries`.
+    binaries: Option<crate::app::HostBinarySource>,
 }
 
 impl std::fmt::Debug for ClusterSetupService {
@@ -122,35 +125,68 @@ pub fn cluster_target<'a>(
         .map(|(name, target)| (name.as_str(), target))
 }
 
-/// What setup replaces on each node it read, refusing what `consent` does not allow.
+/// What setup replaces on each node it read, refusing what `consent` does
+/// not allow. A node's build is compared with the `mmd` for its CPU.
 fn release_notices(
     mesh: Option<&crate::domain::mesh::MeshPlan>,
     nodes: &[ClusterNodePlan],
-    (binaries, consent): (&Path, crate::domain::cluster_setup::ReleaseConsent),
+    (binaries, consent): (
+        &[crate::domain::target::HostBinaries],
+        crate::domain::cluster_setup::ReleaseConsent,
+    ),
 ) -> Result<Vec<String>, MmError> {
-    let this = crate::domain::cluster_setup::HostRelease {
-        version: env!("CARGO_PKG_VERSION").to_owned(),
-        protocol: crate::domain::remote::PROTOCOL_VERSION,
-        build: match std::fs::read(binaries.join("mmd")) {
-            Ok(executable) => Some(crate::domain::cluster_setup::build_digest(&executable)),
-            Err(error) => {
-                tracing::debug!(%error, "the mmd to install could not be read; its build is not compared");
-                None
-            }
-        },
-    };
     let read = mesh
         .iter()
         .flat_map(|mesh| &mesh.nodes)
-        .filter(|node| {
-            nodes.iter().any(|planned| {
-                planned.name == node.node && planned.host_key_origin == HostKeyOrigin::Recorded
-            })
+        .filter_map(|node| {
+            nodes
+                .iter()
+                .find(|planned| {
+                    planned.name == node.node && planned.host_key_origin == HostKeyOrigin::Recorded
+                })
+                .map(|planned| {
+                    (
+                        planned.cpu.as_deref(),
+                        node.node.as_str(),
+                        node.release.as_ref(),
+                    )
+                })
         })
-        .map(|node| (node.node.as_str(), node.release.as_ref()))
         .collect::<Vec<_>>();
-    crate::domain::cluster_setup::release_notices(&read, &this, consent)
-        .map_err(|message| MmError::Target { message })
+    let mut notices = Vec::new();
+    let mut builds = read
+        .iter()
+        .map(
+            |(cpu, _, _)| match crate::domain::target::binaries_for(binaries, *cpu).as_slice() {
+                [set] => Some(set.mmd_digest.clone()),
+                _ => None,
+            },
+        )
+        .collect::<Vec<_>>();
+    builds.sort();
+    builds.dedup();
+    for build in builds {
+        let this = crate::domain::cluster_setup::HostRelease {
+            version: env!("CARGO_PKG_VERSION").to_owned(),
+            protocol: crate::domain::remote::PROTOCOL_VERSION,
+            build: build.clone(),
+        };
+        let group = read
+            .iter()
+            .filter(|(cpu, _, _)| {
+                match crate::domain::target::binaries_for(binaries, *cpu).as_slice() {
+                    [set] => Some(&set.mmd_digest) == build.as_ref(),
+                    _ => build.is_none(),
+                }
+            })
+            .map(|(_, node, release)| (*node, *release))
+            .collect::<Vec<_>>();
+        notices.extend(
+            crate::domain::cluster_setup::release_notices(&group, &this, consent)
+                .map_err(|message| MmError::Target { message })?,
+        );
+    }
+    Ok(notices)
 }
 
 impl ClusterSetupService {
@@ -160,7 +196,15 @@ impl ClusterSetupService {
             dependencies,
             bundles: None,
             keeper: None,
+            binaries: None,
         }
+    }
+
+    /// Where the host binaries come from without `--host-binaries`.
+    #[must_use]
+    pub fn with_host_binaries(mut self, source: crate::app::HostBinarySource) -> Self {
+        self.binaries = Some(source);
+        self
     }
 
     /// For targets with `delivery: push`: what builds a commit's bundle
@@ -218,11 +262,14 @@ impl ClusterSetupService {
             user: &setup.user,
             storage: &storage,
         };
-        let (mut reading, secrets, local) = tokio::try_join!(
+        let (mut reading, secrets, input_files) = tokio::try_join!(
             self.read_nodes(&planned, request, progress),
             self.read_secrets(&document, &environment, deploy_key, progress),
-            reading::read_local(&request.binaries, &document.root, progress),
+            reading::read_inputs(&document.root),
         )?;
+        let binaries = self
+            .host_binaries(request, &reading.nodes, progress)
+            .await?;
         let secret_store = self
             .plan_store(&document, (&environment, target), &mut reading, &setup.user)
             .await?;
@@ -234,7 +281,7 @@ impl ClusterSetupService {
         notices.extend(release_notices(
             reading.mesh.as_ref(),
             &reading.nodes,
-            (&local.binaries, consent),
+            (&binaries, consent),
         )?);
         notices.extend(reading.step_notices);
         notices.extend(reading.handover);
@@ -258,10 +305,12 @@ impl ClusterSetupService {
             storage,
             runtime,
             setup,
-            input_files: local.input_files,
-            mm_digest: local.mm_digest,
-            mmd_digest: local.mmd_digest,
-            binaries: local.binaries,
+            input_files,
+            host_binaries: match binaries.as_slice() {
+                [set] if request.binaries.is_some() => Some(set.directory.clone()),
+                _ => None,
+            },
+            binaries,
             secrets: secrets.secrets,
             secret_store,
             notices,

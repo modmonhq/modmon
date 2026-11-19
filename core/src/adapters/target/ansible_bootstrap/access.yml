@@ -12,6 +12,7 @@
     mm_relay_next: /usr/libexec/mm.next
     mm_sshd_drop_in: /etc/ssh/sshd_config.d/90-mm-relay.conf
     mm_ssh_service: "{{ 'ssh.service' if ansible_os_family == 'Debian' else 'sshd.service' }}"
+    mm_access_cpu: "{{ {'amd64': 'x86_64', 'arm64': 'aarch64'}.get(ansible_architecture, ansible_architecture) }}"
 
   tasks:
     - name: Require a Linux host managed by systemd
@@ -20,6 +21,17 @@
           - ansible_system == 'Linux'
           - ansible_service_mgr == 'systemd'
         fail_msg: Remote access needs a Linux host that runs systemd.
+
+    - name: Require mm and mmd built for this host's CPU
+      ansible.builtin.assert:
+        that:
+          - mm_access_cpu in mm_access_architectures
+        fail_msg: >-
+          This host's CPU is {{ mm_access_cpu }}, and the mm and mmd that setup
+          would install are built for {{ mm_access_architectures | join(' and ') }}.
+          Nothing was installed. Plan again without --host-binaries to use this mm's
+          release for each host, or pass --host-binaries DIR, where DIR holds mm and
+          mmd from the release archive for {{ mm_access_cpu }}-unknown-linux-gnu.
 
     - name: Install git and the OpenSSH server
       ansible.builtin.apt:
@@ -92,7 +104,7 @@
     # the rest of this play. The running mmd keeps its old file open until then.
     - name: Install mmd and stage mm
       ansible.builtin.copy:
-        src: "{{ mm_access_files }}/{{ item.name }}"
+        src: "{{ mm_access_files }}/{{ mm_access_cpu }}/{{ item.name }}"
         dest: "{{ item.dest }}"
         owner: root
         group: root

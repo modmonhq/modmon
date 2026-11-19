@@ -77,6 +77,7 @@ Human output prints the corresponding quoted command. Other errors may have
 | `MM_REMOTE`                       |                       3 | A remote host reported an error under a code this `mm` does not know; the message starts with that code. Upgrade `mm`. |
 | `MM_REMOTE_UPGRADE_REQUIRED`      |                       3 | A host's `mmd` is too old for what this `mm` asked: it could not read the request, which came from a newer `mm`, or the command needs a newer host. Nothing was changed. The message names the host's release and the upgrade, `mm target setup plan --upgrade`. See [compatibility between releases](compatibility.md). |
 | `MM_TERMINAL`                     |                       1 | Prompt or terminal contract failure.                                                                          |
+| `MM_UPDATE`                       |                       1 | `mm update` changed nothing: the release could not be read or downloaded, it has no archive for this platform or needs a newer `mm`, or this installation is refused (a directory that is not writable, an `mm` built from a checkout, an older release without `--force`). A failed replacement puts every binary back. The message names what to run instead. An archive that fails its checksum or holds an unsafe entry is `MM_SECURITY`. |
 | `MM_CLI_PARSE`                    | Clap status, normally 2 | Arguments could not be parsed.                                                                                |
 | `MM_OUTPUT`                       |         original status | Fallback when mm cannot print the intended output.                                                            |
 
@@ -293,7 +294,8 @@ marks dependent checks as `blocked` until they can be evaluated.
 or shared-service report contains an error. If that report is valid, it returns
 `3` when the runtime is unavailable or has an error diagnostic, otherwise `0`.
 An explicit `--check-updates` returns `1` when the stable manifest is unreachable
-or invalid and includes an actionable unavailable report. Up-to-date,
+or invalid and includes an actionable unavailable report; so does
+`mm update --check`. Up-to-date,
 update-available, installed-newer, and unsupported-platform states do not by
 themselves fail unrelated doctor checks.
 

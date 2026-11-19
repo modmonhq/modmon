@@ -29,23 +29,27 @@ fn manifest() -> ReleaseManifest {
                 binaries: vec!["mm".to_owned(), "mmd".to_owned()],
             },
         )]),
-        source: file("releases/v1.2.3/mm-v1.2.3-source.tar.gz"),
-        sbom: file("releases/v1.2.3/sbom.spdx.json"),
-        release_certificate: file("releases/v1.2.3/release-certificate.json"),
+        source: Some(file("releases/v1.2.3/mm-v1.2.3-source.tar.gz")),
+        sbom: Some(file("releases/v1.2.3/sbom.spdx.json")),
+        release_certificate: Some(file("releases/v1.2.3/release-certificate.json")),
         provenance: vec![file("releases/v1.2.3/provenance/build.intoto.jsonl")],
     }
 }
 
 #[test]
-fn schema_round_trip_is_deterministic_and_strict() -> Result<(), Box<dyn std::error::Error>> {
+fn schema_round_trip_is_deterministic_and_ignores_unknown_fields()
+-> Result<(), Box<dyn std::error::Error>> {
     let expected = manifest();
     let first = serde_json::to_vec(&expected)?;
     let parsed = ReleaseManifest::parse(&first).map_err(std::io::Error::other)?;
     let second = serde_json::to_vec(&parsed)?;
     assert_eq!(first, second);
-    let mut unknown = serde_json::to_value(expected)?;
+    let mut unknown = serde_json::to_value(expected.clone())?;
     unknown["unexpected"] = serde_json::json!(true);
-    assert!(ReleaseManifest::parse(unknown.to_string().as_bytes()).is_err());
+    unknown["artifacts"]["x86_64-unknown-linux-gnu"]["signature"] = serde_json::json!("sig");
+    let parsed =
+        ReleaseManifest::parse(unknown.to_string().as_bytes()).map_err(std::io::Error::other)?;
+    assert_eq!(parsed, expected);
     Ok(())
 }
 
@@ -55,6 +59,8 @@ fn rejects_unsafe_paths_formats_checksums_and_components() -> Result<(), Box<dyn
     for path in [
         "/releases/v1.2.3/a.tar.gz",
         "releases/v1.2.3/../a.tar.gz",
+        "releases/v1.2.3/nested/a.tar.gz",
+        "releases/v1.2.4/a.tar.gz",
         "https://example.invalid/a.tar.gz",
         "releases/v1.2.3/a\\b.tar.gz",
     ] {
@@ -65,7 +71,10 @@ fn rejects_unsafe_paths_formats_checksums_and_components() -> Result<(), Box<dyn
             .next()
             .ok_or_else(|| std::io::Error::other("test artifact is missing"))?;
         artifact.path = path.to_owned();
-        assert!(candidate.validate().is_err(), "accepted {path}");
+        assert!(
+            candidate.artifact("x86_64-unknown-linux-gnu").is_err(),
+            "accepted {path}"
+        );
     }
     let mut candidate = manifest();
     let artifact = candidate
@@ -74,9 +83,7 @@ fn rejects_unsafe_paths_formats_checksums_and_components() -> Result<(), Box<dyn
         .next()
         .ok_or_else(|| std::io::Error::other("test artifact is missing"))?;
     artifact.sha256 = "A".repeat(64);
-    artifact.size = 0;
-    artifact.binaries = vec!["../mm".to_owned()];
-    assert!(candidate.validate().is_err());
+    assert!(candidate.artifact("x86_64-unknown-linux-gnu").is_err());
     Ok(())
 }
 
@@ -112,110 +119,86 @@ fn semantic_comparison_never_reports_false_upgrade_or_downgrade()
 }
 
 #[test]
-fn manifest_identity_and_inventory_fail_closed() {
-    let mutations: [fn(&mut ReleaseManifest); 12] = [
-        |value| value.schema_version = 2,
+fn manifest_identity_fails_closed_and_later_schemas_are_read() {
+    let mutations: [fn(&mut ReleaseManifest); 7] = [
         |value| value.minimum_installer_schema = 2,
+        |value| value.minimum_installer_schema = 0,
+        |value| value.schema_version = 0,
         |value| value.product = "other".to_owned(),
         |value| value.channel = "nightly".to_owned(),
         |value| value.version = "1.2.3-alpha.1".to_owned(),
         |value| value.tag = "v1.2.4".to_owned(),
-        |value| value.commit = "A".repeat(40),
-        |value| value.published_at = "not-a-time".to_owned(),
-        |value| value.source_date_epoch = 0,
-        |value| value.artifacts.clear(),
-        |value| value.provenance.clear(),
-        |value| {
-            if let Some(artifact) = value.artifacts.values().next().cloned() {
-                value.artifacts.insert("unknown".to_owned(), artifact);
-            }
-        },
     ];
     for mutate in mutations {
         let mut candidate = manifest();
         mutate(&mut candidate);
         assert!(candidate.validate().is_err());
     }
+    let mut later = manifest();
+    later.schema_version = 7;
+    later.provenance.clear();
+    later.sbom = None;
+    assert!(later.validate().is_ok());
+    let mut newer_reader = manifest();
+    newer_reader.minimum_installer_schema = 2;
+    let refused = newer_reader.validate().err().unwrap_or_default();
+    assert!(refused.contains("needs a newer mm"), "{refused}");
+    assert!(refused.contains(INSTALLER_COMMAND), "{refused}");
 }
 
 #[test]
-fn artifact_formats_and_binary_inventories_are_exact() -> Result<(), Box<dyn std::error::Error>> {
-    let mut zip = manifest();
-    let artifact = zip
-        .artifacts
-        .values_mut()
-        .next()
-        .ok_or("fixture artifact is missing")?;
-    artifact.format = ArchiveFormat::Zip;
-    artifact.path = "releases/v1.2.3/mm-v1.2.3-x86_64-pc-windows-msvc.zip".to_owned();
-    artifact.binaries = vec!["mm".to_owned()];
-    assert!(zip.validate().is_ok());
-
+fn the_archive_this_mm_uses_is_checked_and_other_binaries_are_skipped()
+-> Result<(), Box<dyn std::error::Error>> {
+    let target = "x86_64-unknown-linux-gnu";
     let mut linux = manifest();
-    let artifact = linux
+    linux
         .artifacts
-        .values_mut()
-        .next()
-        .ok_or("fixture artifact is missing")?;
-    artifact.binaries = ["mm", "mmd", "mm-ingress-helper"]
+        .get_mut(target)
+        .ok_or("fixture artifact is missing")?
+        .binaries = ["mm", "mmd", "mm-ingress-helper", "mm-future-tool"]
         .map(str::to_owned)
         .to_vec();
-    assert!(linux.validate().is_ok());
-    let mut macos = manifest();
-    let mut artifact = macos
-        .artifacts
-        .remove("x86_64-unknown-linux-gnu")
-        .ok_or("fixture artifact is missing")?;
-    artifact.path = "releases/v1.2.3/mm-v1.2.3-aarch64-apple-darwin.tar.gz".to_owned();
-    macos
-        .artifacts
-        .insert("aarch64-apple-darwin".to_owned(), artifact.clone());
-    assert!(macos.validate().is_ok());
-    let mut windows = macos.clone();
-    let moved = windows
-        .artifacts
-        .remove("aarch64-apple-darwin")
-        .ok_or("fixture artifact is missing")?;
-    windows
-        .artifacts
-        .insert("x86_64-pc-windows-msvc".to_owned(), moved);
-    assert!(
-        windows.validate().is_err(),
-        "Windows is not a release target"
+    let artifact = linux.artifact(target)?.ok_or("artifact is missing")?;
+    assert_eq!(
+        artifact.known_binaries(),
+        ["mm", "mm-ingress-helper", "mmd"]
     );
-    artifact.binaries = ["mm", "mm-ingress-helper"].map(str::to_owned).to_vec();
-    macos
-        .artifacts
-        .insert("aarch64-apple-darwin".to_owned(), artifact);
-    assert!(
-        macos.validate().is_err(),
-        "the ingress helper ships with Linux archives only"
+    assert_eq!(
+        artifact.file_name(),
+        "mm-v1.2.3-x86_64-unknown-linux-gnu.tar.gz"
     );
+    assert_eq!(linux.artifact("aarch64-apple-darwin")?, None);
 
+    for format in [ArchiveFormat::Zip, ArchiveFormat::Unknown] {
+        let mut other = manifest();
+        let artifact = other
+            .artifacts
+            .get_mut(target)
+            .ok_or("fixture artifact is missing")?;
+        artifact.format = format;
+        let refused = other.artifact(target).err().unwrap_or_default();
+        assert!(refused.contains("cannot unpack"), "{refused}");
+    }
     for binaries in [
         Vec::new(),
         vec!["mmd".to_owned()],
-        vec!["mm-ingress-helper".to_owned()],
         vec!["mm".to_owned(), "mm".to_owned()],
-        vec!["mm".to_owned(), "other".to_owned()],
     ] {
         let mut candidate = manifest();
-        let artifact = candidate
+        candidate
             .artifacts
-            .values_mut()
-            .next()
-            .ok_or("fixture artifact is missing")?;
-        artifact.binaries = binaries;
-        assert!(candidate.validate().is_err());
+            .get_mut(target)
+            .ok_or("fixture artifact is missing")?
+            .binaries = binaries;
+        assert!(candidate.artifact(target).is_err());
     }
     let mut wrong_extension = manifest();
-    let artifact = wrong_extension
+    wrong_extension
         .artifacts
-        .values_mut()
-        .next()
-        .ok_or("fixture artifact is missing")?;
-    artifact.format = ArchiveFormat::Zip;
-    assert!(wrong_extension.validate().is_err());
+        .get_mut(target)
+        .ok_or("fixture artifact is missing")?
+        .path = "releases/v1.2.3/mm-v1.2.3-x86_64-unknown-linux-gnu.zip".to_owned();
+    assert!(wrong_extension.artifact(target).is_err());
     Ok(())
 }
 

@@ -27,6 +27,7 @@ pub use development_units::{DevelopmentDocuments, DevelopmentUnitService};
 pub(crate) mod dockerfile;
 mod environment;
 mod gate;
+mod host_binaries;
 mod keys;
 pub use keys::{KeyOutcome, KeyService, KeyServiceDependencies, VaultPreference};
 mod metrics;
@@ -40,6 +41,7 @@ mod secret_backends;
 mod secret_generator;
 mod secrets;
 mod selection;
+mod self_update;
 mod service_gateway;
 pub use job_gateway::JobGateway;
 pub use service_gateway::ServiceGateway;
@@ -80,6 +82,7 @@ pub use gate::{
     GateLoginRequest, GateLoginResult, GateManager, GateManagerDependencies, GateSessionRotation,
     GateSessionValidation, GateUserMutation, PasswordCapGateDriver,
 };
+pub use host_binaries::{HostBinarySource, HostCpu, given_binaries};
 pub use observability::{
     DrainedRestart, LocalRuntimeOperationAuthorizer, RuntimeOperationsDependencies,
     RuntimeOperationsService,
@@ -97,6 +100,7 @@ pub use selection::{
     load_selection_preferences, resolve_named_target, resolve_operation_context,
     resolve_request_context, resolve_runtime_and_target, resolve_selection, resolve_target_name,
 };
+pub use self_update::{SelfUpdateService, self_update_request};
 pub(crate) use services::render_dashboard_service_unit;
 pub use services::{ServicePlanRequest, ServiceStackManager, ServiceStackManagerConfig};
 pub use stacks::StackManager;

@@ -1494,6 +1494,7 @@ fn root_exposes_exactly_the_public_families() {
             "agent",
             "history",
             "workspace",
+            "update",
             "mcp",
         ]
     );

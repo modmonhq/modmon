@@ -82,7 +82,7 @@ async fn a_newer_same_or_older_release_is_reported_as_such() -> TestResult {
             assert!(
                 report
                     .message
-                    .contains("rerun the installer, https://modmon.dev/install.sh"),
+                    .contains("can be updated to 0.1.0; run `mm update`"),
                 "{}",
                 report.message
             );
@@ -109,12 +109,10 @@ async fn an_unreachable_release_a_candidate_or_a_changed_manifest_is_never_an_up
         .replace("\"version\": \"0.1.0\"", "\"version\": \"0.1.1-rc.1\"")
         .replace("\"tag\": \"v0.1.0\"", "\"tag\": \"v0.1.1-rc.1\"");
     assert_ne!(candidate, MANIFEST);
-    let digest = MANIFEST
-        .lines()
-        .find(|line| line.contains("\"sha256\""))
-        .ok_or("the fixture has no digest")?;
-    let changed = MANIFEST.replacen(digest, "      \"sha256\": \"not-a-digest\",", 1);
-    for manifest in [candidate, changed] {
+    let mut changed: serde_json::Value = serde_json::from_str(MANIFEST)?;
+    let target = installed_target().ok_or("this platform has no release")?;
+    changed["artifacts"][target]["sha256"] = serde_json::json!("not-a-digest");
+    for manifest in [candidate, changed.to_string()] {
         let report = service(serve(manifest)?)?.check("0.0.9").await;
         assert_eq!(
             report.status,

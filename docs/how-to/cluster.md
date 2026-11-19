@@ -24,9 +24,10 @@ Swarm](./from-docker-swarm.md) maps its concepts and Compose keys to these.
 - This device's mm key (`mm key create`, then `mm key show`) authorized for
   `root` on every host. Setup logs in with that key, never with `~/.ssh` or an
   SSH agent.
-- On your machine: `ansible-playbook`, `ssh-keyscan`, and Linux builds of `mm`
-  and `mmd` from the same release. Installing `mm` on Linux with
-  `--with-daemon` provides both.
+- On your machine (Linux or macOS): `ansible-playbook`, `ssh-keyscan`, and a
+  released `mm`. Setup installs that release's `mm` and `mmd` for each node's
+  CPU, downloaded and checked when they are not beside `mm` (see
+  [where setup takes mm and mmd from](upgrade.md#where-setup-takes-mm-and-mmd-from)).
 - A git origin that every node can fetch the project from, or
   [`delivery: push`](#deploy-without-git-on-the-nodes) on the target so that
   `mm` sends each commit itself. Also a break-glass key pair whose private

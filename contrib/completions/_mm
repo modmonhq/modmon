@@ -7138,7 +7138,7 @@ _arguments "${_arguments_options[@]}" : \
 '(--origin)--delivery=[\`push\`\: the host fetches nothing and mm sends it each commit'\''s files, so it needs no origin and no deploy key. Turns on the remote access layer, like --origin, and takes its place]:MODE:(push)' \
 '--origin-host-key=[The git server'\''s SSH host key, \`<type> <base64>\`, for SSH origins]:KEY:_default' \
 '*--break-glass=[A recovery key for the host policy, NAME='\''ssh-ed25519 AAAA… comment'\''. Repeat for more. Keep the private half offline]:NAME=KEY:_default' \
-'--host-binaries=[Directory with \`mm\` and \`mmd\` built for the host, such as an extracted Linux release. Default\: the directory of this \`mm\`]:DIR:_files' \
+'--host-binaries=[Directory with \`mm\` and \`mmd\` built for the host, such as an extracted Linux release. Default\: for each host'\''s CPU, the directory of this \`mm\` when it holds them, otherwise this mm'\''s own release, downloaded, checked, and kept under the mm home]:DIR:_files' \
 '--commit=[Commit every node syncs the users file from (default\: HEAD)]:SHA:_default' \
 '*--nodes=[Set up only these nodes, for example while another one cannot be reached. The others are not contacted and keep the version they run]:NODE,...:_default' \
 '--root=[Project root or a path inside the project]:PATH:_files' \
@@ -7164,7 +7164,7 @@ _arguments "${_arguments_options[@]}" : \
 '(--origin)--delivery=[\`push\`\: the host fetches nothing and mm sends it each commit'\''s files, so it needs no origin and no deploy key. Turns on the remote access layer, like --origin, and takes its place]:MODE:(push)' \
 '--origin-host-key=[The git server'\''s SSH host key, \`<type> <base64>\`, for SSH origins]:KEY:_default' \
 '*--break-glass=[A recovery key for the host policy, NAME='\''ssh-ed25519 AAAA… comment'\''. Repeat for more. Keep the private half offline]:NAME=KEY:_default' \
-'--host-binaries=[Directory with \`mm\` and \`mmd\` built for the host, such as an extracted Linux release. Default\: the directory of this \`mm\`]:DIR:_files' \
+'--host-binaries=[Directory with \`mm\` and \`mmd\` built for the host, such as an extracted Linux release. Default\: for each host'\''s CPU, the directory of this \`mm\` when it holds them, otherwise this mm'\''s own release, downloaded, checked, and kept under the mm home]:DIR:_files' \
 '--commit=[Commit every node syncs the users file from (default\: HEAD)]:SHA:_default' \
 '*--nodes=[Set up only these nodes, for example while another one cannot be reached. The others are not contacted and keep the version they run]:NODE,...:_default' \
 '--root=[Project root or a path inside the project]:PATH:_files' \
@@ -7902,6 +7902,23 @@ esac
         esac
     ;;
 esac
+;;
+(update)
+_arguments "${_arguments_options[@]}" : \
+'--version=[Install this release instead of the latest stable one, such as v0.1.2, or a release candidate such as v0.1.3-rc.1]:vX.Y.Z:_default' \
+'--root=[Project root or a path inside the project]:PATH:_files' \
+'-e+[Environment to operate on (overrides MM_ENVIRONMENT and default-environment)]:NAME:_default' \
+'--environment=[Environment to operate on (overrides MM_ENVIRONMENT and default-environment)]:NAME:_default' \
+'--runtime=[Ephemeral runtime adapter for this invocation only]:RUNTIME:(podman-compose docker-compose)' \
+'--target=[Ephemeral target name for this invocation only]:NAME:_default' \
+'--mm-home=[Directory containing mm'\''s local state and target catalog]:PATH:_files' \
+'--output=[Human text or machine-readable JSON. JSON errors stay JSON]:OUTPUT:(human json)' \
+'(--version --force --yes)--check[Only say whether a newer stable release exists; change nothing]' \
+'--force[Install an older release named with --version, install the same release again, or replace an mm built from a checkout]' \
+'--yes[Replace without asking. Needed when standard input is not a terminal]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
 ;;
 (mcp)
 _arguments "${_arguments_options[@]}" : \
@@ -9610,6 +9627,10 @@ _arguments "${_arguments_options[@]}" : \
     ;;
 esac
 ;;
+(update)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (mcp)
 _arguments "${_arguments_options[@]}" : \
 ":: :_mm__subcmd__help__subcmd__mcp_commands" \
@@ -9665,6 +9686,7 @@ _mm_commands() {
 'agent:Show and trust what AI agents may do, and connect coding tools' \
 'history:List the commands run in this project on this machine, and show what one printed' \
 'workspace:List the project folders mm knows on this machine, and forget the ones that are gone' \
+'update:Update this machine'\''s mm, and the mmd and mm-ingress-helper beside it, from a verified release' \
 'mcp:Serve the Model Context Protocol server that AI agents use' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
@@ -12275,6 +12297,7 @@ _mm__subcmd__help_commands() {
 'agent:Show and trust what AI agents may do, and connect coding tools' \
 'history:List the commands run in this project on this machine, and show what one printed' \
 'workspace:List the project folders mm knows on this machine, and forget the ones that are gone' \
+'update:Update this machine'\''s mm, and the mmd and mm-ingress-helper beside it, from a verified release' \
 'mcp:Serve the Model Context Protocol server that AI agents use' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
@@ -13851,6 +13874,11 @@ _mm__subcmd__help__subcmd__team__subcmd__sync_commands() {
 _mm__subcmd__help__subcmd__team__subcmd__whoami_commands() {
     local commands; commands=()
     _describe -t commands 'mm help team whoami commands' commands "$@"
+}
+(( $+functions[_mm__subcmd__help__subcmd__update_commands] )) ||
+_mm__subcmd__help__subcmd__update_commands() {
+    local commands; commands=()
+    _describe -t commands 'mm help update commands' commands "$@"
 }
 (( $+functions[_mm__subcmd__help__subcmd__workspace_commands] )) ||
 _mm__subcmd__help__subcmd__workspace_commands() {
@@ -15654,6 +15682,11 @@ _mm__subcmd__team__subcmd__sync_commands() {
 _mm__subcmd__team__subcmd__whoami_commands() {
     local commands; commands=()
     _describe -t commands 'mm team whoami commands' commands "$@"
+}
+(( $+functions[_mm__subcmd__update_commands] )) ||
+_mm__subcmd__update_commands() {
+    local commands; commands=()
+    _describe -t commands 'mm update commands' commands "$@"
 }
 (( $+functions[_mm__subcmd__workspace_commands] )) ||
 _mm__subcmd__workspace_commands() {

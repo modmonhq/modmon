@@ -1,10 +1,11 @@
 //! What a setup plan reads before it is made.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use futures_util::future::join_all;
 
 use super::{ClusterSetupRequest, ClusterSetupService, same_key, subset};
+use crate::app::HostCpu;
 use crate::app::ports::ProgressReporter;
 use crate::domain::cluster_setup::{
     ClusterDeployKeyPlan, ClusterNodePlan, ClusterSecretPlan, ClusterSetupStep, ClusterSkippedNode,
@@ -16,7 +17,7 @@ use crate::domain::mesh::MeshPlan;
 use crate::domain::progress::{NodeState, ProgressEvent, StepOutcome};
 use crate::domain::repo_target::{RepoDeployKey, RepoTargetConfig, ssh_fingerprint};
 use crate::domain::secret::{SecretScope, SecretStatus};
-use crate::domain::target::BootstrapInputFile;
+use crate::domain::target::{BootstrapInputFile, HostBinaries};
 
 /// The step that reads the nodes; the others name their nodes under it.
 pub(super) const READ_NODES: &str = "read-nodes";
@@ -40,14 +41,6 @@ pub(super) struct SecretReading {
     pub secrets: Vec<ClusterSecretPlan>,
     pub unset: Vec<String>,
     pub deploy_key: ClusterDeployKeyPlan,
-}
-
-/// The host binaries and the project's bootstrap inputs.
-pub(super) struct LocalReading {
-    pub binaries: PathBuf,
-    pub input_files: Vec<BootstrapInputFile>,
-    pub mm_digest: String,
-    pub mmd_digest: String,
 }
 
 /// The target as a plan reads it.
@@ -93,15 +86,15 @@ impl ClusterSetupService {
         request: &ClusterSetupRequest,
         progress: &dyn ProgressReporter,
     ) -> Result<NodeReading, MmError> {
-        let (nodes, skipped) = self
+        let (mut nodes, skipped) = self
             .scan_nodes_reporting(
                 target.config,
                 (request.trust_new_host_keys, &request.nodes),
                 progress,
             )
             .await?;
-        let mesh = self
-            .plan_mesh(
+        let (mesh, cpus) = self
+            .plan_mesh_and_cpus(
                 target.name,
                 target.config,
                 target.user,
@@ -109,6 +102,9 @@ impl ClusterSetupService {
                 progress,
             )
             .await?;
+        for node in &mut nodes {
+            node.cpu = cpus.get(&node.name).cloned();
+        }
         let mut step_notices = Vec::new();
         let steps = subset::steps(target.config, target.storage, &skipped, &mut step_notices);
         for node in nodes.iter().filter(|node| {
@@ -242,6 +238,7 @@ impl ClusterSetupService {
                     .map_err(|message| MmError::Security { message })?,
                 host_key: scanned,
                 host_key_origin,
+                cpu: None,
             });
         }
         Ok((nodes, skipped))
@@ -351,49 +348,60 @@ impl ClusterSetupService {
     }
 }
 
-/// The host binaries' digests and the bootstrap inputs.
-pub(super) async fn read_local(
-    binaries: &Path,
-    root: &Path,
-    progress: &dyn ProgressReporter,
-) -> Result<LocalReading, MmError> {
-    progress.report(ProgressEvent::started(
-        READ_BINARIES,
-        "Hashing the host binaries",
-    ));
-    let binaries = binaries.to_path_buf();
+/// The project's bootstrap inputs.
+pub(super) async fn read_inputs(root: &Path) -> Result<Vec<BootstrapInputFile>, MmError> {
     let root = root.to_path_buf();
-    let read = tokio::task::spawn_blocking(move || {
-        let binaries = std::fs::canonicalize(&binaries).map_err(|source| MmError::Io {
-            context: format!(
-                "resolving the host binaries directory {}",
-                binaries.display()
-            ),
-            source,
-        })?;
-        Ok(LocalReading {
-            input_files: crate::app::targets::collect_bootstrap_inputs(&root)?,
-            mm_digest: crate::app::targets::host_binary_digest(&binaries.join("mm"))?,
-            mmd_digest: crate::app::targets::host_binary_digest(&binaries.join("mmd"))?,
-            binaries,
+    tokio::task::spawn_blocking(move || crate::app::targets::collect_bootstrap_inputs(&root))
+        .await
+        .unwrap_or_else(|error| {
+            Err(MmError::State {
+                message: format!("reading the bootstrap inputs stopped: {error}"),
+            })
         })
-    })
-    .await
-    .unwrap_or_else(|error| {
-        Err(MmError::State {
-            message: format!("hashing the host binaries stopped: {error}"),
-        })
-    });
-    progress.report(if read.is_ok() {
-        ProgressEvent::finished(
+}
+
+impl ClusterSetupService {
+    /// The `mm` and `mmd` each node gets: `--host-binaries`, or for each
+    /// CPU the nodes have, this mm's directory or this mm's release.
+    pub(super) async fn host_binaries(
+        &self,
+        request: &ClusterSetupRequest,
+        nodes: &[ClusterNodePlan],
+        progress: &dyn ProgressReporter,
+    ) -> Result<Vec<HostBinaries>, MmError> {
+        progress.report(ProgressEvent::started(
             READ_BINARIES,
-            StepOutcome::Done,
-            Some("Hashed the host binaries".to_owned()),
-        )
-    } else {
-        ProgressEvent::finished(READ_BINARIES, StepOutcome::Failed, None)
-    });
-    read
+            "Choosing the host binaries",
+        ));
+        let hosts = nodes
+            .iter()
+            .map(|node| HostCpu {
+                host: node.name.clone(),
+                cpu: node.cpu.clone(),
+            })
+            .collect::<Vec<_>>();
+        let read = match (&self.binaries, request.binaries.as_deref()) {
+            (Some(source), given) => source.resolve(given, &hosts, progress).await,
+            (None, given) => {
+                crate::app::host_binaries::given_host_binaries(given, &hosts).map(|set| vec![set])
+            }
+        };
+        progress.report(match &read {
+            Ok(sets) => ProgressEvent::finished(
+                READ_BINARIES,
+                StepOutcome::Done,
+                Some(format!(
+                    "mm and mmd for {}",
+                    sets.iter()
+                        .map(|set| set.architecture.as_str())
+                        .collect::<Vec<_>>()
+                        .join(" and ")
+                )),
+            ),
+            Err(_) => ProgressEvent::finished(READ_BINARIES, StepOutcome::Failed, None),
+        });
+        read
+    }
 }
 
 fn nodes_text(count: usize) -> String {

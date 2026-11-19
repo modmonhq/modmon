@@ -303,12 +303,28 @@ fn write_bootstrap_access(
         )
         .map_err(output_error)?;
     }
-    for (name, digest) in [("mm", &access.mm_digest), ("mmd", &access.mmd_digest)] {
+    for set in &access.binaries {
         writeln!(
             writer,
-            "    install {name:<4}     {} ({})",
-            terminal_safe(&access.binary(name).display().to_string()),
-            terminal_safe(digest)
+            "    host binaries:   {} from {}",
+            terminal_safe(&set.architecture),
+            terminal_safe(&set.source)
+        )
+        .map_err(output_error)?;
+        for (name, digest) in [("mm", &set.mm_digest), ("mmd", &set.mmd_digest)] {
+            writeln!(
+                writer,
+                "    install {name:<4}     {} ({})",
+                terminal_safe(&set.binary(name).display().to_string()),
+                terminal_safe(digest)
+            )
+            .map_err(output_error)?;
+        }
+    }
+    if access.binaries.len() > 1 {
+        writeln!(
+            writer,
+            "    host cpu:        not read yet; the host takes the pair for its own CPU"
         )
         .map_err(output_error)?;
     }

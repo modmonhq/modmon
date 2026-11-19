@@ -303,9 +303,14 @@ fn access_plan() -> Result<TargetBootstrapPlan, String> {
             name: "ops".to_owned(),
             key: OPS_KEY.to_owned(),
         }],
-        binaries: PathBuf::from("/opt/mm release"),
-        mm_digest: "d".repeat(64),
-        mmd_digest: "e".repeat(64),
+        binaries: vec![HostBinaries {
+            architecture: "aarch64".to_owned(),
+            directory: PathBuf::from("/opt/mm release"),
+            mm_digest: "d".repeat(64),
+            mmd_digest: "e".repeat(64),
+            source: "/opt/mm release".to_owned(),
+        }],
+        host_binaries: Some(PathBuf::from("/opt/mm release")),
         upgrade: false,
         downgrade: false,
         notices: Vec::new(),
@@ -324,12 +329,15 @@ fn bootstrap_access_binds_every_reviewed_input() -> Result<(), String> {
         plan.required_capabilities.last(),
         Some(&BootstrapCapability::RemoteAccess)
     );
-    let mutations: [fn(&mut BootstrapAccess); 5] = [
+    let mutations: [fn(&mut BootstrapAccess); 8] = [
         |access| access.origin = "ssh://git@github.com/acme/shop.git".to_owned(),
         |access| access.break_glass[0].name = "recovery".to_owned(),
-        |access| access.binaries = PathBuf::from("/opt/other"),
-        |access| access.mm_digest = "f".repeat(64),
-        |access| access.mmd_digest = "f".repeat(64),
+        |access| access.binaries[0].directory = PathBuf::from("/opt/other"),
+        |access| access.binaries[0].mm_digest = "f".repeat(64),
+        |access| access.binaries[0].mmd_digest = "f".repeat(64),
+        |access| access.binaries[0].architecture = "x86_64".to_owned(),
+        |access| access.binaries[0].source = "release v9.9.9 for aarch64".to_owned(),
+        |access| access.host_binaries = None,
     ];
     for mutate in mutations {
         let mut candidate = plan.clone();
@@ -351,15 +359,19 @@ fn bootstrap_access_binds_every_reviewed_input() -> Result<(), String> {
 #[test]
 fn bootstrap_access_rejects_unsafe_inputs() -> Result<(), String> {
     let plan = access_plan()?;
-    let mutations: [fn(&mut BootstrapAccess); 8] = [
+    let mutations: [fn(&mut BootstrapAccess); 12] = [
+        |access| access.binaries[0].architecture = String::new(),
+        |access| access.binaries[0].architecture = "riscv64".to_owned(),
+        |access| access.binaries.clear(),
+        |access| access.binaries.push(access.binaries[0].clone()),
         |access| access.origin_host_key = None,
         |access| access.origin = "http://example.com/shop.git".to_owned(),
         |access| access.break_glass.clear(),
         |access| access.break_glass.push(access.break_glass[0].clone()),
         |access| access.break_glass[0].key = format!("{OPS_KEY}-{{{{ x }}}}"),
-        |access| access.binaries = PathBuf::from("relative"),
-        |access| access.mm_digest = "D".repeat(64),
-        |access| access.mmd_digest = "e".repeat(63),
+        |access| access.binaries[0].directory = PathBuf::from("relative"),
+        |access| access.binaries[0].mm_digest = "D".repeat(64),
+        |access| access.binaries[0].mmd_digest = "e".repeat(63),
     ];
     for mutate in mutations {
         let mut candidate = plan.clone();
@@ -394,13 +406,17 @@ fn bootstrap_access_apply_command_repeats_the_flags_shell_quoted() -> Result<(),
     assert!(command.ends_with(" --host-binaries '/opt/mm release'"));
     let mut quoted = plan;
     if let Some(access) = quoted.access.as_mut() {
-        access.binaries = PathBuf::from("/opt/it's");
+        access.host_binaries = Some(PathBuf::from("/opt/it's"));
     }
     assert!(
         quoted
             .apply_command()
             .ends_with(r#" --host-binaries '/opt/it'\''s'"#)
     );
+    if let Some(access) = quoted.access.as_mut() {
+        access.host_binaries = None;
+    }
+    assert!(!quoted.apply_command().contains("--host-binaries"));
     Ok(())
 }
 

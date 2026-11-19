@@ -34,10 +34,12 @@ On your machine:
 - `ansible-playbook` (in `/usr/bin` or `/usr/local/bin`) and `ssh-keyscan`.
 - The admin account's key: either the target's own key file (`mm target add
   --identity-file`), or an SSH agent (`SSH_AUTH_SOCK`) holding the key.
-- `mm` and `mmd` built for the host, from the same release. A Linux `mm`
-  installed with `--with-daemon` has `mmd` beside it, and setup uses that pair
-  by default. Otherwise, extract the host's Linux release archive and pass its
-  directory with `--host-binaries`.
+- A released `mm`. Setup installs that release's `mm` and `mmd` for the
+  host's CPU: the pair beside `mm` when it is there (a Linux `mm` installed
+  with `--with-daemon`), otherwise the release's Linux archive, downloaded and
+  checked (see
+  [where setup takes mm and mmd from](how-to/upgrade.md#where-setup-takes-mm-and-mmd-from)).
+  To install other binaries, pass a directory with `--host-binaries`.
 - A break-glass key: an Ed25519 key pair that is admin on every project the
   host runs. Keep the private half offline:
 
@@ -3038,12 +3040,12 @@ failed. Plans expire after ten minutes and cannot be replayed.
 
 ### Upgrade mm and mmd
 
-Install the new release on your machine with `mmd` beside `mm`, then run
-setup again. Setup installs both binaries from the directory of the `mm` you
-run (or `--host-binaries`), one node at a time:
+Update `mm` on your machine, then run setup again. Setup installs that
+release's `mm` and `mmd` for each node's CPU (or `--host-binaries`), one node
+at a time:
 
 ```sh
-curl --proto '=https' --tlsv1.2 -LsSf https://modmon.dev/install.sh | sh -s -- --with-daemon
+mm update
 mm target setup plan --upgrade
 mm target setup apply --plan PLAN_HASH --upgrade --yes
 ```

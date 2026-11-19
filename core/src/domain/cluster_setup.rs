@@ -193,6 +193,9 @@ pub struct ClusterNodePlan {
     pub host_key: String,
     pub host_key_fingerprint: String,
     pub host_key_origin: HostKeyOrigin,
+    /// The node's CPU, when the plan could read it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpu: Option<String>,
 }
 
 /// A node of the target that a subset setup leaves out.
@@ -311,10 +314,11 @@ pub struct ClusterSetupPlan {
     pub setup: RepoTargetSetup,
     /// The project's bootstrap inputs (`.config/ansible`), by digest.
     pub input_files: Vec<BootstrapInputFile>,
-    /// Local directory with `mm` and `mmd` built for the hosts.
-    pub binaries: PathBuf,
-    pub mm_digest: String,
-    pub mmd_digest: String,
+    /// `mm` and `mmd` for each CPU the nodes need, in CPU order.
+    pub binaries: Vec<crate::domain::target::HostBinaries>,
+    /// `--host-binaries` as given.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_binaries: Option<PathBuf>,
     pub secrets: Vec<ClusterSecretPlan>,
     /// The environment's managed secret store, when it declares one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -356,10 +360,21 @@ impl ClusterSetupPlan {
         if self.nodes.is_empty() {
             return Err("cluster setup plan lists no nodes".to_owned());
         }
+        crate::domain::target::validate_host_binaries(&self.binaries)?;
         if self.canonical_hash()? != self.plan_hash {
             return Err("cluster setup plan hash does not match its contents".to_owned());
         }
         Ok(())
+    }
+
+    /// The `mm` and `mmd` setup hands `node`: those for its CPU, or every
+    /// set when the plan could not read its CPU.
+    #[must_use]
+    pub fn binaries_for(&self, node: &ClusterNodePlan) -> Vec<crate::domain::target::HostBinaries> {
+        crate::domain::target::binaries_for(&self.binaries, node.cpu.as_deref())
+            .into_iter()
+            .cloned()
+            .collect()
     }
 
     #[must_use]
@@ -378,6 +393,10 @@ impl ClusterSetupPlan {
                     .collect::<Vec<_>>()
                     .join(","),
             );
+        }
+        if let Some(given) = &self.host_binaries {
+            command.push_str(" --host-binaries ");
+            command.push_str(&given.display().to_string());
         }
         command
     }

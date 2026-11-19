@@ -52,9 +52,9 @@ fn manifest() -> Result<ReleaseManifest, &'static str> {
                 binaries: vec!["mm".to_owned()],
             },
         )]),
-        source: file("releases/v1.2.3/source.tar.gz"),
-        sbom: file("releases/v1.2.3/sbom.json"),
-        release_certificate: file("releases/v1.2.3/certificate.json"),
+        source: Some(file("releases/v1.2.3/source.tar.gz")),
+        sbom: Some(file("releases/v1.2.3/sbom.json")),
+        release_certificate: Some(file("releases/v1.2.3/certificate.json")),
         provenance: vec![file("releases/v1.2.3/provenance.json")],
     })
 }

@@ -4,31 +4,50 @@ use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
+pub const RELEASE_ORIGIN: &str = "https://github.com/modmonhq/modmon";
 pub const RELEASE_MANIFEST_URL: &str =
     "https://github.com/modmonhq/modmon/releases/latest/download/manifest.json";
 pub const INSTALLER_URL: &str = "https://modmon.dev/install.sh";
+pub const INSTALLER_COMMAND: &str =
+    "curl --proto '=https' --tlsv1.2 -LsSf https://modmon.dev/install.sh | sh";
+pub const READER_SCHEMA: u32 = 1;
+pub const RELEASE_TARGETS: [&str; 4] = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+];
+pub const RELEASE_BINARIES: [&str; 3] = ["mm", "mm-ingress-helper", "mmd"];
+pub const MANIFEST_FILE: &str = "manifest.json";
+pub const CHECKSUMS_FILE: &str = "SHA256SUMS";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct ReleaseManifest {
     pub schema_version: u32,
     pub product: String,
     pub channel: String,
     pub version: String,
     pub tag: String,
+    #[serde(default)]
     pub commit: String,
+    #[serde(default)]
     pub published_at: String,
+    #[serde(default)]
     pub source_date_epoch: u64,
     pub minimum_installer_schema: u32,
+    #[serde(deserialize_with = "known_artifacts")]
     pub artifacts: BTreeMap<String, ReleaseArtifact>,
-    pub source: ReleaseFile,
-    pub sbom: ReleaseFile,
-    pub release_certificate: ReleaseFile,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<ReleaseFile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sbom: Option<ReleaseFile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub release_certificate: Option<ReleaseFile>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub provenance: Vec<ReleaseFile>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct ReleaseArtifact {
     pub path: String,
     pub format: ArchiveFormat,
@@ -38,7 +57,6 @@ pub struct ReleaseArtifact {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct ReleaseFile {
     pub path: String,
     pub sha256: String,
@@ -51,6 +69,8 @@ pub enum ArchiveFormat {
     TarGz,
     #[serde(rename = "zip")]
     Zip,
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -72,34 +92,51 @@ pub struct UpdateCheckReport {
     pub message: String,
 }
 
+/// One archive of a release, and the file that vouches for its digest.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub struct ReleaseDownload {
+    pub tag: String,
+    pub target: String,
+    pub file: String,
+    pub sha256: String,
+    pub size: Option<u64>,
+    pub binaries: Vec<String>,
+    pub checked_against: String,
+}
+
+/// A release tag: `vMAJOR.MINOR.PATCH`, or a candidate `vMAJOR.MINOR.PATCH-rc.N`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReleaseTag {
+    pub tag: String,
+    pub version: Version,
+}
+
+#[derive(Deserialize)]
+struct SchemaHeader {
+    schema_version: u32,
+    minimum_installer_schema: u32,
+    #[serde(default)]
+    tag: Option<String>,
+}
+
 impl ReleaseManifest {
     pub fn parse(bytes: &[u8]) -> Result<Self, String> {
-        for target in [
-            "x86_64-unknown-linux-gnu",
-            "aarch64-unknown-linux-gnu",
-            "x86_64-apple-darwin",
-            "aarch64-apple-darwin",
-        ] {
-            let key = format!("\"{target}\"");
-            if bytes
-                .windows(key.len())
-                .filter(|window| *window == key.as_bytes())
-                .count()
-                > 1
-            {
-                return Err(format!("duplicate release target: {target}"));
-            }
-        }
+        let header: SchemaHeader = serde_json::from_slice(bytes)
+            .map_err(|error| format!("the release manifest is not one mm can read: {error}"))?;
+        check_reader_schema(&header)?;
         let manifest: Self = serde_json::from_slice(bytes)
-            .map_err(|error| format!("release manifest is not schema 1 JSON: {error}"))?;
+            .map_err(|error| format!("the release manifest is not one mm can read: {error}"))?;
         manifest.validate()?;
         Ok(manifest)
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        if self.schema_version != 1 || self.minimum_installer_schema != 1 {
-            return Err("unsupported release manifest schema".to_owned());
-        }
+        check_reader_schema(&SchemaHeader {
+            schema_version: self.schema_version,
+            minimum_installer_schema: self.minimum_installer_schema,
+            tag: Some(self.tag.clone()),
+        })?;
         if self.product != "mm" || self.channel != "stable" {
             return Err("release manifest must describe the mm stable channel".to_owned());
         }
@@ -107,72 +144,154 @@ impl ReleaseManifest {
         if self.tag != format!("v{version}") {
             return Err("release tag and semantic version differ".to_owned());
         }
-        if self.commit.len() != 40
-            || !self
-                .commit
-                .bytes()
-                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-        {
-            return Err("release commit must be a full hexadecimal Git object ID".to_owned());
-        }
-        if self.source_date_epoch == 0
-            || !publication_time_matches(&self.published_at, self.source_date_epoch)
-        {
-            return Err("release publication time/source epoch is invalid".to_owned());
-        }
-        if self.artifacts.is_empty() {
-            return Err("release manifest has no platform artifacts".to_owned());
-        }
-        for (target, artifact) in &self.artifacts {
-            validate_target(target)?;
-            artifact.validate(target, &self.tag)?;
-        }
-        self.source.validate(&self.tag)?;
-        self.sbom.validate(&self.tag)?;
-        self.release_certificate.validate(&self.tag)?;
-        if self.provenance.is_empty() {
-            return Err("release manifest has no provenance inventory".to_owned());
-        }
-        for provenance in &self.provenance {
-            provenance.validate(&self.tag)?;
-        }
         Ok(())
+    }
+
+    /// The archive for `target`, checked; `None` when the release has none.
+    pub fn artifact(&self, target: &str) -> Result<Option<&ReleaseArtifact>, String> {
+        let Some(artifact) = self.artifacts.get(target) else {
+            return Ok(None);
+        };
+        artifact.validate(target, &self.tag)?;
+        Ok(Some(artifact))
+    }
+
+    pub fn download(&self, target: &str) -> Result<Option<ReleaseDownload>, String> {
+        Ok(self.artifact(target)?.map(|artifact| ReleaseDownload {
+            tag: self.tag.clone(),
+            target: target.to_owned(),
+            file: artifact.file_name().to_owned(),
+            sha256: artifact.sha256.clone(),
+            size: Some(artifact.size),
+            binaries: artifact.known_binaries(),
+            checked_against: MANIFEST_FILE.to_owned(),
+        }))
     }
 }
 
 impl ReleaseArtifact {
     fn validate(&self, target: &str, tag: &str) -> Result<(), String> {
-        validate_release_path(&self.path, tag)?;
+        release_file_name(&self.path, tag)?;
         validate_digest_and_size(&self.sha256, self.size)?;
-        let extension = match self.format {
-            ArchiveFormat::TarGz => ".tar.gz",
-            ArchiveFormat::Zip => ".zip",
-        };
-        if !self.path.ends_with(extension) {
-            return Err("artifact path does not match its archive format".to_owned());
+        match self.format {
+            ArchiveFormat::TarGz if self.path.ends_with(".tar.gz") => {}
+            ArchiveFormat::TarGz => {
+                return Err("artifact path does not match its archive format".to_owned());
+            }
+            ArchiveFormat::Zip | ArchiveFormat::Unknown => {
+                return Err(format!(
+                    "release {tag} packs mm for {target} in a format this mm cannot unpack; install it with the installer: {INSTALLER_COMMAND}"
+                ));
+            }
         }
-        let binaries = self.binaries.iter().cloned().collect::<BTreeSet<_>>();
-        let linux = target.ends_with("-unknown-linux-gnu");
-        if binaries.len() != self.binaries.len()
-            || binaries.is_empty()
-            || !binaries.iter().all(|name| match name.as_str() {
-                "mm" | "mmd" => true,
-                "mm-ingress-helper" => linux,
-                _ => false,
-            })
-            || !binaries.contains("mm")
-        {
-            return Err("artifact binary inventory is invalid".to_owned());
+        let names = self.binaries.iter().collect::<BTreeSet<_>>();
+        if names.len() != self.binaries.len() || !self.binaries.iter().any(|name| name == "mm") {
+            return Err(format!(
+                "the {target} archive of release {tag} does not list mm once"
+            ));
         }
         Ok(())
     }
+
+    #[must_use]
+    pub fn file_name(&self) -> &str {
+        self.path.rsplit('/').next().unwrap_or(&self.path)
+    }
+
+    #[must_use]
+    pub fn known_binaries(&self) -> Vec<String> {
+        RELEASE_BINARIES
+            .iter()
+            .filter(|name| self.binaries.iter().any(|binary| binary == *name))
+            .map(|name| (*name).to_owned())
+            .collect()
+    }
 }
 
-impl ReleaseFile {
-    fn validate(&self, tag: &str) -> Result<(), String> {
-        validate_release_path(&self.path, tag)?;
-        validate_digest_and_size(&self.sha256, self.size)
+impl ReleaseTag {
+    pub fn parse(tag: &str) -> Result<Self, String> {
+        let invalid = || {
+            format!(
+                "{tag} is not a release: use vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-rc.N, such as v0.1.2"
+            )
+        };
+        let version = tag
+            .strip_prefix('v')
+            .and_then(|value| Version::parse(value).ok())
+            .ok_or_else(invalid)?;
+        let candidate = version.pre.as_str();
+        let canonical = candidate.is_empty()
+            || candidate.strip_prefix("rc.").is_some_and(|number| {
+                number
+                    .parse::<u64>()
+                    .is_ok_and(|parsed| parsed.to_string() == number)
+            });
+        if !canonical || !version.build.is_empty() || format!("v{version}") != tag {
+            return Err(invalid());
+        }
+        Ok(Self {
+            tag: tag.to_owned(),
+            version,
+        })
     }
+
+    #[must_use]
+    pub fn is_candidate(&self) -> bool {
+        !self.version.pre.is_empty()
+    }
+
+    /// The version its binaries print: a candidate's is the release it leads to.
+    #[must_use]
+    pub fn binary_version(&self) -> String {
+        format!(
+            "{}.{}.{}",
+            self.version.major, self.version.minor, self.version.patch
+        )
+    }
+
+    #[must_use]
+    pub fn archive(&self, target: &str) -> String {
+        format!("mm-{}-{target}.tar.gz", self.tag)
+    }
+}
+
+/// The archive for `target` as a release's `SHA256SUMS` lists it: how a
+/// release candidate, which has no manifest, is checked.
+pub fn checksums_download(
+    sums: &str,
+    tag: &ReleaseTag,
+    target: &str,
+) -> Result<ReleaseDownload, String> {
+    let file = tag.archive(target);
+    let digests = sums
+        .lines()
+        .filter_map(|line| line.split_once("  "))
+        .filter(|(_, name)| *name == file)
+        .map(|(digest, _)| digest)
+        .collect::<Vec<_>>();
+    let [digest] = digests.as_slice() else {
+        return Err(if digests.is_empty() {
+            format!(
+                "release {} lists no {file} in {CHECKSUMS_FILE}; it has no archive for {target}",
+                tag.tag
+            )
+        } else {
+            format!(
+                "{CHECKSUMS_FILE} of {} lists {file} more than once",
+                tag.tag
+            )
+        });
+    };
+    validate_digest_and_size(digest, 1)?;
+    Ok(ReleaseDownload {
+        tag: tag.tag.clone(),
+        target: target.to_owned(),
+        file,
+        sha256: (*digest).to_owned(),
+        size: None,
+        binaries: Vec::new(),
+        checked_against: CHECKSUMS_FILE.to_owned(),
+    })
 }
 
 pub fn compare_installed(
@@ -183,10 +302,11 @@ pub fn compare_installed(
     let current_version = stable_version(current)?;
     let latest_version = stable_version(&manifest.version)?;
     let target = target.map(str::to_owned);
-    let (status, message) = if target
-        .as_ref()
-        .is_none_or(|value| !manifest.artifacts.contains_key(value))
-    {
+    let artifact = match target.as_deref() {
+        Some(target) => manifest.artifact(target)?,
+        None => None,
+    };
+    let (status, message) = if artifact.is_none() {
         (
             UpdateStatus::UnsupportedPlatform,
             format!(
@@ -200,7 +320,7 @@ pub fn compare_installed(
             std::cmp::Ordering::Less => (
                 UpdateStatus::UpdateAvailable,
                 format!(
-                    "mm {current} can be updated to {}; rerun the installer, {INSTALLER_URL}",
+                    "mm {current} can be updated to {}; run `mm update`",
                     manifest.version
                 ),
             ),
@@ -265,7 +385,7 @@ pub fn installed_target() -> Option<&'static str> {
     None
 }
 
-fn stable_version(value: &str) -> Result<Version, String> {
+pub fn stable_version(value: &str) -> Result<Version, String> {
     let version =
         Version::parse(value).map_err(|_| format!("invalid semantic version: {value}"))?;
     if !version.pre.is_empty() || !version.build.is_empty() || version.to_string() != value {
@@ -274,35 +394,72 @@ fn stable_version(value: &str) -> Result<Version, String> {
     Ok(version)
 }
 
-fn validate_target(target: &str) -> Result<(), String> {
-    if matches!(
-        target,
-        "x86_64-unknown-linux-gnu"
-            | "aarch64-unknown-linux-gnu"
-            | "x86_64-apple-darwin"
-            | "aarch64-apple-darwin"
-    ) {
-        Ok(())
-    } else {
-        Err(format!("unsupported release target: {target}"))
+fn check_reader_schema(header: &SchemaHeader) -> Result<(), String> {
+    if header.minimum_installer_schema > READER_SCHEMA {
+        let release = header
+            .tag
+            .as_deref()
+            .map_or_else(|| "this release".to_owned(), |tag| format!("release {tag}"));
+        return Err(format!(
+            "{release} needs a newer mm to update (its manifest needs readers of schema {}); run the installer: {INSTALLER_COMMAND}",
+            header.minimum_installer_schema
+        ));
     }
-}
-
-fn validate_release_path(path: &str, tag: &str) -> Result<(), String> {
-    let prefix = format!("releases/{tag}/");
-    if !path.starts_with(&prefix)
-        || path.starts_with('/')
-        || path.contains('\\')
-        || path
-            .split('/')
-            .any(|part| part.is_empty() || part == "." || part == "..")
-        || !path
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || b"/._-".contains(&byte))
-    {
-        return Err(format!("unsafe immutable release path: {path}"));
+    if header.minimum_installer_schema == 0 || header.schema_version < READER_SCHEMA {
+        return Err("unsupported release manifest schema".to_owned());
     }
     Ok(())
+}
+
+fn known_artifacts<'de, D>(deserializer: D) -> Result<BTreeMap<String, ReleaseArtifact>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct Artifacts;
+    impl<'de> serde::de::Visitor<'de> for Artifacts {
+        type Value = BTreeMap<String, ReleaseArtifact>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("release artifacts by target")
+        }
+
+        fn visit_map<A: serde::de::MapAccess<'de>>(
+            self,
+            mut map: A,
+        ) -> Result<Self::Value, A::Error> {
+            let mut seen = BTreeSet::new();
+            let mut artifacts = BTreeMap::new();
+            while let Some(target) = map.next_key::<String>()? {
+                if !seen.insert(target.clone()) {
+                    return Err(serde::de::Error::custom(format!(
+                        "duplicate release target: {target}"
+                    )));
+                }
+                if RELEASE_TARGETS.contains(&target.as_str()) {
+                    artifacts.insert(target, map.next_value::<ReleaseArtifact>()?);
+                } else {
+                    map.next_value::<serde::de::IgnoredAny>()?;
+                }
+            }
+            Ok(artifacts)
+        }
+    }
+    deserializer.deserialize_map(Artifacts)
+}
+
+fn release_file_name<'a>(path: &'a str, tag: &str) -> Result<&'a str, String> {
+    let name = path
+        .strip_prefix("releases/")
+        .and_then(|rest| rest.strip_prefix(tag))
+        .and_then(|rest| rest.strip_prefix('/'))
+        .filter(|name| {
+            !name.is_empty()
+                && !name.starts_with('.')
+                && name
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte))
+        });
+    name.ok_or_else(|| format!("unsafe immutable release path: {path}"))
 }
 
 fn validate_digest_and_size(digest: &str, size: u64) -> Result<(), String> {
@@ -315,17 +472,6 @@ fn validate_digest_and_size(digest: &str, size: u64) -> Result<(), String> {
         return Err("release file checksum or size is invalid".to_owned());
     }
     Ok(())
-}
-
-fn publication_time_matches(value: &str, source_date_epoch: u64) -> bool {
-    let Ok(timestamp) =
-        time::OffsetDateTime::parse(value, &time::format_description::well_known::Rfc3339)
-    else {
-        return false;
-    };
-    timestamp.offset() == time::UtcOffset::UTC
-        && timestamp.nanosecond() == 0
-        && u64::try_from(timestamp.unix_timestamp()) == Ok(source_date_epoch)
 }
 
 #[cfg(test)]

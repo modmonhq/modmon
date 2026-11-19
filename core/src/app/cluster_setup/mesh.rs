@@ -126,6 +126,17 @@ impl ClusterSetupService {
         &self,
         connection: &ClusterNodeConnection,
     ) -> Result<MeshFacts, MmError> {
+        self.mesh_facts_and_cpu(connection)
+            .await
+            .map(|(facts, _)| facts)
+    }
+
+    /// The node's mesh facts and its CPU, which the facts script prints
+    /// first; a CPU mm has no release for is refused.
+    pub(super) async fn mesh_facts_and_cpu(
+        &self,
+        connection: &ClusterNodeConnection,
+    ) -> Result<(MeshFacts, Option<String>), MmError> {
         let output = self
             .dependencies
             .shell
@@ -138,7 +149,21 @@ impl ClusterSetupService {
                 None,
             )
             .await?;
-        parse(&output, &connection.name, "mesh facts")
+        let (machine, json) = crate::domain::target::split_machine(&output);
+        let cpu = machine
+            .map(|machine| {
+                crate::domain::target::host_cpu(machine).ok_or_else(|| MmError::Target {
+                    message: format!(
+                        "node {}'s CPU is {machine}, and mm releases are built for x86_64 and aarch64 only; take the node out of the target or set it up by hand",
+                        connection.name
+                    ),
+                })
+            })
+            .transpose()?;
+        Ok((
+            parse(json, &connection.name, "mesh facts")?,
+            cpu.map(str::to_owned),
+        ))
     }
 
     /// The mesh section of the setup plan. A node whose SSH host key the
@@ -146,16 +171,31 @@ impl ClusterSetupService {
     /// difference in its peers, and refuses a mesh subnet or a network
     /// space the node already uses. A node with a new host key is read
     /// only during apply, after the operator reviewed that key.
+    #[cfg(test)]
     pub(super) async fn plan_mesh(
+        &self,
+        target_name: &str,
+        target: &RepoTargetConfig,
+        user: &str,
+        nodes: (&[ClusterNodePlan], &[ClusterSkippedNode]),
+        progress: &dyn ProgressReporter,
+    ) -> Result<Option<MeshPlan>, MmError> {
+        self.plan_mesh_and_cpus(target_name, target, user, nodes, progress)
+            .await
+            .map(|(mesh, _)| mesh)
+    }
+
+    /// [`Self::plan_mesh`], and the CPU of each node it read.
+    pub(super) async fn plan_mesh_and_cpus(
         &self,
         target_name: &str,
         target: &RepoTargetConfig,
         user: &str,
         (nodes, skipped): (&[ClusterNodePlan], &[ClusterSkippedNode]),
         progress: &dyn ProgressReporter,
-    ) -> Result<Option<MeshPlan>, MmError> {
+    ) -> Result<(Option<MeshPlan>, BTreeMap<String, String>), MmError> {
         let MeshConfig::Wireguard(mesh) = &target.cluster.mesh else {
-            return Ok(None);
+            return Ok((None, BTreeMap::new()));
         };
         let mut members = target
             .mesh_members()
@@ -171,7 +211,9 @@ impl ClusterSetupService {
                 NodeState::Working,
                 Some("reading its mesh"),
             ));
-            let read = self.mesh_facts(&self.connection_as(user, node)).await;
+            let read = self
+                .mesh_facts_and_cpu(&self.connection_as(user, node))
+                .await;
             if read.is_err() {
                 progress.report(ProgressEvent::node(
                     READ_NODES,
@@ -184,8 +226,12 @@ impl ClusterSetupService {
         }))
         .await;
         let mut facts = BTreeMap::new();
+        let mut cpus = BTreeMap::new();
         for (node, read) in recorded.into_iter().zip(reads) {
-            let read = read?;
+            let (read, cpu) = read?;
+            if let Some(cpu) = cpu {
+                cpus.insert(node.name.clone(), cpu);
+            }
             if let Some(member) = members.iter_mut().find(|member| member.name == node.name) {
                 member.public_key.clone_from(&read.public_key);
             }
@@ -200,7 +246,7 @@ impl ClusterSetupService {
             .iter()
             .map(|node| node.name.as_str())
             .collect::<Vec<_>>();
-        Ok(Some(MeshPlan {
+        let plan = MeshPlan {
             interface: MESH_INTERFACE.to_owned(),
             subnet: mesh.subnet,
             port: mesh.port,
@@ -210,7 +256,8 @@ impl ClusterSetupService {
                 .filter(|member| nodes.iter().any(|node| node.name == member.name))
                 .map(|member| plan_node(mesh, &members, member, &left_out, facts.get(&member.name)))
                 .collect(),
-        }))
+        };
+        Ok((Some(plan), cpus))
     }
 
     /// Every selected node makes or reports its key, and says with it what

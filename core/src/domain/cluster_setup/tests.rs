@@ -18,6 +18,7 @@ fn plan() -> Result<ClusterSetupPlan, Box<dyn std::error::Error>> {
             host_key: "ssh-ed25519 AAAA".to_owned(),
             host_key_fingerprint: "SHA256:x".to_owned(),
             host_key_origin: HostKeyOrigin::FirstUse,
+            cpu: None,
         }],
         skipped: Vec::new(),
         cluster,
@@ -26,9 +27,14 @@ fn plan() -> Result<ClusterSetupPlan, Box<dyn std::error::Error>> {
         runtime: RuntimeKind::DockerCompose,
         setup,
         input_files: Vec::new(),
-        binaries: PathBuf::from("/opt/mm"),
-        mm_digest: "a".repeat(64),
-        mmd_digest: "b".repeat(64),
+        binaries: vec![crate::domain::target::HostBinaries {
+            architecture: "x86_64".to_owned(),
+            directory: PathBuf::from("/opt/mm"),
+            mm_digest: "a".repeat(64),
+            mmd_digest: "b".repeat(64),
+            source: "/opt/mm".to_owned(),
+        }],
+        host_binaries: None,
         secrets: vec![ClusterSecretPlan {
             name: "app.key".to_owned(),
             reference: "age://local/app-key".to_owned(),
@@ -55,7 +61,13 @@ fn the_hash_binds_keys_revisions_and_the_commit() -> Result<(), Box<dyn std::err
     let reviewed = plan()?;
     reviewed.validate()?;
     assert!(reviewed.apply_command().ends_with(&reviewed.plan_hash));
-    let changes: [fn(&mut ClusterSetupPlan); 6] = [
+    let mut given = reviewed.clone();
+    given.host_binaries = Some(PathBuf::from("/opt/mm"));
+    assert!(given.apply_command().ends_with(" --host-binaries /opt/mm"));
+    let changes: [fn(&mut ClusterSetupPlan); 9] = [
+        |plan| plan.binaries[0].mmd_digest = "c".repeat(64),
+        |plan| plan.binaries[0].source = "release v9.9.9 for x86_64".to_owned(),
+        |plan| plan.nodes[0].cpu = Some("aarch64".to_owned()),
         |plan| plan.nodes[0].host_key = "ssh-ed25519 CCCC".to_owned(),
         |plan| plan.nodes[0].private_address = Ipv4Addr::new(10, 77, 0, 2),
         |plan| plan.runtime = RuntimeKind::PodmanCompose,

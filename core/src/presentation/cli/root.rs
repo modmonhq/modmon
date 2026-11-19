@@ -189,6 +189,14 @@ pub enum Command {
         command: super::WorkspaceCommand,
     },
 
+    /// Update this machine's mm, and the mmd and mm-ingress-helper beside
+    /// it, from a verified release.
+    #[command(
+        disable_version_flag = true,
+        after_help = "Examples:\n  mm update --check\n  mm update\n  mm update --yes\n  mm update --version v0.1.2 --force\n\nmm update downloads the release's archive for this platform, checks its SHA-256 and size against the release's manifest.json (SHA256SUMS for a release candidate), runs the new mm, and then replaces every binary at once or none. It replaces mm, and mmd and mm-ingress-helper when they sit beside it. Hosts keep the release they run: upgrade them with `mm target setup plan --upgrade`. Exit codes: 0 updated or nothing to do; 1 the release could not be read or installed, or this installation is refused; 3 the archive failed its checks."
+    )]
+    Update(super::UpdateArgs),
+
     /// Serve the Model Context Protocol server that AI agents use.
     Mcp {
         #[command(subcommand)]

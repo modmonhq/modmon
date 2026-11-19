@@ -34,6 +34,7 @@ mod operations;
 pub(crate) use operations::{job_gateway_as, service_gateway, service_gateway_as};
 mod providers;
 mod readiness;
+mod releases;
 mod remote;
 mod runtime;
 mod runtimes;
@@ -71,7 +72,6 @@ use crate::adapters::gate::{
 };
 use crate::adapters::managed_service_runtime::SelectedTargetManagedServiceRuntime;
 use crate::adapters::process::TokioProcessRunner;
-use crate::adapters::release::ReqwestReleaseManifestClient;
 use crate::adapters::remote::{ClientAccess, ClientKey, ConnectionReuse, SshRemoteTransport};
 use crate::adapters::runtime::{RuntimeFactory, TcpIngressVerifier};
 use crate::adapters::secrets::{
@@ -114,7 +114,7 @@ use crate::app::{
     RegisteredDashboardHostSource, RuntimeOperationsDependencies, RuntimeOperationsService,
     SecretManager, SecretManagerDependencies, ServiceStackManager, ServiceStackManagerConfig,
     StackManager, TargetBootstrapExecutionPorts, TargetBootstrapService, TargetIngressManager,
-    TargetManager, UpdateCheckService, WorkspaceSelection,
+    TargetManager, WorkspaceSelection,
 };
 use crate::domain::ca::TrustScope;
 use crate::domain::config::{ConfigDocument, resolve_environment};
@@ -160,6 +160,7 @@ pub use mesh::{
 };
 pub use metrics::container_metrics;
 pub(crate) use providers::*;
+pub(crate) use releases::{host_binary_source, self_update_service, update_check_service};
 pub use remote::{DaemonUseCaseAdapter, serve_stdio_relay};
 pub(crate) use remote::{
     RemoteIdentity, remote_environment, remote_environment_as, remote_transport_context,
@@ -181,12 +182,6 @@ pub async fn run(
     cancellation: crate::domain::observability::OperationCancellation,
 ) -> Result<u8, MmError> {
     crate::presentation::cli::run(cli, cancellation).await
-}
-
-pub(crate) fn update_check_service() -> Result<UpdateCheckService, MmError> {
-    let client =
-        ReqwestReleaseManifestClient::stable().map_err(|message| MmError::State { message })?;
-    Ok(UpdateCheckService::new(Arc::new(client)))
 }
 
 #[cfg(test)]

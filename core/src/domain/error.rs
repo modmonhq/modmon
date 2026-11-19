@@ -180,6 +180,11 @@ pub enum MmError {
     #[error("terminal error: {message}")]
     Terminal { message: String },
 
+    /// `mm update` could not read, check, or install a release, or will
+    /// not replace this installation; the message names the next command.
+    #[error("{message}")]
+    Update { message: String },
+
     /// An error in mm's own words: mm refuses the request as asked, and the
     /// message says why and what to do instead. It is made from the
     /// configuration and the request alone, never from what a provider, an
@@ -310,6 +315,7 @@ impl MmError {
             Self::ReleaseInput { .. } => "MM_RELEASE_INPUT",
             Self::Remote { code, .. } => code,
             Self::Terminal { .. } => "MM_TERMINAL",
+            Self::Update { .. } => "MM_UPDATE",
             Self::OperationFailure { primary, .. } => primary.code(),
             Self::InOwnWords(refusal) => refusal.code(),
         }
@@ -346,7 +352,7 @@ impl MmError {
             | Self::ApplyStopped { .. }
             | Self::Remote { .. }
             | Self::UnsupportedCapability { .. } => 3,
-            Self::Io { .. } | Self::State { .. } | Self::Terminal { .. } => 1,
+            Self::Io { .. } | Self::State { .. } | Self::Terminal { .. } | Self::Update { .. } => 1,
             Self::OperationFailure { primary, .. } => primary.exit_code(),
             Self::InOwnWords(refusal) => refusal.exit_code(),
         }
@@ -448,6 +454,7 @@ impl MmError {
             | Self::State { message }
             | Self::Placement { message }
             | Self::ReleaseInput { message }
+            | Self::Update { message }
             | Self::Remote { message, .. } => message.clone(),
             other => other.to_string(),
         })

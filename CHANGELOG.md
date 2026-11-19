@@ -51,7 +51,9 @@ hosts up again with `mm target setup plan --upgrade`. See
   WSL it installs the Linux archive.
 - `mm doctor --check-updates` reads `manifest.json` of the latest GitHub
   release, which the release workflow attaches and attests; a release
-  candidate is never offered as an update.
+  candidate is never offered as an update. It reads the manifest of every
+  later release: fields, platforms, and binaries a release adds are skipped,
+  and a release that needs a newer reader says to run the installer.
 - A client newer than its host now says to run `mm target setup plan
   --upgrade` and to apply that plan with `--upgrade`; before, it named the
   plan without the flag that a cluster's setup asks for.
@@ -392,6 +394,22 @@ hosts up again with `mm target setup plan --upgrade`. See
 
 ### Added
 
+- `mm update` updates `mm` from the latest stable release, or the one
+  `--version` names, and `mmd` and `mm-ingress-helper` when they sit beside
+  it. It checks the archive against the release's `manifest.json` before it
+  unpacks anything, runs the new `mm`, and replaces every binary or none.
+  `mm update --check` only reports, and the update check now says to run
+  `mm update`. See [update mm](docs/start/install.md#update-mm).
+- `mm target setup` reads each host's CPU while it plans and installs `mm`
+  and `mmd` built for it: from the directory of the `mm` you run when it
+  holds them, otherwise from this `mm`'s release, downloaded, checked against
+  its manifest, and kept under the mm home. Setup works from macOS and for
+  clusters whose nodes have different CPUs, and no longer needs the
+  installer's `--with-daemon`. The plan names each host's source and the
+  digests; `--host-binaries` still overrides, and binaries built for macOS,
+  for two CPUs, or for another CPU than the host are refused before anything
+  is installed. See
+  [where setup takes mm and mmd from](docs/how-to/upgrade.md#where-setup-takes-mm-and-mmd-from).
 - `mm workspace list` shows the project folders mm has run in on this machine,
   their project ID, when each was last used, and which are gone.
   `mm workspace forget --stale` (or `ROOT|ID`) forgets them through a reviewed

@@ -13,10 +13,9 @@ use super::cluster_shell::{private_tempdir, remote_command, require_success, wri
 use crate::app::ports::{
     ClusterNodeCommand, ClusterScript, CommandSpec, HostReleaseReader, ProcessRunner,
 };
-use crate::domain::cluster_setup::HostRelease;
 use crate::domain::error::MmError;
 use crate::domain::mesh::MeshFacts;
-use crate::domain::target::TargetTransport;
+use crate::domain::target::{HostFacts, TargetTransport, host_cpu, split_machine};
 
 const READ_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -47,10 +46,7 @@ impl SshHostReleaseReader {
 
 #[async_trait]
 impl HostReleaseReader for SshHostReleaseReader {
-    async fn host_release(
-        &self,
-        transport: &TargetTransport,
-    ) -> Result<Option<HostRelease>, MmError> {
+    async fn host_facts(&self, transport: &TargetTransport) -> Result<HostFacts, MmError> {
         let TargetTransport::Ssh {
             host,
             port,
@@ -60,7 +56,10 @@ impl HostReleaseReader for SshHostReleaseReader {
             ..
         } = transport
         else {
-            return Ok(None);
+            return Ok(HostFacts {
+                release: None,
+                cpu: host_cpu(std::env::consts::ARCH).map(str::to_owned),
+            });
         };
         let directory = private_tempdir()?;
         let known_hosts = directory.path().join("known_hosts");
@@ -120,13 +119,26 @@ impl HostReleaseReader for SshHostReleaseReader {
             )
             .await?;
         require_success(&format!("ssh {host}"), &output)?;
+        let (machine, json) = split_machine(&output.stdout);
+        let cpu = machine
+            .map(|machine| {
+                host_cpu(machine).ok_or_else(|| MmError::Target {
+                    message: format!(
+                        "{host}'s CPU is {machine}, and mm releases are built for x86_64 and aarch64 only; set the host up by hand"
+                    ),
+                })
+            })
+            .transpose()?;
         let facts: MeshFacts =
-            serde_json::from_str(output.stdout.trim()).map_err(|error| MmError::Target {
+            serde_json::from_str(json.trim()).map_err(|error| MmError::Target {
                 message: format!(
                     "{host} did not say which release of mm its mmd is ({}); run `mm target setup plan` again, or check `/usr/libexec/mmd mesh show` on the host",
                     crate::domain::error::printed(&error.to_string())
                 ),
             })?;
-        Ok(facts.release)
+        Ok(HostFacts {
+            release: facts.release,
+            cpu: cpu.map(str::to_owned),
+        })
     }
 }

@@ -85,6 +85,8 @@ break-glass:
         unreachable: Mutex<Option<(String, String)>>,
         /// What a node says about the shared storage it serves, by node.
         serving: Mutex<std::collections::BTreeMap<String, &'static str>>,
+        /// What `uname -m` prints on a node other than `x86_64`.
+        machines: Mutex<std::collections::BTreeMap<String, &'static str>>,
     }
 
     impl RecordingShell {
@@ -164,8 +166,17 @@ break-glass:
                 ClusterNodeCommand::Script {
                     script: ClusterScript::MeshFacts,
                     ..
-                } => serde_json::to_string(&self.facts_of(&node.name)?)
-                    .map_err(|_| unused("unserializable facts"))?,
+                } => format!(
+                    "{}\n{}",
+                    self.machines
+                        .lock()
+                        .map_err(|_| unused("a poisoned lock"))?
+                        .get(&node.name)
+                        .copied()
+                        .unwrap_or("x86_64"),
+                    serde_json::to_string(&self.facts_of(&node.name)?)
+                        .map_err(|_| unused("unserializable facts"))?
+                ),
                 ClusterNodeCommand::Script {
                     script: ClusterScript::Mesh,
                     ..
@@ -340,6 +351,7 @@ break-glass:
                 host_key_fingerprint: "SHA256:0ilAVEYiaM4+PCd17vMiY2bh4bv814hVSbQKrN45DMU"
                     .to_owned(),
                 host_key_origin: HostKeyOrigin::FirstUse,
+                cpu: None,
             })
             .collect::<Vec<_>>();
         let storage = cluster
@@ -368,9 +380,14 @@ break-glass:
                 digest: digest.repeat(64),
             })
             .to_vec(),
-            binaries: PathBuf::from("/opt/mm"),
-            mm_digest: "a".repeat(64),
-            mmd_digest: "b".repeat(64),
+            binaries: vec![crate::domain::target::HostBinaries {
+                architecture: "x86_64".to_owned(),
+                directory: PathBuf::from("/opt/mm"),
+                mm_digest: "a".repeat(64),
+                mmd_digest: "b".repeat(64),
+                source: "/opt/mm".to_owned(),
+            }],
+            host_binaries: None,
             secrets: Vec::new(),
             secret_store: None,
             unset_secrets: Vec::new(),
@@ -709,6 +726,64 @@ break-glass:
             ("app-1", vec!["0", "192.168.7.3", "192.168.7.4"], None)
         );
         assert_no_swarm(&calls);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn the_plan_reads_each_recorded_nodes_cpu_and_refuses_one_without_a_release()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = fixture();
+        let target: crate::domain::repo_target::RepoTargetConfig = serde_yaml_ng::from_str(
+            "nodes:\n  - {name: app-1, host: 203.0.113.11}\n  - {name: app-2, host: 203.0.113.12}\n  - {name: db-1, host: 203.0.113.13, endpoint: 10.0.0.3}\n",
+        )?;
+        let mut reviewed = plan("{}", mesh_addresses())?;
+        for index in [0, 1] {
+            reviewed.nodes[index].host_key_origin = HostKeyOrigin::Recorded;
+        }
+        fixture
+            .shell
+            .machines
+            .lock()
+            .map_err(|_| "poisoned")?
+            .insert("app-2".to_owned(), "arm64");
+        let (_, cpus) = fixture
+            .service
+            .plan_mesh_and_cpus(
+                "production",
+                &target,
+                "root",
+                (reviewed.nodes.as_slice(), &[][..]),
+                &crate::app::ports::NoProgress,
+            )
+            .await?;
+        assert_eq!(
+            cpus.into_iter().collect::<Vec<_>>(),
+            [
+                ("app-1".to_owned(), "x86_64".to_owned()),
+                ("app-2".to_owned(), "aarch64".to_owned())
+            ],
+            "db-1 has a new host key and is not read"
+        );
+        fixture
+            .shell
+            .machines
+            .lock()
+            .map_err(|_| "poisoned")?
+            .insert("app-1".to_owned(), "riscv64");
+        let refused = fixture
+            .service
+            .plan_mesh_and_cpus(
+                "production",
+                &target,
+                "root",
+                (reviewed.nodes.as_slice(), &[][..]),
+                &crate::app::ports::NoProgress,
+            )
+            .await
+            .err()
+            .ok_or("a node without a release was planned")?
+            .to_string();
+        assert!(refused.contains("node app-1's CPU is riscv64"), "{refused}");
         Ok(())
     }
 

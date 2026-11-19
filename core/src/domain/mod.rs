@@ -57,6 +57,7 @@ pub mod secret;
 pub mod secret_backend;
 pub mod secret_contract;
 pub mod secret_store;
+pub mod self_update;
 pub mod service_stack;
 pub mod shared_storage;
 pub mod stack;

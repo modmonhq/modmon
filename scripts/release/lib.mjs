@@ -11,6 +11,9 @@ export const targets = Object.freeze([
   "aarch64-apple-darwin",
 ]);
 
+export const manifestSchema = 1;
+export const minimumInstallerSchema = 1;
+
 export function releaseBinaries(target) {
   return target.endsWith("-unknown-linux-gnu") ? ["mm", "mmd", "mm-ingress-helper"] : ["mm", "mmd"];
 }

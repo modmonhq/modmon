@@ -287,11 +287,14 @@ struct Runs(Option<HostRelease>);
 
 #[async_trait::async_trait]
 impl mm::app::ports::HostReleaseReader for Runs {
-    async fn host_release(
+    async fn host_facts(
         &self,
         _: &mm::domain::target::TargetTransport,
-    ) -> Result<Option<HostRelease>, mm::MmError> {
-        Ok(self.0.clone())
+    ) -> Result<mm::domain::target::HostFacts, mm::MmError> {
+        Ok(mm::domain::target::HostFacts {
+            release: self.0.clone(),
+            cpu: Some("x86_64".to_owned()),
+        })
     }
 }
 
@@ -332,8 +335,8 @@ impl SingleHost {
         )?;
         let binaries = workspace.path().join("release");
         std::fs::create_dir(&binaries)?;
-        std::fs::write(binaries.join("mm"), b"mm of this release")?;
-        std::fs::write(binaries.join("mmd"), b"mmd of this release")?;
+        std::fs::write(binaries.join("mm"), linux_binary(b"mm of this release"))?;
+        std::fs::write(binaries.join("mmd"), linux_binary(b"mmd of this release"))?;
         let mut selection = mm::app::WorkspaceSelection::new(&root, None);
         selection.target = Some("production".to_owned());
         Ok(Self {
@@ -347,7 +350,11 @@ impl SingleHost {
         HostRelease {
             version: THIS.to_owned(),
             protocol: PROTOCOL_VERSION,
-            build: Some(blake3::hash(b"mmd of this release").to_hex().to_string()),
+            build: Some(
+                blake3::hash(&linux_binary(b"mmd of this release"))
+                    .to_hex()
+                    .to_string(),
+            ),
         }
     }
 
@@ -365,7 +372,7 @@ impl SingleHost {
                 )
                 .map_err(|message| mm::MmError::Target { message })?,
             ],
-            binaries: self.workspace.path().join("release"),
+            binaries: Some(self.workspace.path().join("release")),
             upgrade: consent.upgrade,
             downgrade: consent.downgrade,
         };
@@ -456,4 +463,14 @@ async fn a_target_without_nodes_reads_its_host_release_as_a_cluster_reads_each_n
     );
     assert!(downgrade.apply_command().ends_with(" --downgrade"));
     Ok(())
+}
+
+/// `payload` behind the ELF header of an x86-64 Linux executable.
+fn linux_binary(payload: &[u8]) -> Vec<u8> {
+    let mut bytes = vec![0x7f, b'E', b'L', b'F', 2, 1, 1, 0];
+    bytes.resize(18, 0);
+    bytes.extend_from_slice(&62_u16.to_le_bytes());
+    bytes.resize(64, 0);
+    bytes.extend_from_slice(payload);
+    bytes
 }

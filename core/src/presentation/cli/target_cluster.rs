@@ -124,10 +124,7 @@ fn request(
         start: invocation.start.clone(),
         environment: Some(environment.to_owned()),
         trust_new_host_keys: args.trust_new_host_keys,
-        binaries: match host_binaries {
-            Some(directory) => directory,
-            None => default_host_binaries()?,
-        },
+        binaries: host_binaries,
         access_commit: composition::pushed_commit(
             &invocation.start,
             environment,
@@ -301,7 +298,9 @@ fn write_plan(plan: &ClusterSetupPlan, format: OutputFormat) -> Result<(), MmErr
                     crate::domain::cluster_setup::HostKeyOrigin::Replaced => "REPLACED",
                 }
             ));
+            text.push_str(&format!("  {:<20} {}\n", "", node_binaries(plan, node)));
         }
+        text.push_str(&binaries_text(&plan.binaries));
         if let Some(mesh) = &plan.mesh {
             text.push_str(&output::mesh_plan_text(mesh));
         }
@@ -414,22 +413,32 @@ fn write_json_or_text<T: serde::Serialize>(
     Ok(())
 }
 
-/// This `mm`'s own directory, which holds `mmd` after `install.sh
-/// --with-daemon`. Only a Linux `mm` can run on the host.
-pub(super) fn default_host_binaries() -> Result<std::path::PathBuf, MmError> {
-    if !cfg!(target_os = "linux") {
-        return Err(MmError::Target {
-            message: "this mm is not a Linux build; pass --host-binaries with mm and mmd built for the host".to_owned(),
-        });
+/// Which `mm` and `mmd` a node gets, and where they come from.
+fn node_binaries(
+    plan: &ClusterSetupPlan,
+    node: &crate::domain::cluster_setup::ClusterNodePlan,
+) -> String {
+    match (node.cpu.as_deref(), plan.binaries_for(node).as_slice()) {
+        (Some(cpu), [set]) => format!("mm and mmd for {cpu}: {}", set.source),
+        _ => format!(
+            "mm and mmd: CPU not read yet, so setup stages {} and the host takes its own",
+            plan.binaries
+                .iter()
+                .map(|set| set.architecture.as_str())
+                .collect::<Vec<_>>()
+                .join(" and ")
+        ),
     }
-    let executable = std::env::current_exe().map_err(|source| MmError::Io {
-        context: "locating this mm executable".to_owned(),
-        source,
-    })?;
-    executable
-        .parent()
-        .map(std::path::Path::to_path_buf)
-        .ok_or_else(|| MmError::Target {
-            message: "pass --host-binaries with mm and mmd built for the host".to_owned(),
-        })
+}
+
+/// Each set of host binaries with its source and digests.
+pub(super) fn binaries_text(binaries: &[crate::domain::target::HostBinaries]) -> String {
+    let mut text = String::from("\nHost binaries:\n");
+    for set in binaries {
+        text.push_str(&format!(
+            "  {:<8} {}\n  {:<8} mm {}\n  {:<8} mmd {}\n",
+            set.architecture, set.source, "", set.mm_digest, "", set.mmd_digest
+        ));
+    }
+    text
 }

@@ -46,6 +46,7 @@ mod target_nodes;
 mod target_storage;
 mod team;
 mod terminal;
+mod update;
 mod values;
 mod workspace;
 
@@ -70,6 +71,7 @@ pub use target::*;
 pub use target_mesh::TargetMeshCommand;
 pub use target_storage::TargetStorageCommand;
 pub use team::{TeamCommand, TeamReview};
+pub use update::UpdateArgs;
 pub use workspace::{WorkspaceCommand, WorkspaceReview};
 
 use terminal::{

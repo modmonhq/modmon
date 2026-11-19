@@ -18,16 +18,16 @@ pub trait TargetBootstrapExecutor: Send + Sync {
     ) -> Result<BootstrapExecution, MmError>;
 }
 
-/// The release of mm a single host's `mmd` reports, read before setup
-/// replaces it.
+/// The release of mm a single host's `mmd` reports, and the host's CPU,
+/// read before setup replaces them.
 #[async_trait]
 pub trait HostReleaseReader: Send + Sync {
-    /// `None` when the host has no `mmd`, or one too old to report its
-    /// release.
-    async fn host_release(
+    /// Its release is `None` when the host has no `mmd`, or one too old to
+    /// report it.
+    async fn host_facts(
         &self,
         transport: &TargetTransport,
-    ) -> Result<Option<crate::domain::cluster_setup::HostRelease>, MmError>;
+    ) -> Result<crate::domain::target::HostFacts, MmError>;
 }
 
 pub trait TargetOperationLockGuard: Send + Sync {}
