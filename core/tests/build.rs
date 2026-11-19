@@ -182,6 +182,7 @@ fn secret_metadata() -> SecretMetadata {
 #[derive(Debug, Default)]
 struct FakeBuilder {
     secret_seen: Mutex<bool>,
+    received_secret: Mutex<Option<String>>,
     fail_begin: bool,
     fail_cleanup: bool,
     fail_retag: bool,
@@ -274,6 +275,11 @@ impl ImageBuilder for FakeBuilder {
         *self.secret_seen.lock().map_err(|_| MmError::State {
             message: "fake builder lock was poisoned".to_owned(),
         })? = seen;
+        *self.received_secret.lock().map_err(|_| MmError::State {
+            message: "fake builder lock was poisoned".to_owned(),
+        })? = secrets
+            .get("gh_pat")
+            .map(|secret| secret.expose(str::to_owned));
         self.built
             .lock()
             .map_err(|_| MmError::State {
@@ -896,6 +902,72 @@ async fn reviewed_build_is_journaled_without_secret_material()
     assert!(!plan_json.contains("never-store-this-value"));
     assert!(!result_json.contains("never-store-this-value"));
     assert!(!plan_json.contains("BUILD_TEST_TOKEN"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_build_secret_read_from_a_file_reaches_the_build_verbatim()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = Fixture::new()?;
+    let credentials = fixture.state_directory.path().join("auth.json");
+    let auth = "{\n  \"http-basic\": {\"registry.example.test\": {\"password\": \"never-store-this-value\"}}\n}\n";
+    let config_path = fixture.project.path().join(".config/mm.yaml");
+    let config = fs::read_to_string(&config_path)?.replace(
+        "provider: env\n      location: BUILD_TEST_TOKEN",
+        &format!("provider: file\n      location: {}", credentials.display()),
+    );
+    fs::write(&config_path, config)?;
+    let builder = Arc::new(FakeBuilder::default());
+    let service = fixture.service_with_source_lock_and_resolver(
+        builder.clone(),
+        Arc::new(FakeSource),
+        Arc::new(FakeLock),
+        Arc::new(mm::adapters::secrets::FileSecretStore::new(
+            [5; 32],
+            fixture.state_directory.path().join("mm-home"),
+        )),
+    );
+    let selection = WorkspaceSelection::new(fixture.project.path(), None);
+
+    let plan = service.plan(&selection, false).await?;
+    let missing = service
+        .apply_reviewed(&selection, false, &plan.plan_hash)
+        .await
+        .err()
+        .ok_or("a build ran without its secret file")?
+        .to_string();
+    assert!(
+        missing.contains(&format!(
+            "build secret 'gh_pat' needs secret 'build.token' from file '{}', which is not set",
+            credentials.display()
+        )),
+        "{missing}"
+    );
+
+    fs::write(&credentials, auth)?;
+    let plan = service.plan(&selection, false).await?;
+    service
+        .apply_reviewed(&selection, false, &plan.plan_hash)
+        .await?;
+    assert_eq!(
+        builder
+            .received_secret
+            .lock()
+            .map_err(|_| "lock poisoned")?
+            .as_deref(),
+        Some(auth)
+    );
+    let connection =
+        rusqlite::Connection::open(fixture.state_directory.path().join("state.sqlite3"))?;
+    let snapshots: Vec<String> = connection
+        .prepare("SELECT plan_json || COALESCE(result_json, '') FROM image_build_snapshots")?
+        .query_map([], |row| row.get(0))?
+        .collect::<Result<_, _>>()?;
+    assert!(
+        snapshots
+            .iter()
+            .all(|snapshot| !snapshot.contains("never-store-this-value"))
+    );
     Ok(())
 }
 
