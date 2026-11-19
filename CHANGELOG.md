@@ -44,6 +44,10 @@ installations `mm target setup` upgrades in place and what it refuses.
   another environment only when it holds the variant that environment
   selects; the refusal names the variants on each side and the command that
   builds the missing one.
+- A registered project whose folder or `.config/mm.yaml` was deleted no longer
+  stops the dashboard or `mm dev setup --services`: it is skipped, and the
+  dashboard and `mm doctor` (`MM_WORKSPACE_STALE`) name the command that
+  forgets it.
 - Commands that wait show what they do at once: on a terminal, the running
   step with its time, a row per node and a bar where an amount is known,
   each finished step left as one line; elsewhere one plain line per
@@ -351,6 +355,10 @@ installations `mm target setup` upgrades in place and what it refuses.
 
 ### Added
 
+- `mm workspace list` shows the project folders mm has run in on this machine,
+  their project ID, when each was last used, and which are gone.
+  `mm workspace forget --stale` (or `ROOT|ID`) forgets them through a reviewed
+  plan: their operation history and `mm env set` values go, their files stay.
 - Releases are published by the release workflow when a `vX.Y.Z` tag is
   pushed to `master`: the Linux x86-64 and ARM64 archives are built from the
   tag in pinned containers by `scripts/release/build-linux.sh` (which also
