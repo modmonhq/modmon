@@ -1315,6 +1315,9 @@ installations `mm target setup` upgrades in place and what it refuses.
   failed with `Permission denied`. The helper container now runs as the owner
   of the volume's root with no capabilities, and Docker writes each file with
   its owner and mode.
+- A managed OpenBao or Vault provider starts on Docker Compose: its Compose
+  file gave the options of its `/tmp` mount as separate `tmpfs` entries,
+  which the engine refused.
 
 ### Security
 
