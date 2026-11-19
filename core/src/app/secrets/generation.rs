@@ -27,7 +27,22 @@ impl SecretManager {
         for name in names {
             let declaration = declaration(&document, &name)?;
             ensure_single_source(&name, declaration)?;
-            self.ensure_writable(&name, declaration, StorageOperation::Create)?;
+            if let Err(error) = self.ensure_writable(&name, declaration, StorageOperation::Create) {
+                if !skips_unreachable {
+                    return Err(error);
+                }
+                secrets.push(SecretGenerationItem {
+                    name,
+                    provider: declaration.storage.provider.to_string(),
+                    status: SecretGenerationStatus::Skipped,
+                    revision: None,
+                    reason: Some(match error {
+                        MmError::Secret { message } => message,
+                        error => error.to_string(),
+                    }),
+                });
+                continue;
+            }
             let generator = declaration
                 .generate
                 .as_ref()

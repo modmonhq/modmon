@@ -153,6 +153,7 @@ impl EnvironmentManager {
             secrets.push(SecretBindingStatus {
                 key: key.clone(),
                 provider: reference.scheme().to_owned(),
+                location: Some(reference.locator().to_owned()),
                 status: metadata.status,
                 revision: metadata.revision,
             });

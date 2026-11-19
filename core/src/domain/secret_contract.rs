@@ -222,6 +222,7 @@ pub enum AuthenticationKind {
     LocalIdentity,
     ProcessEnvironment,
     AppRoleEphemeralToken,
+    LocalFile,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

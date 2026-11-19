@@ -237,6 +237,7 @@ fn registry_of(
             candidates: None,
             remover: None,
         },
+        file_registration(environment_revision_key, home)?,
     ];
     for (name, instance) in instances {
         let mode = instance.configuration.mode();
@@ -272,6 +273,43 @@ fn registry_of(
         }
     }
     Ok(Arc::new(SecretProviderRegistry::new(registrations)?))
+}
+
+static SERVES_AS_HOST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Makes this process a host's `mmd`, which never reads the files that
+/// `file` secrets name.
+pub fn serve_as_host() {
+    SERVES_AS_HOST.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+fn file_registration(
+    revision_key: [u8; 32],
+    home: &MmHome,
+) -> Result<StorageProviderRegistration, MmError> {
+    let (inspector, resolver): (
+        Arc<dyn SecretMetadataInspector>,
+        Arc<dyn SecretMaterialResolver>,
+    ) = if SERVES_AS_HOST.load(std::sync::atomic::Ordering::SeqCst) {
+        let host = Arc::new(crate::adapters::secrets::HostFileSecrets);
+        (host.clone(), host)
+    } else {
+        let local = Arc::new(crate::adapters::secrets::FileSecretStore::new(
+            revision_key,
+            home.root.clone(),
+        ));
+        (local.clone(), local)
+    };
+    Ok(StorageProviderRegistration {
+        descriptor: crate::adapters::secrets::file_storage_descriptor()?,
+        inspector,
+        resolver,
+        creator: None,
+        replacer: None,
+        batch_replacer: None,
+        candidates: None,
+        remover: None,
+    })
 }
 
 fn vault_registration(

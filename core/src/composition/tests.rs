@@ -221,7 +221,7 @@ fn config_composition_resolves_explicit_default_and_persisted_runtime_contexts()
 
     assert!(schema().get("$comment").is_some());
     let capabilities = secret_capabilities()?;
-    assert_eq!(capabilities.storage.len(), 2);
+    assert_eq!(capabilities.storage.len(), 3);
     assert_eq!(capabilities.delivery.len(), 4);
     assert_eq!(
         discover_project(&fixture())?,

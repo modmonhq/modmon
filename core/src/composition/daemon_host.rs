@@ -15,6 +15,7 @@ pub(super) struct NodeHost {
 impl DaemonUseCaseAdapter {
     #[must_use]
     pub fn new(mm_home: PathBuf) -> Self {
+        crate::composition::serve_as_host();
         Self {
             mm_home,
             mesh: None,

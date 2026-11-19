@@ -288,7 +288,7 @@ pub(super) fn validate_secret_reference(
     report: &mut ValidationReport,
 ) {
     let validation = storage.reference().and_then(|_| {
-        let built_in = matches!(storage.provider.as_str(), "age" | "env");
+        let built_in = matches!(storage.provider.as_str(), "age" | "env" | "file");
         let configured = config
             .providers
             .keys()
@@ -307,6 +307,8 @@ pub(super) fn validate_secret_reference(
                 "env storage locations may not use runtime-reserved environment variables"
                     .to_owned(),
             )
+        } else if storage.provider.as_str() == "file" {
+            crate::domain::secret::file_secret_location(&storage.location).map(drop)
         } else {
             Ok(())
         }

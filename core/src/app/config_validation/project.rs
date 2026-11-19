@@ -67,7 +67,7 @@ pub(super) fn validate_project(context: &ValidationContext<'_>, report: &mut Val
         );
     }
     for name in document.config.providers.keys() {
-        if matches!(name.as_str(), "age" | "env") {
+        if matches!(name.as_str(), "age" | "env" | "file") {
             report.push(
                 Diagnostic::error(
                     "MM_PROVIDER_INSTANCE_RESERVED",

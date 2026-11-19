@@ -70,12 +70,14 @@ configuration.
 | ------------------------- | ------------------------------------------------------------------------ | ---------------------- | -------- | -------------------------- |
 | `age`                     | inspect, resolve, create, replace, batch replace, stage, promote, delete | compare-and-swap       | staged   | local X25519 identity      |
 | `env`                     | inspect, resolve                                                         | observed process value | none     | named process variable     |
+| `file`                    | inspect, resolve                                                         | observed file content  | none     | local file permissions     |
 | OpenBao provider instance | inspect, resolve, create, replace, delete                                | compare-and-swap       | replace  | private AppRole credential |
 | Vault provider instance   | inspect, resolve, create, replace, delete                                | compare-and-swap       | replace  | private AppRole credential |
 
-Age and environment storage accept text up to 1 MiB. OpenBao and Vault accept
+Age, environment and file storage accept text up to 1 MiB. OpenBao and Vault accept
 safe text up to 512 KiB. Locations are bounded to 1,024 bytes where applicable;
-environment locations must be valid variable names. `mm secret provider list
+environment locations must be valid variable names, and file locations
+absolute paths or paths under `~/`. `mm secret provider list
 --output json` returns driver and configured-instance descriptors without
 revealing provider credentials.
 

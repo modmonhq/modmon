@@ -467,6 +467,7 @@ async fn run(
     arguments: Arguments,
     sockets: mm::adapters::kept_sockets::KeptSockets,
 ) -> Result<(), mm::MmError> {
+    mm::composition::serve_as_host();
     let config = mm::adapters::remote::DaemonConfig::load(&arguments.config)?;
     match arguments.command {
         Some(DaemonCommand::Access { command }) => return run_access(&config, command).await,

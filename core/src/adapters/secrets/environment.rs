@@ -29,17 +29,18 @@ impl EnvironmentSecretStore {
     }
 
     fn revision(&self, reference: &SecretReference, value: &str) -> String {
-        let mut input = Zeroizing::new(Vec::with_capacity(
-            reference.locator().len() + value.len() + 1,
-        ));
-        input.extend_from_slice(reference.locator().as_bytes());
-        input.push(0);
-        input.extend_from_slice(value.as_bytes());
-        format!(
-            "keyed-blake3:{}",
-            blake3::keyed_hash(&self.revision_key, &input).to_hex()
-        )
+        keyed_revision(&self.revision_key, reference, value)
     }
+}
+
+pub(super) fn keyed_revision(key: &[u8; 32], reference: &SecretReference, value: &str) -> String {
+    let mut input = Zeroizing::new(Vec::with_capacity(
+        reference.locator().len() + value.len() + 1,
+    ));
+    input.extend_from_slice(reference.locator().as_bytes());
+    input.push(0);
+    input.extend_from_slice(value.as_bytes());
+    format!("keyed-blake3:{}", blake3::keyed_hash(key, &input).to_hex())
 }
 
 impl std::fmt::Debug for EnvironmentSecretStore {

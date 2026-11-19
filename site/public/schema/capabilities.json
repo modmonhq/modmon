@@ -514,6 +514,23 @@
         ],
         "revision_semantics": "observed",
         "rotation": "none"
+      },
+      {
+        "authentication": "local_file",
+        "environment_scoping": "process_global",
+        "id": "file",
+        "material_kinds": [
+          "text"
+        ],
+        "max_location_bytes": 1024,
+        "max_material_bytes": 1048576,
+        "metadata_without_material_resolution": true,
+        "operations": [
+          "inspect_metadata",
+          "resolve_material"
+        ],
+        "revision_semantics": "observed",
+        "rotation": "none"
       }
     ]
   }

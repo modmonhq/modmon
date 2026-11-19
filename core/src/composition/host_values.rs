@@ -467,6 +467,15 @@ fn settable(
         Some(DeclaredKey {
             provider: Some(provider),
             ..
+        }) if provider == "file" => Err(MmError::Secret {
+            message: format!(
+                "secret '{}' is read from a file on the machine that runs mm, and hosts never read it, so it serves builds made there. To give a service of {environment} the value, keep it in a secret with `provider: age`, bind that one for {environment}, and set it with `mm -e {environment} secret set NAME --stdin`",
+                change.key
+            ),
+        }),
+        Some(DeclaredKey {
+            provider: Some(provider),
+            ..
         }) => Err(MmError::Secret {
             message: format!(
                 "secret '{}' is read from the store '{provider}', not kept on the hosts; write a new version there and run `mm -e {environment} deploy redeploy`",

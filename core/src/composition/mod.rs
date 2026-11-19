@@ -159,6 +159,7 @@ pub use mesh::{
     node_network_status, request_leave,
 };
 pub use metrics::container_metrics;
+pub use providers::serve_as_host;
 pub(crate) use providers::*;
 pub(crate) use releases::{host_binary_source, self_update_service, update_check_service};
 pub use remote::{DaemonUseCaseAdapter, serve_stdio_relay};
