@@ -226,6 +226,7 @@ pub(crate) fn config_file_entries<'a>(
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(super) struct StackConfigFiles {
     files: Vec<(ResolvedConfigFile, PathBuf)>,
+    root: PathBuf,
 }
 
 impl StackConfigFiles {
@@ -256,12 +257,27 @@ impl StackConfigFiles {
             .collect()
     }
 
-    /// The versions to put on the host, each once.
-    pub(super) fn compiled(self) -> Vec<CompiledConfigFile> {
+    /// The empty read-only file that covers a masked file of a
+    /// development mount.
+    pub(super) fn mask_file(&self) -> CompiledConfigFile {
+        let version = crate::domain::development_mount::mask_file_version();
+        CompiledConfigFile {
+            path: self.root.join(&version),
+            version,
+            bytes: Vec::new(),
+            mode: crate::domain::development_mount::MASK_FILE_MODE,
+            uid: None,
+            gid: None,
+        }
+    }
+
+    /// The versions to put on the host, each once, with the mask file when
+    /// `masks_a_file`.
+    pub(super) fn compiled(self, masks_a_file: bool) -> Vec<CompiledConfigFile> {
+        let mask = masks_a_file.then(|| self.mask_file());
         let mut seen = BTreeSet::new();
         self.files
             .into_iter()
-            .filter(|(file, _)| seen.insert(file.version.clone()))
             .map(|(file, path)| CompiledConfigFile {
                 path,
                 version: file.version,
@@ -270,6 +286,8 @@ impl StackConfigFiles {
                 uid: file.uid,
                 gid: file.gid,
             })
+            .chain(mask)
+            .filter(|file| seen.insert(file.version.clone()))
             .collect()
     }
 }
@@ -328,5 +346,8 @@ pub(super) fn stack_config_files(
         let path = root.join(&file.version);
         files.push((file, path));
     }
-    Ok(StackConfigFiles { files })
+    Ok(StackConfigFiles {
+        files,
+        root: root.to_owned(),
+    })
 }

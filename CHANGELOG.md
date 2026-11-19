@@ -28,6 +28,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `MM_SECRET_FILE_OWNER`, name each file whose `uid`, `gid` or `mode` that
   can affect. Entries other than uid 0, gid 0, mode 0444 no longer fail on
   Docker.
+- A development mount's `protected` or `excludes` entry that names a file,
+  such as `protected: [.env]`, no longer stops every container of the module
+  from starting. The deployment plan looks at the source: an empty
+  read-only file covers a file, an empty volume still covers a directory,
+  and a path that is not in the source is left alone instead of becoming an
+  empty directory in the checkout. The plan lists each path and what covers
+  it.
 
 ## [0.1.1] - 2026-11-19
 

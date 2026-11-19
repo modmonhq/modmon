@@ -101,6 +101,9 @@ pub struct StackArtifactManifest {
     /// The services that run in the host's network namespace.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub host_network: Vec<HostNetworkUse>,
+    /// The `excludes` and `protected` paths of the development mounts.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub masked_paths: Vec<crate::domain::development_mount::MaskedPath>,
     pub artifact_hash: String,
 }
 
@@ -288,7 +291,23 @@ impl StackArtifactManifest {
                 hash_field(hasher, service.reason.as_deref().unwrap_or_default());
             }
         }
+        if !self.masked_paths.is_empty() {
+            hash_field(hasher, "masked-paths-v1");
+            hash_field(
+                hasher,
+                &serde_json::to_string(&self.masked_paths)
+                    .map_err(|error| format!("could not hash masked paths: {error}"))?,
+            );
+        }
         Ok(())
+    }
+
+    /// Whether an empty file covers one of the masked paths.
+    #[must_use]
+    pub fn masks_a_file(&self) -> bool {
+        self.masked_paths
+            .iter()
+            .any(|path| path.kind == crate::domain::development_mount::MaskedPathKind::File)
     }
 }
 

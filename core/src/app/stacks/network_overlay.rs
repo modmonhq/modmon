@@ -64,11 +64,6 @@ struct GeneratedVolume {
     driver_opts: BTreeMap<String, String>,
 }
 
-struct DevelopmentVolumes {
-    volumes: BTreeMap<String, GeneratedVolume>,
-    manifests: BTreeMap<String, crate::domain::development_mount::PreservedVolumeManifest>,
-}
-
 enum GeneratedServiceMount {
     Bind {
         source: String,
@@ -162,15 +157,16 @@ pub(super) struct GeneratedOverlayInput<'a> {
     pub host_userns: &'a BTreeSet<String>,
 }
 
+/// The overlay's bytes, and what its development mounts preserve and mask.
+pub(super) struct GeneratedOverlayOutput {
+    pub bytes: Vec<u8>,
+    pub preserved_volumes: Vec<crate::domain::development_mount::PreservedVolumeManifest>,
+    pub masked_paths: Vec<crate::domain::development_mount::MaskedPath>,
+}
+
 pub(super) fn generated_overlay(
     input: GeneratedOverlayInput<'_>,
-) -> Result<
-    (
-        Vec<u8>,
-        Vec<crate::domain::development_mount::PreservedVolumeManifest>,
-    ),
-    MmError,
-> {
+) -> Result<GeneratedOverlayOutput, MmError> {
     let labels = overlay_identity_labels(&input);
     let mut services = overlay_services(&input, &labels);
     attach_resolvers(&input, &mut services);
@@ -247,7 +243,11 @@ pub(super) fn generated_overlay(
     .map_err(|error| MmError::Environment {
         message: format!("could not serialize generated Compose overlay: {error}"),
     })?;
-    Ok((bytes, development.manifests.into_values().collect()))
+    Ok(GeneratedOverlayOutput {
+        bytes,
+        preserved_volumes: development.manifests.into_values().collect(),
+        masked_paths: development.masked.into_iter().collect(),
+    })
 }
 
 /// The host's user namespace for the services that keep it, and each
@@ -514,198 +514,8 @@ fn overlay_networks(
     networks
 }
 
-fn development_volumes(
-    input: &GeneratedOverlayInput<'_>,
-    labels: &BTreeMap<String, String>,
-    services: &mut BTreeMap<String, GeneratedService>,
-) -> Result<DevelopmentVolumes, MmError> {
-    let user_volume_keys = compose_volume_keys(input.source_files)?;
-    let mut volumes = BTreeMap::new();
-    let mut manifests = BTreeMap::new();
-    for managed in input.managed_services {
-        attach_development_mount(
-            input,
-            managed,
-            labels,
-            services,
-            &user_volume_keys,
-            &mut volumes,
-            &mut manifests,
-        )?;
-    }
-    Ok(DevelopmentVolumes { volumes, manifests })
-}
-
-fn attach_development_mount(
-    input: &GeneratedOverlayInput<'_>,
-    managed: &StackServiceManifest,
-    labels: &BTreeMap<String, String>,
-    services: &mut BTreeMap<String, GeneratedService>,
-    user_volume_keys: &BTreeSet<String>,
-    volumes: &mut BTreeMap<String, GeneratedVolume>,
-    manifests: &mut BTreeMap<String, crate::domain::development_mount::PreservedVolumeManifest>,
-) -> Result<(), MmError> {
-    let Some(mount) = &managed.development_mount else {
-        return Ok(());
-    };
-    let module = input
-        .document
-        .config
-        .modules
-        .get(&managed.module)
-        .ok_or_else(|| MmError::Security {
-            message: format!("development mount module '{}' disappeared", managed.module),
-        })?;
-    let generated = services
-        .entry(managed.service.clone())
-        .or_insert_with(|| empty_generated_service(managed.image.clone(), labels));
-    for (source, target) in mount.sources() {
-        let source = dunce::canonicalize(input.document.root.join(&module.path).join(source))
-            .map_err(|source| MmError::Io {
-                context: format!(
-                    "resolving development mount for module '{}'",
-                    managed.module
-                ),
-                source,
-            })?;
-        generated.volumes.push(GeneratedServiceMount::Bind {
-            source: source.to_string_lossy().into_owned(),
-            target: target.to_owned(),
-            read_only: mount.mode
-                == crate::domain::development_mount::DevelopmentMountMode::ReadOnly,
-        });
-    }
-    let mut preserved_paths = mount
-        .preserve
-        .iter()
-        .map(|path| (path.path.clone(), false))
-        .collect::<BTreeMap<_, _>>();
-    for path in mount.excludes.iter().chain(&mount.protected) {
-        preserved_paths.insert(
-            crate::app::development_mount::join_container_path(&mount.target, path)?,
-            true,
-        );
-    }
-    for (container_path, nocopy) in preserved_paths {
-        let manifest = preserved_volume_manifest(
-            input.document,
-            input.environment,
-            input.target,
-            &managed.module,
-            &container_path,
-        );
-        if user_volume_keys.contains(&manifest.logical_name) {
-            return Err(MmError::Security {
-                message: format!(
-                    "generated development volume key '{}' collides with a user Compose volume",
-                    manifest.logical_name
-                ),
-            });
-        }
-        let labels = preserved_volume_labels(input, &manifest);
-        volumes.insert(
-            manifest.logical_name.clone(),
-            GeneratedVolume {
-                name: manifest.physical_name.clone(),
-                labels,
-                driver: None,
-                driver_opts: BTreeMap::new(),
-            },
-        );
-        generated
-            .volumes
-            .push(GeneratedServiceMount::Volume(GeneratedLongServiceMount {
-                kind: "volume",
-                source: manifest.logical_name.clone(),
-                target: container_path,
-                read_only: false,
-                volume: Some(GeneratedVolumeOptions { nocopy }),
-            }));
-        manifests.insert(manifest.physical_name.clone(), manifest);
-    }
-    generated
-        .volumes
-        .sort_by(|left, right| left.target().cmp(right.target()));
-    Ok(())
-}
-
-fn preserved_volume_labels(
-    input: &GeneratedOverlayInput<'_>,
-    manifest: &crate::domain::development_mount::PreservedVolumeManifest,
-) -> BTreeMap<String, String> {
-    let ownership = crate::domain::ownership::ResourceOwnership::for_named_target(
-        input.target,
-        crate::domain::ownership::ResourceKind::Volume,
-        manifest.physical_name.clone(),
-        manifest.resource.clone(),
-    );
-    let mut labels = ownership.labels();
-    labels.insert(
-        crate::domain::ownership::LABEL_PROJECT_ID.to_owned(),
-        input.document.config.project.id.0.to_string(),
-    );
-    labels.insert(
-        crate::domain::ownership::LABEL_ENVIRONMENT.to_owned(),
-        input.environment.to_owned(),
-    );
-    labels
-}
-
 const fn is_false(value: &bool) -> bool {
     !*value
-}
-
-fn preserved_volume_manifest(
-    document: &ConfigDocument,
-    environment: &str,
-    target: &NamedTarget,
-    module: &str,
-    container_path: &str,
-) -> crate::domain::development_mount::PreservedVolumeManifest {
-    let identity = format!(
-        "{}\0{}\0{}\0{}\0{}",
-        target.definition.id.0, document.config.project.id.0, environment, module, container_path
-    );
-    let digest = blake3::hash(identity.as_bytes()).to_hex().to_string();
-    let short = &digest[..16];
-    crate::domain::development_mount::PreservedVolumeManifest {
-        module: module.to_owned(),
-        container_path: container_path.to_owned(),
-        logical_name: format!("mm-dev-{short}"),
-        physical_name: format!(
-            "mm-dev-{}-{short}",
-            &document.config.project.id.0.simple().to_string()[..12]
-        ),
-        resource: format!("development-mount-{short}"),
-    }
-}
-
-fn compose_volume_keys(
-    source_files: &[CompiledComposeSource],
-) -> Result<BTreeSet<String>, MmError> {
-    let mut keys = BTreeSet::new();
-    for source in source_files {
-        let parsed: serde_yaml_ng::Value =
-            serde_yaml_ng::from_slice(&source.bytes).map_err(|error| MmError::Environment {
-                message: format!(
-                    "Compose file '{}' is invalid YAML: {error}",
-                    source.manifest.path.display()
-                ),
-            })?;
-        if let Some(mapping) = parsed
-            .as_mapping()
-            .and_then(|root| mapping_value(root, "volumes"))
-            .and_then(serde_yaml_ng::Value::as_mapping)
-        {
-            keys.extend(
-                mapping
-                    .keys()
-                    .filter_map(serde_yaml_ng::Value::as_str)
-                    .map(str::to_owned),
-            );
-        }
-    }
-    Ok(keys)
 }
 
 pub(crate) fn managed_network_name(
@@ -746,8 +556,10 @@ fn sanitize_identity(value: &str) -> String {
     }
 }
 
+mod development;
 mod intent_hash;
 mod membership;
+use development::development_volumes;
 pub(super) use intent_hash::canonical_workload_intent_hash;
 pub(super) use membership::resolve_network_membership;
 

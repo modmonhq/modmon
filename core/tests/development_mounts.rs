@@ -578,3 +578,112 @@ async fn monorepo_sources_and_masked_dependencies_compile_together()
     );
     Ok(())
 }
+
+#[test]
+fn protected_and_excluded_paths_are_covered_by_what_the_source_has_there()
+-> Result<(), Box<dyn std::error::Error>> {
+    use mm::domain::development_mount::MaskedPathKind;
+
+    let fixture = Fixture::new()?;
+    let app = fixture.project.path().join("app");
+    fs::write(app.join(".env"), "LOCAL_ONLY=1\n")?;
+    fs::create_dir(app.join("private"))?;
+    let config_path = fixture.project.path().join(".config/mm.yaml");
+    let config = fs::read_to_string(&config_path)?.replace(
+        "    path: app",
+        r#"    path: app
+    development-mount:
+      source: .
+      target: /app
+      services: [web]
+      excludes: [logs]
+      protected: [.env, private, config/local.env]"#,
+    );
+    fs::write(&config_path, config)?;
+
+    let compiled = fixture.stack_manager().compile(&fixture.selection())?;
+    let manifest = &compiled.stacks[0].manifest;
+    assert_eq!(
+        manifest
+            .masked_paths
+            .iter()
+            .map(|path| (path.container_path.as_str(), path.kind))
+            .collect::<Vec<_>>(),
+        [
+            ("/app/.env", MaskedPathKind::File),
+            ("/app/config/local.env", MaskedPathKind::Missing),
+            ("/app/logs", MaskedPathKind::Missing),
+            ("/app/private", MaskedPathKind::Directory),
+        ]
+    );
+    assert_eq!(
+        manifest.masked_paths[0].line(),
+        "masked: /app/.env (module app) is a file; an empty read-only file covers it"
+    );
+    assert_eq!(
+        manifest.masked_paths[1].line(),
+        "not masked: /app/config/local.env (module app) is not in the source, so nothing is mounted there; if it is created, the containers see it until the next deployment"
+    );
+    assert_eq!(
+        manifest.masked_paths[3].line(),
+        "masked: /app/private (module app) is a directory; an empty volume covers it"
+    );
+    assert_eq!(
+        manifest
+            .preserved_volumes
+            .iter()
+            .map(|volume| volume.container_path.as_str())
+            .collect::<Vec<_>>(),
+        ["/app/private"]
+    );
+
+    let overlay: serde_yaml_ng::Value = serde_yaml_ng::from_str(&fs::read_to_string(
+        &compiled.stacks[0].generated_overlay_path,
+    )?)?;
+    let mounts = overlay["services"]["web"]["volumes"]
+        .as_sequence()
+        .ok_or("missing mounts")?;
+    let env = mounts
+        .iter()
+        .filter_map(serde_yaml_ng::Value::as_str)
+        .find_map(|mount| mount.strip_suffix(":/app/.env:ro,z"))
+        .ok_or("no read-only file over /app/.env")?;
+    let env = std::path::Path::new(env);
+    assert!(env.starts_with(fixture.home.path()), "{}", env.display());
+    assert!(env.is_file());
+    assert_eq!(fs::read(env)?, b"");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(fs::metadata(env)?.permissions().mode() & 0o777, 0o444);
+    }
+    let private = mounts
+        .iter()
+        .find(|mount| mount["target"] == "/app/private")
+        .ok_or("no volume over /app/private")?;
+    assert_eq!(private["type"], "volume");
+    assert_eq!(private["volume"]["nocopy"], true);
+    for missing in ["/app/logs", "/app/config"] {
+        assert!(
+            !mounts.iter().any(|mount| mount["target"] == missing
+                || mount.as_str().is_some_and(|mount| mount.contains(missing))),
+            "{missing} is mounted"
+        );
+    }
+    assert!(!app.join("logs").exists());
+    assert!(!app.join("config").exists());
+    assert_eq!(fs::read_to_string(app.join(".env"))?, "LOCAL_ONLY=1\n");
+
+    let mut changed = manifest.clone();
+    changed.masked_paths[2].kind = MaskedPathKind::File;
+    assert_ne!(changed.canonical_hash()?, manifest.canonical_hash()?);
+
+    fs::remove_file(app.join(".env"))?;
+    let without = fixture.stack_manager().compile(&fixture.selection())?;
+    let without = &without.stacks[0].manifest;
+    assert_ne!(without.artifact_hash, manifest.artifact_hash);
+    assert_eq!(without.masked_paths[0].kind, MaskedPathKind::Missing);
+    assert!(!without.masks_a_file());
+    assert!(!app.join(".env").exists());
+    Ok(())
+}

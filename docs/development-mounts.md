@@ -109,15 +109,40 @@ development-mount:
 ```
 
 Additional sources use the same services and read/write mode as the primary
-source. `excludes` and `protected` name directories relative to the primary
-source; these are masked by empty volumes, not copied from the image. Preserved
-and masked directories are skipped by the source scan because their host
-contents are hidden in the container.
+source.
 
 Preserved volumes can outlive a changed mount until the next reviewed
 deployment removes no-longer-referenced, exactly owned volumes. They may hold
 dependencies, build output, or application data; inspect the deployment plan
 before cleanup.
+
+## Hide files and directories from containers
+
+`excludes` and `protected` name paths, relative to the primary source, that the
+containers must not see, such as a local `.env` file or build output:
+
+```yaml
+development-mount:
+  source: .
+  target: /app
+  services: [web]
+  excludes: [dist]
+  protected: [.env]
+```
+
+`mm deploy plan` looks at each path in the source and covers it:
+
+- A directory gets an empty volume, never copied from the image.
+- A file gets an empty read-only file that `mm` keeps beside the
+  environment's config files, so the container reads an empty `.env`.
+- A path that is not in the source is left alone, and nothing is created in
+  your checkout. If you create it later, the containers see it until the next
+  deployment covers it.
+
+The plan lists each path under its stack, for example
+`masked: /app/.env (module app) is a file; an empty read-only file covers it`.
+Masked paths are skipped by the source scan because their host contents are
+hidden in the container.
 
 ## Safety
 

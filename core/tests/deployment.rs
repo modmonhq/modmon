@@ -1235,6 +1235,75 @@ async fn a_single_host_keeps_a_config_file_version_until_the_deployment_that_rep
 }
 
 #[tokio::test]
+async fn a_protected_file_is_covered_by_an_empty_file_kept_while_a_deployment_mounts_it()
+-> Result<(), Box<dyn std::error::Error>> {
+    use mm::domain::development_mount::MaskedPathKind;
+    let fixture = Fixture::new(false)?;
+    let config = fixture.project.join(".config/mm.yaml");
+    let module = "    path: app\n";
+    let written = fs::read_to_string(&config)?;
+    assert!(written.contains(module), "the fixture has the app module");
+    fs::write(
+        &config,
+        written.replacen(
+            module,
+            &format!("{module}    development-mount:\n      source: .\n      target: /app\n      services: [web]\n      protected: [.env, private]\n"),
+            1,
+        ),
+    )?;
+    let app = fixture.project.join("app");
+    fs::write(app.join(".env"), "LOCAL_ONLY=1\n")?;
+
+    let first = fixture.service.plan(&fixture.selection).await?;
+    let masked = |plan: &mm::domain::deployment::DeploymentPlan| {
+        plan.stacks[0]
+            .artifact
+            .manifest
+            .masked_paths
+            .iter()
+            .map(|path| (path.container_path.clone(), path.kind))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        masked(&first),
+        [
+            ("/app/.env".to_owned(), MaskedPathKind::File),
+            ("/app/private".to_owned(), MaskedPathKind::Missing),
+        ]
+    );
+    assert!(first.preserved_volumes.is_empty(), "no volume over a file");
+    let mut mounts = overlay_service(&first, "web")?.1;
+    assert_eq!(mounts.len(), 1, "{mounts:?}");
+    let (empty, target) = mounts.remove(0);
+    assert_eq!(target, "/app/.env");
+    assert_eq!(fs::read(&empty)?, b"");
+    assert_eq!(file_mode(&empty)?, 0o444);
+    fixture
+        .service
+        .apply_reviewed(&fixture.selection, &first.plan_hash)
+        .await?;
+    assert!(empty.is_file(), "the deployment that mounts it keeps it");
+    assert!(!app.join("private").exists());
+    assert_eq!(fs::read_to_string(app.join(".env"))?, "LOCAL_ONLY=1\n");
+
+    fs::remove_file(app.join(".env"))?;
+    let second = fixture.service.plan(&fixture.selection).await?;
+    assert_ne!(
+        second.stacks[0].artifact_hash,
+        first.stacks[0].artifact_hash
+    );
+    assert_eq!(masked(&second)[0].1, MaskedPathKind::Missing);
+    assert!(overlay_service(&second, "web")?.1.is_empty());
+    fixture
+        .service
+        .apply_reviewed(&fixture.selection, &second.plan_hash)
+        .await?;
+    assert!(!empty.exists(), "nothing mounts it any more");
+    assert!(!app.join(".env").exists() && !app.join("private").exists());
+    Ok(())
+}
+
+#[tokio::test]
 async fn a_cluster_node_runs_what_is_placed_on_it_and_stops_a_moved_service_last()
 -> Result<(), Box<dyn std::error::Error>> {
     let fixture = Fixture::on_node("app-1")?;

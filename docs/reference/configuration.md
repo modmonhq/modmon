@@ -642,10 +642,15 @@ development-mount:
   services: [web]
   preset: node # laravel, node, dotnet, or rust
   preserve: [{ path: /workspace/node_modules }]
-  excludes: [dist]
-  protected: [.env]
+  excludes: [dist] # a directory: an empty volume covers it
+  protected: [.env] # a file: an empty read-only file covers it
   safe-exceptions: []
 ```
+
+`excludes` and `protected` are paths relative to `source`. A deployment plan
+covers each one by what the source has there, and leaves a path that is not
+in the source alone; see
+[Hide files and directories from containers](../development-mounts.md#hide-files-and-directories-from-containers).
 
 ## Bindings, environments, and secrets
 

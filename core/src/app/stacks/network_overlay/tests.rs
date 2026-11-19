@@ -33,7 +33,7 @@ fn generated_overlay_contains_owned_services_routes_networks_and_mail()
         ("other".to_owned(), "ignored".to_owned()),
         BTreeSet::from(["backend".to_owned()]),
     );
-    let (bytes, volumes) = generated_overlay(GeneratedOverlayInput {
+    let generated = generated_overlay(GeneratedOverlayInput {
         document: &fixture.document,
         environment: "development",
         stack: "app",
@@ -53,8 +53,8 @@ fn generated_overlay_contains_owned_services_routes_networks_and_mail()
         low_ports: &Default::default(),
         host_userns: &Default::default(),
     })?;
-    assert!(volumes.is_empty());
-    let overlay: serde_yaml_ng::Value = serde_yaml_ng::from_slice(&bytes)?;
+    assert!(generated.preserved_volumes.is_empty());
+    let overlay: serde_yaml_ng::Value = serde_yaml_ng::from_slice(&generated.bytes)?;
     assert_eq!(
         overlay["services"]["web"]["networks"]["mm-ingress"]["aliases"]
             .as_sequence()
@@ -76,6 +76,7 @@ fn generated_overlay_contains_owned_services_routes_networks_and_mail()
 fn development_mount_overlay_is_owned_sorted_and_rejects_invalid_inputs()
 -> Result<(), Box<dyn std::error::Error>> {
     let fixture = StackFixture::new("services: {web: {expose: [8080]}}")?;
+    fs::create_dir(fixture.root.path().join("app/storage"))?;
     let membership = resolve_network_membership(&fixture.document)?;
     let mut web = service("web", true, vec![candidate(8080, TransportProtocol::Tcp)]);
     web.development_mount = Some(DevelopmentMountConfig {
@@ -114,10 +115,11 @@ fn development_mount_overlay_is_owned_sorted_and_rejects_invalid_inputs()
         };
     }
     let compose = [source("compose.yaml", "services: {web: {expose: [8080]}}")];
-    let (bytes, manifests) = overlay!(std::slice::from_ref(&web), &compose)?;
+    let generated = overlay!(std::slice::from_ref(&web), &compose)?;
+    let manifests = generated.preserved_volumes;
     assert_eq!(manifests.len(), 2);
     assert_eq!(manifests[0].module, "app");
-    let overlay: serde_yaml_ng::Value = serde_yaml_ng::from_slice(&bytes)?;
+    let overlay: serde_yaml_ng::Value = serde_yaml_ng::from_slice(&generated.bytes)?;
     let mounts = overlay["services"]["web"]["volumes"]
         .as_sequence()
         .ok_or("missing generated mounts")?;
@@ -279,7 +281,7 @@ fn a_service_on_a_network_with_a_resolver_file_mounts_it() -> Result<(), Box<dyn
     let volumes = |document: &ConfigDocument,
                    service: &str|
      -> Result<serde_yaml_ng::Value, Box<dyn std::error::Error>> {
-        let (bytes, _) = generated_overlay(GeneratedOverlayInput {
+        let generated = generated_overlay(GeneratedOverlayInput {
             document,
             environment: "development",
             stack: "app",
@@ -296,7 +298,7 @@ fn a_service_on_a_network_with_a_resolver_file_mounts_it() -> Result<(), Box<dyn
             low_ports: &Default::default(),
             host_userns: &Default::default(),
         })?;
-        let overlay: serde_yaml_ng::Value = serde_yaml_ng::from_slice(&bytes)?;
+        let overlay: serde_yaml_ng::Value = serde_yaml_ng::from_slice(&generated.bytes)?;
         Ok(overlay["services"][service]["volumes"].clone())
     };
     let mount = |file: &str| {

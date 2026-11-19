@@ -148,6 +148,9 @@ fn write_stack_lines(writer: &mut impl Write, plan: &DeploymentPlan) -> Result<(
             writeln!(writer, "    network: {}", terminal_safe(&service.line()))
                 .map_err(output_error)?;
         }
+        for path in &stack.artifact.manifest.masked_paths {
+            writeln!(writer, "    {}", terminal_safe(&path.line())).map_err(output_error)?;
+        }
     }
     Ok(())
 }
