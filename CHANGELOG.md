@@ -956,8 +956,10 @@ installations `mm target setup` upgrades in place and what it refuses.
   target with the same name still takes precedence.
 - Remote hosts refuse Compose features that reach the host (privileged
   containers, host namespaces, devices, extra capabilities, and similar) unless
-  `host.yaml` allows one feature for one service. `mm config validate
-  --for-remote` reports them before a push.
+  `host.yaml` allows one feature for one service. A host checks only the
+  services the planned environment runs. `mm config validate --for-remote`
+  reports them before a push, for the environment `-e` names or else for each
+  environment whose target is not `local`.
 - Split configuration files. Any top-level key except `schema-version` can live
   in `.config/mm/<key>.yaml`, which holds just that key's value. `mm config
   split KEY` and `mm config join KEY` move a key through a reviewed plan that

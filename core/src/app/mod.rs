@@ -47,7 +47,9 @@ mod services;
 mod shared_storage;
 pub use shared_storage::{SharedStorageNode, StorageScope};
 mod stacks;
-pub use stacks::guardrails::{GuardrailFinding, check_project as workload_guardrails};
+pub use stacks::guardrails::{
+    GuardrailFinding, check_project as workload_guardrails, remote_guardrail_diagnostics,
+};
 mod target_ingress;
 mod targets;
 mod targets_apply;

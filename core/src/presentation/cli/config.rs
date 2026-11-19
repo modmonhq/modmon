@@ -162,36 +162,7 @@ pub(super) fn run(
     invocation: &super::dispatch::Invocation,
 ) -> Result<u8, MmError> {
     match command {
-        ConfigCommand::Validate { for_remote } => {
-            let mut validation = crate::app::Application::read_only(
-                composition::project_documents(),
-                composition::environment_sources(),
-                Arc::clone(&invocation.runtime),
-                Arc::clone(&invocation.clock),
-            )
-            .validate(&invocation.selection)?;
-            if for_remote {
-                let document = composition::project_documents().load_from(&invocation.start)?;
-                for finding in crate::app::workload_guardrails(&document, &[])? {
-                    validation.validation.push(
-                        crate::domain::diagnostic::Diagnostic::error(
-                            "MM_REMOTE_GUARDRAIL",
-                            format!("a remote host refuses this: {finding}"),
-                        )
-                        .at_path(document.source("stacks"))
-                        .with_help(
-                            "drop the feature, or ask the host admin to allow it for this service in host.yaml",
-                        ),
-                    );
-                }
-            }
-            output::write_validation(&validation, invocation.format)?;
-            Ok(if validation.validation.is_valid() {
-                0
-            } else {
-                2
-            })
-        }
+        ConfigCommand::Validate { for_remote } => run_validate(invocation, for_remote),
         ConfigCommand::Schema { key: None } => {
             output::write_json(&composition::schema())?;
             Ok(0)
@@ -244,6 +215,31 @@ pub(super) fn run(
             run_resource_command(kind, resource, &invocation.start, invocation.format)
         }
     }
+}
+
+fn run_validate(invocation: &super::dispatch::Invocation, for_remote: bool) -> Result<u8, MmError> {
+    let mut validation = crate::app::Application::read_only(
+        composition::project_documents(),
+        composition::environment_sources(),
+        Arc::clone(&invocation.runtime),
+        Arc::clone(&invocation.clock),
+    )
+    .validate(&invocation.selection)?;
+    if for_remote {
+        let document = composition::project_documents().load_from(&invocation.start)?;
+        for diagnostic in crate::app::remote_guardrail_diagnostics(
+            &document,
+            invocation.selection.environment.as_deref(),
+        )? {
+            validation.validation.push(diagnostic);
+        }
+    }
+    output::write_validation(&validation, invocation.format)?;
+    Ok(if validation.validation.is_valid() {
+        0
+    } else {
+        2
+    })
 }
 
 fn resource_command(

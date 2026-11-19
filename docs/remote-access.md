@@ -444,11 +444,23 @@ capabilities beyond Docker's defaults, devices, host namespaces (`pid`, `ipc`,
 `uts`, `userns_mode`, `cgroup`, `network_mode: host`), `cgroup_parent`,
 unconfined `security_opt`, non-`net.*` sysctls, bind or device `driver_opts`
 volumes, external volumes and networks, `configs`/`secrets` files outside the
-project, and `build:` (remote hosts never build). Check before you push:
+project, and `build:` (remote hosts never build).
+
+A host checks only the services the environment it plans runs: the ones
+`mm deploy plan` renders. A service whose `environments:` leaves the
+environment out is not checked there, and neither is a stack left with no
+service. A service that only `local` runs, such as a developer tool with
+`network_mode: host`, needs no exception on any host.
+
+Check before you push:
 
 ```sh
-mm config validate --for-remote
+mm config validate --for-remote                  # every environment whose target is not local
+mm -e staging config validate --for-remote       # one environment
 ```
+
+Expected result: `config: valid`, or one `MM_REMOTE_GUARDRAIL` error per
+feature, naming the environment, the `<stack>/<service>`, and the Compose key.
 
 Only a host admin can make an exception, for one feature of one service, in
 `/etc/mm/host.yaml`:

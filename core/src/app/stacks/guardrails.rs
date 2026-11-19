@@ -48,44 +48,86 @@ impl std::fmt::Display for GuardrailFinding {
     }
 }
 
-/// Findings for every stack of a project checkout, minus host exceptions.
-/// Each Compose file is checked on its own: merging files only adds.
+/// Findings for the services a project checkout runs in `environment`,
+/// minus host exceptions. Each Compose file is checked on its own: merging
+/// files only adds.
 pub fn check_project(
     document: &crate::domain::config::ConfigDocument,
+    environment: &str,
     allowed: &[GuardrailException],
 ) -> Result<Vec<GuardrailFinding>, crate::domain::error::MmError> {
-    use crate::domain::error::MmError;
+    let mut findings = project_findings(document, environment)?;
+    findings.retain(|finding| !allows(allowed, finding));
+    Ok(findings)
+}
+
+/// Every finding for the services active in `environment`, allowed or not.
+/// A service the environment leaves out, and a stack left with no service,
+/// contribute nothing.
+fn project_findings(
+    document: &crate::domain::config::ConfigDocument,
+    environment: &str,
+) -> Result<Vec<GuardrailFinding>, crate::domain::error::MmError> {
+    let excluded = super::service_filter::environment_excluded_services(document, environment);
     let mut findings = Vec::new();
     for (stack, config) in &document.config.stacks {
+        let mut sources = Vec::with_capacity(config.files.len());
         for file in &config.files {
-            let path = document.root.join(file);
-            let bytes = crate::domain::path_policy::read_regular_file(&path, 4 * 1024 * 1024)?
-                .ok_or_else(|| MmError::ConfigRead {
-                    path: path.clone(),
-                    source: std::io::Error::new(
-                        std::io::ErrorKind::NotFound,
-                        "Compose file is missing from the commit",
-                    ),
-                })?;
-            let compose: Mapping =
-                serde_yaml_ng::from_slice(&bytes).map_err(|error| MmError::ConfigParse {
-                    path: path.clone(),
-                    message: error.to_string(),
-                })?;
-            findings.extend(check_compose(stack, &compose, &document.root, allowed));
+            let mut compose = read_compose(&document.root.join(file))?;
+            if let Some(services) = compose.get_mut("services").and_then(Value::as_mapping_mut) {
+                for left_out in excluded.iter().filter(|service| &service.stack == stack) {
+                    services.remove(left_out.service.as_str());
+                }
+            }
+            sources.push(compose);
+        }
+        let runs_a_service = sources.iter().any(|compose| {
+            compose
+                .get("services")
+                .and_then(Value::as_mapping)
+                .is_some_and(|services| !services.is_empty())
+        });
+        if runs_a_service {
+            for compose in &sources {
+                findings.extend(compose_findings(stack, compose, &document.root));
+            }
         }
     }
     Ok(findings)
 }
 
-/// Findings for one stack's merged Compose sources, minus host exceptions.
-#[must_use]
-pub fn check_compose(
-    stack: &str,
-    compose: &Mapping,
-    project_root: &Path,
-    allowed: &[GuardrailException],
-) -> Vec<GuardrailFinding> {
+fn read_compose(path: &Path) -> Result<Mapping, crate::domain::error::MmError> {
+    use crate::domain::error::MmError;
+    let bytes =
+        crate::domain::path_policy::read_regular_file(path, 4 * 1024 * 1024)?.ok_or_else(|| {
+            MmError::ConfigRead {
+                path: path.to_path_buf(),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "Compose file is missing from the commit",
+                ),
+            }
+        })?;
+    let parse = |message: String| MmError::ConfigParse {
+        path: path.to_path_buf(),
+        message,
+    };
+    let mut value: Value =
+        serde_yaml_ng::from_slice(&bytes).map_err(|error| parse(error.to_string()))?;
+    value
+        .apply_merge()
+        .map_err(|error| parse(error.to_string()))?;
+    serde_yaml_ng::from_value(value).map_err(|error| parse(error.to_string()))
+}
+
+/// Whether a host exception covers `finding`.
+fn allows(allowed: &[GuardrailException], finding: &GuardrailFinding) -> bool {
+    allowed.iter().any(|exception| {
+        exception.service == finding.subject && exception.features.contains(&finding.feature)
+    })
+}
+
+fn compose_findings(stack: &str, compose: &Mapping, project_root: &Path) -> Vec<GuardrailFinding> {
     let mut findings = Vec::new();
     if let Some(services) = compose.get("services").and_then(Value::as_mapping) {
         for (name, service) in services {
@@ -97,14 +139,6 @@ pub fn check_compose(
     }
     check_project_resources(stack, compose, project_root, &mut findings);
     findings
-        .into_iter()
-        .filter(|finding| {
-            !allowed.iter().any(|exception| {
-                exception.service == finding.subject
-                    && exception.features.contains(&finding.feature)
-            })
-        })
-        .collect()
 }
 
 fn push(findings: &mut Vec<GuardrailFinding>, subject: &str, feature: &str, detail: String) {
@@ -334,6 +368,9 @@ fn is_empty(value: &Value) -> bool {
         _ => false,
     }
 }
+
+mod review;
+pub use review::remote_guardrail_diagnostics;
 
 #[cfg(test)]
 #[path = "guardrails/tests.rs"]
