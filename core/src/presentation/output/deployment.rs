@@ -130,6 +130,10 @@ fn write_stack_lines(writer: &mut impl Write, plan: &DeploymentPlan) -> Result<(
             )
             .map_err(output_error)?;
         }
+        for service in &stack.artifact.manifest.host_network {
+            writeln!(writer, "    network: {}", terminal_safe(&service.line()))
+                .map_err(output_error)?;
+        }
     }
     Ok(())
 }

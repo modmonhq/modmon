@@ -366,6 +366,14 @@ installations `mm target setup` upgrades in place and what it refuses.
   their project ID, when each was last used, and which are gone.
   `mm workspace forget --stale` (or `ROOT|ID`) forgets them through a reviewed
   plan: their operation history and `mm env set` values go, their files stay.
+- A service may run on its host's network (`network_mode: host`), as a VPN
+  or DNS server needs. On a remote host or a cluster node the host policy
+  decides: `allow` with `features: [network-host]` for that `stack/service`.
+  On your own machine the service says why with `host-network: <why>` under
+  `modules.<module>.services.<service>`, and the plan shows the reason.
+  Such a service has no routes, joins no network, and keeps the host's user
+  namespace. See
+  [run a service on the host's network](docs/remote-access.md#run-a-service-on-the-hosts-network).
 - Releases are published by the release workflow when a `vX.Y.Z` tag is
   pushed to `master`: the Linux x86-64 and ARM64 archives are built from the
   tag in pinned containers by `scripts/release/build-linux.sh` (which also

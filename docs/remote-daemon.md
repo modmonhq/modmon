@@ -166,7 +166,8 @@ projects:
 - **`origin`** is the only place `mmd` fetches code from, with the key at
   `/var/lib/mm/projects/PROJECT_ID/deploy-key`.
 - **`allow`** lets one service use one Compose feature that reaches the host,
-  in the environments the host runs. See
+  such as `network-host` for `network_mode: host`, in the environments the
+  host runs. See
   [what a deploy may run](./remote-access.md#what-a-deploy-may-run); `mm config
   validate --for-remote --host-policy FILE` checks a project against a copy of
   this file.
@@ -2032,6 +2033,10 @@ only. Neither is bound to a public address.
   container. Compose `links` aliases do not resolve.
 - A container started by hand on one of these networks, outside a deployment,
   uses the engine's resolver and finds the containers of its own node only.
+- A service on the host's network (`network_mode: host`) is on none of these
+  networks. No name leads to it, and it resolves names as its node does, so
+  it finds no service by name. See
+  [run a service on the host's network](./remote-access.md#run-a-service-on-the-hosts-network).
 - Addresses are IPv4.
 - On a target with `cluster.mesh.interface`, and on a target that names one
   host, networks stay local to the host and the engine resolves names as it

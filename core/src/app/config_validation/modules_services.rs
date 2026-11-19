@@ -377,10 +377,7 @@ fn validate_service_declaration<'a>(
     validate_service_environments(document, module_name, service, service_config, report);
     let automatic_service = automatic_local_ingress
         && service_config.is_active(context.environment)
-        && service_config.automatic_local_ingress != Some(false)
-        && !service_config
-            .role
-            .is_some_and(|role| role.excludes_automatic_ingress());
+        && service_config.takes_automatic_local_ingress();
     validate_service_slug(
         module_name,
         service,

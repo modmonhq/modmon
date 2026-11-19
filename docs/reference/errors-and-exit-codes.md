@@ -115,6 +115,7 @@ a template has a placeholder that names no binding or names a secret.
 `MM_COMPOSE_ENVIRONMENT` is the finding for a Compose file that sets
 `environment` or `env_file` on a service; move the values to the service's
 `env:` or its module's environment template.
+`MM_HOST_NETWORK` is the finding for `host-network` without a reason.
 `MM_USER_NAMESPACE` is the finding for `host-user-namespace` without a
 reason, and, on Podman hosts, where each service has [user ids of its
 own](../remote-daemon.md#run-podman-on-the-hosts), for two services with ids

@@ -59,8 +59,9 @@ pub(crate) fn compile_document_for(
         environment,
         target.definition.transport == crate::domain::target::TargetTransport::Local,
     )?;
-    let automatic_local_ingress = automatic_local_ingress_enabled(document, environment, target);
-    let project_slug = automatic_local_ingress
+    let scope = SourceScope::compiling(document, environment, target);
+    let project_slug = scope
+        .automatic_local_ingress()
         .then(|| canonical_project_slug(document))
         .transpose()?;
     let mut artifacts = Vec::with_capacity(document.config.stacks.len());
@@ -70,28 +71,18 @@ pub(crate) fn compile_document_for(
             stack_name.clone(),
             stack_project_name(document, environment, target, stack_name),
         );
-        let excluded = excluded_service_names(document, environment, stack_name);
         let ingress_routes = resolve_ingress_services(document, environment, stack_name, stack)?;
-        let routed_services = routed_service_names(
-            document,
-            environment,
-            stack_name,
-            &ingress_routes,
-            automatic_local_ingress,
-        );
-        let compose_directory = compose_project_directory(document, stack_name);
+        let policy = SourcePolicy::new(document, environment, stack_name, &ingress_routes, scope);
         let source_files = load_compose_sources(
             document,
             stack,
-            &routed_services,
-            ingress_loopback_ports(target.definition.id),
-            &compose_directory,
-            &excluded,
+            &policy,
             StackPlacement::of(document, stack_name, &mut notes),
         )?;
-        if !excluded.is_empty() && !sources_have_services(&source_files)? {
+        if !policy.excluded.is_empty() && !sources_have_services(&source_files)? {
             continue;
         }
+        let host_network = policy.host_network.services(&source_files)?;
         let services = compile_services(
             document,
             environment,
@@ -137,6 +128,7 @@ pub(crate) fn compile_document_for(
             restart_defaults,
             shared,
             host: stack_host,
+            host_network,
         })?);
     }
     Ok((artifacts, notes))
@@ -199,7 +191,7 @@ fn stack_project_name(
     )
 }
 
-fn routed_service_names<'a>(
+pub(super) fn routed_service_names<'a>(
     document: &'a ConfigDocument,
     environment: &str,
     stack_name: &str,
@@ -269,10 +261,7 @@ fn automatic_ingress_services<'a>(
         .filter(|(_, service)| {
             service.stack == stack
                 && service.is_active(environment)
-                && service.automatic_local_ingress != Some(false)
-                && !service
-                    .role
-                    .is_some_and(|role| role.excludes_automatic_ingress())
+                && service.takes_automatic_local_ingress()
         })
         .map(|(name, _)| name.as_str())
         .collect()
@@ -281,10 +270,7 @@ fn automatic_ingress_services<'a>(
 fn load_compose_sources(
     document: &ConfigDocument,
     stack: &crate::domain::config::StackConfig,
-    routed_services: &BTreeSet<&str>,
-    proxy_ports: (u16, u16, u16),
-    compose_directory: &Path,
-    excluded: &BTreeSet<String>,
+    policy: &SourcePolicy<'_>,
     mut placement: StackPlacement<'_>,
 ) -> Result<Vec<CompiledComposeSource>, MmError> {
     let mut files = Vec::with_capacity(stack.files.len());
@@ -308,22 +294,12 @@ fn load_compose_sources(
     }
     let mut source_files = Vec::with_capacity(stack.files.len());
     for (relative_path, (path, bytes)) in stack.files.iter().zip(files) {
-        let bytes = filter_compose_services(&path, bytes, excluded)?;
-        reject_reserved_ingress_configuration(
+        let bytes = policy.check(&path, bytes)?;
+        let bytes = super::file_references::absolute_file_references(
             &path,
-            &bytes,
-            routed_services,
-            proxy_ports,
-            &document.root,
-            compose_directory,
+            bytes,
+            &policy.compose_directory,
         )?;
-        reject_nonportable_compose(
-            &path,
-            &bytes,
-            &document.config.networks.keys().cloned().collect(),
-        )?;
-        let bytes =
-            super::file_references::absolute_file_references(&path, bytes, compose_directory)?;
         source_files.push(CompiledComposeSource {
             manifest: ComposeSourceManifest {
                 path: relative_path.clone(),
@@ -375,6 +351,7 @@ struct StackArtifactInput<'a> {
     /// The stack's shared volumes on this node.
     shared: super::shared_volumes::NodeVolumes,
     host: super::user_namespace::StackHost,
+    host_network: super::host_network::HostNetworkServices,
 }
 
 fn finish_stack_artifact(input: StackArtifactInput<'_>) -> Result<CompiledStackArtifact, MmError> {
@@ -408,6 +385,7 @@ fn finish_stack_artifact(input: StackArtifactInput<'_>) -> Result<CompiledStackA
         config_files: &input.host.config_files,
         user_ids: &input.host.user_ids,
         low_ports: &input.host.low_ports,
+        host_userns: &input.host_network.host_userns,
     })?;
     let mut manifest = StackArtifactManifest {
         project_id: input.document.config.project.id,
@@ -429,6 +407,7 @@ fn finish_stack_artifact(input: StackArtifactInput<'_>) -> Result<CompiledStackA
         preserved_volumes,
         security: security.services,
         low_ports: input.host.low_ports.iter().cloned().collect(),
+        host_network: input.host_network.uses,
         artifact_hash: String::new(),
     };
     manifest.artifact_hash = manifest
@@ -630,10 +609,23 @@ pub(super) fn automatic_local_ingress_enabled(
     environment: &str,
     target: &NamedTarget,
 ) -> bool {
+    target.definition.transport == crate::domain::target::TargetTransport::Local
+        && automatic_local_ingress_configured(document, environment)
+}
+
+/// Whether `mm.yaml` gives `environment` automatic local routes, wherever
+/// it runs.
+pub(super) fn automatic_local_ingress_configured(
+    document: &ConfigDocument,
+    environment: &str,
+) -> bool {
     document.config.project.development_environment.as_deref() == Some(environment)
-        && target.definition.transport == crate::domain::target::TargetTransport::Local
         && document.config.ingress.automatic_local != Some(false)
-        && document.config.environments[environment].automatic_local_ingress != Some(false)
+        && document
+            .config
+            .environments
+            .get(environment)
+            .is_some_and(|environment| environment.automatic_local_ingress != Some(false))
 }
 
 #[cfg(test)]

@@ -82,6 +82,7 @@ pub(super) fn development_mail_bindings(
             .get(module)
             .is_some_and(|module| module.development_mail == Some(false))
         || service.development_mail == Some(false)
+        || service.host_network.is_some()
         || service.role == Some(crate::domain::config::ServiceRole::Database)
     {
         return Vec::new();
@@ -129,10 +130,7 @@ pub(super) fn automatic_local_routes(
     for service in services {
         let config = service_config(document, &service.module, &service.service)?;
         if explicit_services.contains(service.service.as_str())
-            || config.automatic_local_ingress == Some(false)
-            || config
-                .role
-                .is_some_and(|role| role.excludes_automatic_ingress())
+            || !config.takes_automatic_local_ingress()
             || !service.http_evidence.declared_in_compose
         {
             continue;
@@ -354,6 +352,10 @@ pub(super) fn not_routed_reason(
     }
     if config.automatic_local_ingress == Some(false) {
         return "automatic local ingress is disabled for this service".to_owned();
+    }
+    if config.host_network.is_some() {
+        return "the service runs on the host's network (host-network), which mm does not route to"
+            .to_owned();
     }
     if let Some(role) = config.role.filter(|role| role.excludes_automatic_ingress()) {
         return format!("service role '{role:?}' is not HTTP-routable").to_ascii_lowercase();

@@ -178,6 +178,7 @@ pub(in crate::app::stacks) fn prepared_stack(
             preserved_volumes: Vec::new(),
             security: Vec::new(),
             low_ports: Vec::new(),
+            host_network: Vec::new(),
             artifact_hash: String::new(),
         },
     }

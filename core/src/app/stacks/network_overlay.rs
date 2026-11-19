@@ -156,6 +156,8 @@ pub(super) struct GeneratedOverlayInput<'a> {
     pub user_ids: &'a super::user_namespace::StackUserIds,
     /// The services that may open ports below 1024 as any user.
     pub low_ports: &'a BTreeSet<String>,
+    /// The services on the host's network that keep its user namespace.
+    pub host_userns: &'a BTreeSet<String>,
 }
 
 pub(super) fn generated_overlay(
@@ -182,20 +184,7 @@ pub(super) fn generated_overlay(
             .or_insert_with(|| empty_generated_service(None, &labels))
             .security = security.clone();
     }
-    let keeps_host_ids =
-        super::user_namespace::host_user_namespaces(input.document, input.environment, input.stack);
-    for name in keeps_host_ids {
-        let service = services
-            .entry(name)
-            .or_insert_with(|| empty_generated_service(None, &labels));
-        service.userns_mode = Some("host".to_owned());
-    }
-    for (name, ids) in input.user_ids.iter() {
-        let service = services
-            .entry(name.clone())
-            .or_insert_with(|| empty_generated_service(None, &labels));
-        service.userns_mode = Some(ids.userns_mode());
-    }
+    set_user_namespaces(&input, &labels, &mut services);
     for name in input.low_ports {
         services
             .entry(name.clone())
@@ -257,6 +246,32 @@ pub(super) fn generated_overlay(
         message: format!("could not serialize generated Compose overlay: {error}"),
     })?;
     Ok((bytes, development.manifests.into_values().collect()))
+}
+
+/// The host's user namespace for the services that keep it, and each
+/// service's own ids where the host gives them.
+fn set_user_namespaces(
+    input: &GeneratedOverlayInput<'_>,
+    labels: &BTreeMap<String, String>,
+    services: &mut BTreeMap<String, GeneratedService>,
+) {
+    let keeps_host_ids =
+        super::user_namespace::host_user_namespaces(input.document, input.environment, input.stack);
+    for name in keeps_host_ids
+        .into_iter()
+        .chain(input.host_userns.iter().cloned())
+    {
+        services
+            .entry(name)
+            .or_insert_with(|| empty_generated_service(None, labels))
+            .userns_mode = Some("host".to_owned());
+    }
+    for (name, ids) in input.user_ids.iter() {
+        services
+            .entry(name.clone())
+            .or_insert_with(|| empty_generated_service(None, labels))
+            .userns_mode = Some(ids.userns_mode());
+    }
 }
 
 fn overlay_identity_labels(input: &GeneratedOverlayInput<'_>) -> BTreeMap<String, String> {

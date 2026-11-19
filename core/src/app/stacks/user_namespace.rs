@@ -6,8 +6,9 @@
 //! the host has, the same in every container of the service and from one
 //! deployment to the next. A service that has to keep the host's ids says
 //! why (`host-user-namespace`), and so does a Compose file that sets
-//! `userns_mode` itself. Elsewhere containers keep the host's ids, which
-//! `userns_mode: host` says on any engine.
+//! `userns_mode` itself. A service on the host's network keeps them too.
+//! Elsewhere containers keep the host's ids, which `userns_mode: host`
+//! says on any engine.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -154,7 +155,7 @@ impl<'a> ServiceHost<'a> {
 }
 
 /// The services of the stack's Compose files that do not set
-/// `userns_mode` themselves.
+/// `userns_mode` themselves and are not on the host's network.
 fn services_without_own_userns(sources: &[CompiledComposeSource]) -> Result<Vec<String>, MmError> {
     let mut services = BTreeMap::<String, bool>::new();
     for source in sources {
@@ -170,7 +171,8 @@ fn services_without_own_userns(sources: &[CompiledComposeSource]) -> Result<Vec<
             let Some(name) = name.as_str() else {
                 continue;
             };
-            let own = service.get("userns_mode").is_some();
+            let own = service.get("userns_mode").is_some()
+                || super::host_network::on_host_network(service);
             *services.entry(name.to_owned()).or_default() |= own;
         }
     }
