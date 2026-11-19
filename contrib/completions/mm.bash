@@ -77,6 +77,9 @@ _mm() {
             mm,team)
                 cmd="mm__subcmd__team"
                 ;;
+            mm,workspace)
+                cmd="mm__subcmd__workspace"
+                ;;
             mm__subcmd__access,add)
                 cmd="mm__subcmd__access__subcmd__add"
                 ;;
@@ -1364,6 +1367,9 @@ _mm() {
             mm__subcmd__help,team)
                 cmd="mm__subcmd__help__subcmd__team"
                 ;;
+            mm__subcmd__help,workspace)
+                cmd="mm__subcmd__help__subcmd__workspace"
+                ;;
             mm__subcmd__help__subcmd__access,add)
                 cmd="mm__subcmd__help__subcmd__access__subcmd__add"
                 ;;
@@ -2074,6 +2080,12 @@ _mm() {
                 ;;
             mm__subcmd__help__subcmd__team,whoami)
                 cmd="mm__subcmd__help__subcmd__team__subcmd__whoami"
+                ;;
+            mm__subcmd__help__subcmd__workspace,forget)
+                cmd="mm__subcmd__help__subcmd__workspace__subcmd__forget"
+                ;;
+            mm__subcmd__help__subcmd__workspace,list)
+                cmd="mm__subcmd__help__subcmd__workspace__subcmd__list"
                 ;;
             mm__subcmd__history,help)
                 cmd="mm__subcmd__history__subcmd__help"
@@ -2918,6 +2930,24 @@ _mm() {
             mm__subcmd__team__subcmd__help,whoami)
                 cmd="mm__subcmd__team__subcmd__help__subcmd__whoami"
                 ;;
+            mm__subcmd__workspace,forget)
+                cmd="mm__subcmd__workspace__subcmd__forget"
+                ;;
+            mm__subcmd__workspace,help)
+                cmd="mm__subcmd__workspace__subcmd__help"
+                ;;
+            mm__subcmd__workspace,list)
+                cmd="mm__subcmd__workspace__subcmd__list"
+                ;;
+            mm__subcmd__workspace__subcmd__help,forget)
+                cmd="mm__subcmd__workspace__subcmd__help__subcmd__forget"
+                ;;
+            mm__subcmd__workspace__subcmd__help,help)
+                cmd="mm__subcmd__workspace__subcmd__help__subcmd__help"
+                ;;
+            mm__subcmd__workspace__subcmd__help,list)
+                cmd="mm__subcmd__workspace__subcmd__help__subcmd__list"
+                ;;
             *)
                 ;;
         esac
@@ -2925,7 +2955,7 @@ _mm() {
 
     case "${cmd}" in
         mm)
-            opts="-e -h -V --root --environment --runtime --target --mm-home --output --help --version init dev config doctor ingress service job env secret access build deploy team forward key target agent history mcp help"
+            opts="-e -h -V --root --environment --runtime --target --mm-home --output --help --version init dev config doctor ingress service job env secret access build deploy team forward key target agent history workspace mcp help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -13671,7 +13701,7 @@ _mm() {
             return 0
             ;;
         mm__subcmd__help)
-            opts="init dev config doctor ingress service job env secret access build deploy team forward key target agent history mcp help"
+            opts="init dev config doctor ingress service job env secret access build deploy team forward key target agent history workspace mcp help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -17269,6 +17299,48 @@ _mm() {
             return 0
             ;;
         mm__subcmd__help__subcmd__team__subcmd__whoami)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mm__subcmd__help__subcmd__workspace)
+            opts="list forget"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mm__subcmd__help__subcmd__workspace__subcmd__forget)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mm__subcmd__help__subcmd__workspace__subcmd__list)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -24735,6 +24807,192 @@ _mm() {
             return 0
             ;;
         mm__subcmd__team__subcmd__whoami)
+            opts="-e -h -V --root --environment --runtime --target --mm-home --output --help --version"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --root)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --environment)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -e)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --runtime)
+                    COMPREPLY=($(compgen -W "podman-compose docker-compose" -- "${cur}"))
+                    return 0
+                    ;;
+                --target)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --mm-home)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --output)
+                    COMPREPLY=($(compgen -W "human json" -- "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mm__subcmd__workspace)
+            opts="-e -h -V --root --environment --runtime --target --mm-home --output --help --version list forget help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --root)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --environment)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -e)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --runtime)
+                    COMPREPLY=($(compgen -W "podman-compose docker-compose" -- "${cur}"))
+                    return 0
+                    ;;
+                --target)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --mm-home)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --output)
+                    COMPREPLY=($(compgen -W "human json" -- "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mm__subcmd__workspace__subcmd__forget)
+            opts="-e -h -V --stale --plan --yes --root --environment --runtime --target --mm-home --output --help --version"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --plan)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --root)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --environment)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -e)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --runtime)
+                    COMPREPLY=($(compgen -W "podman-compose docker-compose" -- "${cur}"))
+                    return 0
+                    ;;
+                --target)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --mm-home)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --output)
+                    COMPREPLY=($(compgen -W "human json" -- "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mm__subcmd__workspace__subcmd__help)
+            opts="list forget help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mm__subcmd__workspace__subcmd__help__subcmd__forget)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mm__subcmd__workspace__subcmd__help__subcmd__help)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mm__subcmd__workspace__subcmd__help__subcmd__list)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mm__subcmd__workspace__subcmd__list)
             opts="-e -h -V --root --environment --runtime --target --mm-home --output --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )

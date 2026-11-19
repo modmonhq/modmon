@@ -1475,8 +1475,25 @@ fn root_exposes_exactly_the_public_families() {
     assert_eq!(
         actual,
         [
-            "init", "dev", "config", "doctor", "ingress", "service", "job", "env", "secret",
-            "access", "build", "deploy", "team", "forward", "key", "target", "agent", "history",
+            "init",
+            "dev",
+            "config",
+            "doctor",
+            "ingress",
+            "service",
+            "job",
+            "env",
+            "secret",
+            "access",
+            "build",
+            "deploy",
+            "team",
+            "forward",
+            "key",
+            "target",
+            "agent",
+            "history",
+            "workspace",
             "mcp",
         ]
     );

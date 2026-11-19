@@ -47,6 +47,7 @@ mod target_storage;
 mod team;
 mod terminal;
 mod values;
+mod workspace;
 
 pub use access::*;
 pub use agent::{AgentClientArg, AgentCommand};
@@ -69,6 +70,7 @@ pub use target::*;
 pub use target_mesh::TargetMeshCommand;
 pub use target_storage::TargetStorageCommand;
 pub use team::{TeamCommand, TeamReview};
+pub use workspace::{WorkspaceCommand, WorkspaceReview};
 
 use terminal::{
     SetupDecision, confirm, current_directory, prompt_interactive_setup, read_public_value,

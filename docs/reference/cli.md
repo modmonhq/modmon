@@ -15,26 +15,27 @@ mm compiles one engine-neutral project contract into reviewed plans, then applie
 Usage: mm [OPTIONS] [COMMAND]
 
 Commands:
-  init     Initialize a project through a reviewed plan or interactive onboarding
-  dev      Set up and operate the local development environment
-  config   Validate and edit desired project configuration through typed reviews
-  doctor   Check configuration health and resolved runtime capabilities
-  ingress  Start or stop this workstation's global public HTTP/HTTPS forwarding
-  service  Inspect and operate deployed services
-  job      Run finite jobs and operate their schedules
-  env      Inspect and deliver non-secret environment values
-  secret   Manage secret values, rotation, and provider instances
-  access   Manage application access policies, users, routes, and sessions
-  build    Plan and execute deterministic OCI image builds
-  deploy   Plan and apply the selected environment to its target
-  team     Show who may reach remote environments, join, and sync access
-  forward  Reach a remote service's port on localhost; save forwards for reuse
-  key      Create, show, protect, replace, or remove this device's SSH keys for remote environments
-  target   Manage targets, private selection, setup, ingress, and remote access
-  agent    Show and trust what AI agents may do, and connect coding tools
-  history  List the commands run in this project on this machine, and show what one printed
-  mcp      Serve the Model Context Protocol server that AI agents use
-  help     Print this message or the help of the given subcommand(s)
+  init       Initialize a project through a reviewed plan or interactive onboarding
+  dev        Set up and operate the local development environment
+  config     Validate and edit desired project configuration through typed reviews
+  doctor     Check configuration health and resolved runtime capabilities
+  ingress    Start or stop this workstation's global public HTTP/HTTPS forwarding
+  service    Inspect and operate deployed services
+  job        Run finite jobs and operate their schedules
+  env        Inspect and deliver non-secret environment values
+  secret     Manage secret values, rotation, and provider instances
+  access     Manage application access policies, users, routes, and sessions
+  build      Plan and execute deterministic OCI image builds
+  deploy     Plan and apply the selected environment to its target
+  team       Show who may reach remote environments, join, and sync access
+  forward    Reach a remote service's port on localhost; save forwards for reuse
+  key        Create, show, protect, replace, or remove this device's SSH keys for remote environments
+  target     Manage targets, private selection, setup, ingress, and remote access
+  agent      Show and trust what AI agents may do, and connect coding tools
+  history    List the commands run in this project on this machine, and show what one printed
+  workspace  List the project folders mm knows on this machine, and forget the ones that are gone
+  mcp        Serve the Model Context Protocol server that AI agents use
+  help       Print this message or the help of the given subcommand(s)
 
 Options:
       --root <PATH>
@@ -5510,6 +5511,76 @@ Arguments:
 Options:
   -h, --help
           Print help
+```
+
+## `mm workspace`
+
+```text
+List the project folders mm knows on this machine, and forget the ones that are gone
+
+Usage: workspace <COMMAND>
+
+Commands:
+  list    List the project folders mm has run in on this machine, when each was last used, and which are gone
+  forget  Forget registered project folders through a reviewed plan
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help
+          Print help
+
+Examples:
+  mm workspace list
+  mm workspace forget --stale
+  mm workspace forget --stale --plan HASH --yes
+
+mm registers a project folder the first time it runs there. Forgetting one drops its operation history and `mm env set` values on this machine; no file is deleted.
+```
+
+### `mm workspace list`
+
+```text
+List the project folders mm has run in on this machine, when each was last used, and which are gone
+
+Usage: list
+
+Options:
+  -h, --help
+          Print help
+```
+
+### `mm workspace forget`
+
+```text
+Forget registered project folders through a reviewed plan.
+
+mm drops their operation history and `mm env set` values on this machine. No file is deleted.
+
+Usage: forget [OPTIONS] [ROOT|ID]
+
+Arguments:
+  [ROOT|ID]
+          A registered folder, or a project or workspace ID from `mm workspace list --output json`
+
+Options:
+      --stale
+          Forget every registered workspace whose folder or mm.yaml is gone
+
+      --plan <HASH>
+          Exact hash printed by an earlier review of the same change
+
+      --yes
+          Apply the exact reviewed plan
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Examples:
+  mm workspace forget --stale
+  mm workspace forget --stale --plan HASH --yes
+  mm workspace forget ~/src/old-checkout
+
+A folder that still exists is registered again the next time mm runs there.
 ```
 
 ## `mm mcp`
