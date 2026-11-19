@@ -275,11 +275,14 @@ proptest! {
     }
 
     #[test]
-    fn unknown_configuration_mutations_are_rejected(field in "x-[a-z]{1,24}") {
+    fn unknown_configuration_keys_are_named(field in "x-[a-z]{1,24}") {
         let source = format!(
             "schema-version: 1\ndefault-environment: local\nproject:\n  id: 019c527b-6242-7b43-bfd4-bd60e27c1de3\n  name: properties\ntarget: local\nstacks: {{}}\nenvironments:\n  local:\n    bindings: {{}}\n{field}: true\n"
         );
-        prop_assert!(serde_yaml_ng::from_str::<MmConfig>(&source).is_err());
+        let (Ok((_, ignored)) | Err((_, ignored))) =
+            mm::app::unknown_keys::deserialize_tracked::<MmConfig, _>(serde_yaml_ng::Deserializer::from_str(&source));
+        let ignored: Vec<String> = ignored.iter().map(|path| mm::domain::config::unknown_keys::dotted(path)).collect();
+        prop_assert_eq!(ignored, vec![field]);
     }
 
     #[test]

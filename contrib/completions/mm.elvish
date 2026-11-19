@@ -697,6 +697,7 @@ set edit:completion:arg-completer[mm] = {|@words|
             cand --mm-home 'Directory containing mm''s local state and target catalog'
             cand --output 'Human text or machine-readable JSON. JSON errors stay JSON'
             cand --for-remote 'Also refuse Compose features a remote host blocks, in the services the environment runs; without --environment, in every environment whose target is not `local`'
+            cand --strict 'Fail on keys this mm does not know, which it otherwise ignores with a warning; for CI'
             cand -h 'Print help'
             cand --help 'Print help'
             cand -V 'Print version'

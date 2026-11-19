@@ -182,6 +182,7 @@ fn configuration_value_accessors_and_environment_fallbacks_are_explicit()
         path: std::path::PathBuf::from("/workspace/mm.yaml"),
         sources: Default::default(),
         source_hash: "a".repeat(64),
+        unknown_keys: Vec::new(),
     };
     assert_eq!(
         resolve_environment(&document, Some("explicit"))?,

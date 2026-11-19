@@ -100,7 +100,6 @@ fn malformed_overrides_are_errors_and_cannot_repair_an_invalid_shared_document()
         "null",
         "",
         "build: [",
-        "build: {platform: [linux/arm64]}",
         "target: null",
         "schema-version: 2",
         "build: {platforms: wrong}",
@@ -113,6 +112,12 @@ fn malformed_overrides_are_errors_and_cannot_repair_an_invalid_shared_document()
             .ok_or("invalid override accepted")?;
         assert!(error.to_string().contains("mm.overrides.yaml"), "{error}");
     }
+    fs::write(&path, "build: {platform: [linux/arm64]}")?;
+    let ignored = ConfigLoader.load_from(project.path())?.unknown_keys;
+    assert_eq!(ignored.len(), 1, "{ignored:?}");
+    assert_eq!(ignored[0].file, OVERRIDES_RELATIVE_PATH);
+    assert_eq!(ignored[0].key, "build.platform");
+    assert_eq!(ignored[0].suggestion.as_deref(), Some("platforms"));
     fs::write(&path, [0xff])?;
     assert!(ConfigLoader.load_from(project.path()).is_err());
     fs::write(&path, vec![b' '; 1024 * 1024 + 1])?;

@@ -150,7 +150,6 @@ fn split_file_errors_name_the_file_and_line() -> Result<(), Box<dyn std::error::
     assert!(message.contains("set in both"), "{message}");
 
     for (name, expected) in [
-        ("stack.yaml", "not a top-level configuration key"),
         ("stacks.yml", "use the .yaml extension"),
         ("schema-version.yaml", "must stay in .config/mm.yaml"),
         ("notes.txt", "unexpected file"),
@@ -206,7 +205,12 @@ fn split_file_errors_name_the_file_and_line() -> Result<(), Box<dyn std::error::
         unknown.path().join(".config/mm.yaml"),
         format!("{HEADER}compose: {{}}\nmodules:\n{}", indent(MODULES)),
     )?;
-    assert!(parse_error(unknown.path())?.1.contains("compose"));
+    let ignored = ConfigLoader.load_from(unknown.path())?.unknown_keys;
+    assert_eq!(ignored.len(), 1, "{ignored:?}");
+    assert_eq!(
+        (ignored[0].file.as_str(), ignored[0].key.as_str()),
+        (".config/mm.yaml", "compose")
+    );
 
     let missing = split_project()?;
     fs::remove_file(missing.path().join(".config/mm/stacks.yaml"))?;

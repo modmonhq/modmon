@@ -63,7 +63,8 @@ fn validation_rejects_admin_and_unknown_environments() -> Result<(), Box<dyn std
     let problems = validate_agents(&block, &environments()).join("\n");
     assert!(problems.contains("unknown environment 'qa'"), "{problems}");
     assert!(problems.contains("cannot be admin"), "{problems}");
-    assert!(agents("local: {level: view, forward: true}\n").is_err());
+    let ignored = agent_access_in(&agents("local: {level: view, forward: true}\n")?, "local");
+    assert!(!ignored.permits(AgentAction::Exec, Some("web")));
     Ok(())
 }
 

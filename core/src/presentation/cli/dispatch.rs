@@ -74,9 +74,30 @@ pub async fn run(
     if let Some(Command::Update(args)) = &cli.command {
         return super::update::run(args, cli.output).await;
     }
+    if warns_of_unknown_keys(cli.command.as_ref()) {
+        crate::presentation::notices::listen();
+    }
     let invocation = Invocation::prepare(&cli)?;
     let command = cli.command.take();
-    route(command, &invocation, cancellation).await
+    let code = route(command, &invocation, cancellation).await;
+    crate::presentation::notices::flush();
+    code
+}
+
+/// Commands that print the configuration's unknown keys on stderr: not the
+/// terminal UI or the MCP server, and not the commands whose report lists
+/// them already.
+fn warns_of_unknown_keys(command: Option<&Command>) -> bool {
+    !matches!(
+        command,
+        None | Some(
+            Command::Mcp { .. }
+                | Command::Doctor { command: None, .. }
+                | Command::Config {
+                    command: config::ConfigCommand::Validate { .. }
+                }
+        )
+    )
 }
 
 fn normalize_interactive_command(cli: &mut Cli) -> Result<bool, MmError> {

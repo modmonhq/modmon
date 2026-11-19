@@ -55,7 +55,8 @@ pub enum UpdateFailure {
 
 /// `modules.<module>.services.<service>.update`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct UpdateConfig {
     /// `stop-first` (the default) or `start-first`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -72,7 +73,8 @@ pub struct UpdateConfig {
 
 /// `environments.<environment>.deploy`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct DeployConfig {
     /// How long a stack may take on a host to become healthy before the
     /// deployment counts as failed, such as `90s` or `15m`. The default is

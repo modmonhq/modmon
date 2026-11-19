@@ -95,38 +95,47 @@ fn validate_middleware_definitions(
     namespaced: &mut BTreeMap<String, (String, crate::domain::ingress::CanonicalMiddleware)>,
     report: &mut ValidationReport,
 ) {
-    match parse_middleware_file(resolved, bytes) {
-        Ok(definitions) if definitions.is_empty() => report.push(
+    let definitions = match read_middleware_file(resolved, bytes) {
+        Ok((definitions, ignored)) => {
+            let file = resolved.strip_prefix(&document.root).unwrap_or(resolved);
+            for key in middleware_unknown_keys(file, &ignored) {
+                report.push(key.diagnostic(&document.root));
+            }
+            definitions
+        }
+        Err(error) => {
+            report.push(
+                Diagnostic::error("MM_MIDDLEWARE_INVALID", error.to_string()).at_path(resolved),
+            );
+            return;
+        }
+    };
+    if definitions.is_empty() {
+        report.push(
             Diagnostic::error(
                 "MM_MIDDLEWARE_EMPTY",
                 format!("middleware bundle '{bundle_name}' defines no middlewares"),
             )
             .at_path(resolved),
-        ),
-        Ok(definitions) => {
-            for (definition_name, definition) in definitions {
-                let name = namespaced_middleware_name(
-                    document.config.project.id,
-                    bundle_name,
-                    &definition_name,
-                );
-                if let Some((owner, existing)) = namespaced.get(&name)
-                    && existing != &definition
-                {
-                    report.push(
-                        Diagnostic::error(
-                            "MM_MIDDLEWARE_CONFLICT",
-                            format!("middleware '{name}' conflicts with bundle '{owner}'"),
-                        )
-                        .at_path(resolved),
-                    );
-                } else {
-                    namespaced.insert(name, (bundle_name.to_owned(), definition));
-                }
-            }
+        );
+        return;
+    }
+    for (definition_name, definition) in definitions {
+        let name =
+            namespaced_middleware_name(document.config.project.id, bundle_name, &definition_name);
+        if let Some((owner, existing)) = namespaced.get(&name)
+            && existing != &definition
+        {
+            report.push(
+                Diagnostic::error(
+                    "MM_MIDDLEWARE_CONFLICT",
+                    format!("middleware '{name}' conflicts with bundle '{owner}'"),
+                )
+                .at_path(resolved),
+            );
+        } else {
+            namespaced.insert(name, (bundle_name.to_owned(), definition));
         }
-        Err(error) => report
-            .push(Diagnostic::error("MM_MIDDLEWARE_INVALID", error.to_string()).at_path(resolved)),
     }
 }
 

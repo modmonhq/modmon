@@ -124,14 +124,16 @@ fn rejects_uri_secret_declarations_without_rewriting_the_source()
         .load_from(temporary.path())
         .err()
         .ok_or("URI secret declaration loaded")?;
-    assert!(error.to_string().contains("unknown field `provider`"));
-    assert!(error.to_string().contains("storage"));
+    let message = error.to_string();
+    assert!(message.contains("missing field `storage`"), "{message}");
+    assert!(message.contains("unknown key `secrets."), "{message}");
+    assert!(message.contains(".provider`"), "{message}");
     assert_eq!(fs::read_to_string(path)?, source);
     Ok(())
 }
 
 #[test]
-fn rejects_unknown_configuration_fields() -> Result<(), Box<dyn std::error::Error>> {
+fn ignores_unknown_configuration_fields() -> Result<(), Box<dyn std::error::Error>> {
     let temporary = temp_dirs::tempdir()?;
     let config_directory = temporary.path().join(".config");
     fs::create_dir_all(&config_directory)?;
@@ -154,8 +156,10 @@ environments:
 "#,
     )?;
 
-    let result = ConfigLoader.load_from(temporary.path());
-    assert!(matches!(result, Err(MmError::ConfigParse { .. })));
+    let document = ConfigLoader.load_from(temporary.path())?;
+    assert_eq!(document.unknown_keys.len(), 1);
+    assert_eq!(document.unknown_keys[0].key, "unknown");
+    assert_eq!(document.unknown_keys[0].file, ".config/mm.yaml");
     Ok(())
 }
 
@@ -187,11 +191,9 @@ fn ingress_accepts_only_domain_mappings() -> Result<(), Box<dyn std::error::Erro
         "    ingress: app.example.com\n",
         "    ingress: http://app.localhost/api\n",
         "    ingress:\n      host: app.example.com\n",
-        "    ingress:\n      domain: web\n      unknown: true\n",
         "    ingress:\n      - app.example.com\n",
         "    ingress:\n      public:\n        domain: web\n",
         "    ingress: null\n",
-        "    routes:\n      public:\n        domain: web\n        service: web\n        port: 8080\n",
     ] {
         assert!(
             serde_yaml_ng::from_str::<MmConfig>(&config_with_ingress(invalid)).is_err(),
@@ -247,6 +249,18 @@ environments:
     fs::write(
         temporary.path().join("middleware/block-metrics.yml"),
         "http:\n  routers: {}\n  middlewares:\n    block-metrics:\n      replacePathRegex:\n        regex: ^/x\n        replacement: /y\n",
+    )?;
+    let ignored = validate(&ConfigLoader.load_from(temporary.path())?, "production");
+    assert!(ignored.is_valid(), "{:?}", ignored.diagnostics);
+    assert!(ignored.diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == "MM_CONFIG_UNKNOWN_KEY"
+            && diagnostic.message.starts_with(
+                "unknown key `http.routers` in middleware/block-metrics.yml; this mm ignores it",
+            )
+    }));
+    fs::write(
+        temporary.path().join("middleware/block-metrics.yml"),
+        "http:\n  middlewares:\n    block-metrics:\n      headers: {}\n",
     )?;
     let rejected = validate(&ConfigLoader.load_from(temporary.path())?, "production");
     assert!(!rejected.is_valid());
@@ -465,10 +479,9 @@ environments:
 "#,
     )?;
 
-    assert!(matches!(
-        ConfigLoader.load_from(temporary.path()),
-        Err(MmError::ConfigParse { .. })
-    ));
+    let connection = ConfigLoader.load_from(temporary.path())?.unknown_keys;
+    assert_eq!(connection.len(), 1, "{connection:?}");
+    assert_eq!(connection[0].key, "runtime.connection");
     fs::write(
         config_directory.join("mm.yaml"),
         r#"

@@ -7,6 +7,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::domain::agents::{AgentsConfig, agent_access_in};
+use crate::domain::config::word_or_mapping::word_or_mapping;
 use crate::domain::host_policy::{
     ACCESS_RECORD_SCHEMA_VERSION, AccessLevel, EnvironmentAccess, EnvironmentAccessRecord,
     ReconciledAgent, ReconciledKey, ReconciledUser, parse_public_key, valid_user_name,
@@ -17,7 +18,8 @@ use crate::domain::workspace::ProjectId;
 pub const ALL_ENVIRONMENTS: &str = "*";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct UserConfig {
     /// A CI or automation identity rather than a person.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -29,7 +31,7 @@ pub struct UserConfig {
     pub access: BTreeMap<String, UserAccessConfig>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(untagged)]
 pub enum UserKeyConfig {
     Line(String),
@@ -70,11 +72,47 @@ impl UserKeyConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(untagged)]
 pub enum UserAccessConfig {
     Level(AccessLevel),
     Detailed(EnvironmentAccess),
+}
+
+impl<'de> Deserialize<'de> for UserAccessConfig {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        word_or_mapping(
+            deserializer,
+            "an access level, or a mapping with `level:`",
+            Self::Level,
+            Self::Detailed,
+        )
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "kebab-case")]
+struct DetailedKey {
+    key: String,
+    #[serde(default)]
+    expires: Option<String>,
+    #[serde(default)]
+    agent: bool,
+}
+
+impl<'de> Deserialize<'de> for UserKeyConfig {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        word_or_mapping(
+            deserializer,
+            "an OpenSSH public key line, or a mapping with `key:`",
+            Self::Line,
+            |detailed: DetailedKey| Self::Detailed {
+                key: detailed.key,
+                expires: detailed.expires,
+                agent: detailed.agent,
+            },
+        )
+    }
 }
 
 impl UserAccessConfig {

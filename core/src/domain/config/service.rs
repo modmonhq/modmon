@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 use super::ServiceConfig;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct ServiceSecretFileConfig {
     pub secret: String,
     #[serde(default = "default_secret_uid")]
@@ -38,7 +39,8 @@ const fn default_secret_mode() -> u32 {
 /// its key under `config-files`. Exactly one of `file` and `template`
 /// says where it comes from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct ServiceConfigFileConfig {
     /// A file of the module, shipped as it is.
     #[serde(default, skip_serializing_if = "Option::is_none")]

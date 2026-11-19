@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.1.1] - 2026-11-18
+## [0.1.1] - 2026-11-19
 
 Remote protocol: 1. This release is the baseline: from it on, `mm` and the
 `mmd` on your hosts use the newest remote protocol both speak, so a newer `mm`
@@ -42,6 +42,15 @@ hosts up again with `mm target setup plan --upgrade`. See
   second, so a host from before 0.1.1 (version 0.1.0, protocol 16 to 19) is
   older than 0.1.1 and is replaced with `--upgrade`; before, setup took it
   for a newer release and refused it.
+- A configuration key this `mm` or `mmd` does not read is ignored with a
+  warning that names the file, the key, and the key it most likely meant,
+  instead of failing to load:
+  ``Warning: unknown key `modules.web.build.sufix` in .config/mm.yaml; this mm ignores it (did you mean `suffix`?)``.
+  A project that uses a key a later release adds keeps planning with an older
+  `mm` and on hosts with an older `mmd`, and adding a key never raises
+  `schema-version`. Plans list the keys under `unknown_config_keys`, a remote
+  plan with the nodes that ignore them; `mm config validate --strict` fails
+  on them, for CI. The published JSON Schema still flags them in editors.
 - The installer is served at `https://modmon.dev/install.sh` (the site build
   copies `packaging/release/install.sh`) and installs from the releases on
   GitHub: the latest by default, or the one `--version` names, release
@@ -1093,8 +1102,9 @@ hosts up again with `mm target setup plan --upgrade`. See
 - Every stored schema number starts at 1: `schema-version` in
   `/etc/mm/host.yaml`, `schema_version` in `/etc/mm/mmd.json` and
   `MM_HOME/mcp.json`, and the access policy. Adding a key no longer raises
-  one: `mmd.json`, `host.yaml` and `mcp.json` take keys they do not know with
-  a warning that names them, and the messages about earlier formats
+  one: `mmd.json` and `host.yaml` take keys they do not know with a warning
+  that names them (`mcp.json`, which only narrows what agents may do,
+  refuses them), and the messages about earlier formats
   (`access.yaml`, version 1 of `mcp.json`) are gone. A host set up by an
   earlier build gets `mmd.json` again from `mm target setup --upgrade`; set
   `schema-version: 1` in its `host.yaml` by hand.

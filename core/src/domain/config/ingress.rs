@@ -61,7 +61,8 @@ impl IngressType {
 
 /// The Cloudflare Tunnel of an environment with `type: cloudflared`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct CloudflaredConfig {
     /// The secret that holds the tunnel's token, as
     /// `cloudflared tunnel token <name>` prints it.
@@ -75,7 +76,8 @@ pub struct CloudflaredConfig {
 
 /// The YAML shape of [`EnvironmentIngressConfig`].
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct EnvironmentIngressFields {
     /// `local-first` (the default) sends each request to the service's
     /// containers on the ingress node that took it, and to every node's

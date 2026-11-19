@@ -205,6 +205,24 @@ While the releases differ, `mm doctor` warns with `MM_HOST_RELEASE_OLDER`
 (upgrade the hosts with `mm target setup plan --upgrade`) or
 `MM_HOST_RELEASE_NEWER` (run `mm update` on this machine) and names the hosts.
 
+## Configuration from a newer release
+
+A release that adds a configuration key keeps `schema-version: 1`, and an older
+`mm` or `mmd` ignores the key instead of refusing the file. So you can use a key
+before every machine and host has the release that reads it:
+
+```text
+Warning: unknown key `modules.web.build.sufix` in .config/mm.yaml; this mm ignores it (did you mean `suffix`?)
+```
+
+The warning names the file, the key and who ignores it. For a remote
+environment, `mm deploy plan` also prints the keys the hosts' `mmd` ignores, with
+the nodes, because the hosts read the configuration from the commit they
+deploy. Until those hosts run the release that reads the key, it has no effect
+there: upgrade them as above before you rely on it. `mm config validate
+--strict` fails on any such key, for CI. See
+[keys mm does not know](../reference/configuration.md#keys-mm-does-not-know).
+
 ## Upgrades that need more than setup
 
 - **A rebuilt node.** It has a new SSH host key: plan with
@@ -221,6 +239,7 @@ While the releases differ, `mm doctor` warns with `MM_HOST_RELEASE_OLDER`
 | A single host is held to the same rules | `core/tests/upgrade_paths.rs`: `a_target_without_nodes_reads_its_host_release_as_a_cluster_reads_each_node` |
 | Which side to upgrade when the protocols differ | `core/tests/upgrade_paths.rs`: `a_client_and_a_host_on_different_protocols_are_told_which_side_to_upgrade`; `core/tests/protocol_compatibility.rs`: `a_daemon_refuses_a_client_it_has_no_protocol_in_common_with` |
 | A client and a host on different releases agree on a protocol | `core/tests/protocol_compatibility.rs`: `client_and_daemon_speak_the_newest_protocol_both_have`, `a_daemon_answers_a_newer_client_in_the_protocol_both_speak` |
+| A key this release does not know is ignored with a warning, and `--strict` refuses it | `core/tests/config_unknown_keys.rs`; `core/tests/deployment.rs`: `a_plan_lists_the_keys_its_planner_ignored_outside_its_hash` |
 | No container restarts and no lookup or request fails while `mmd` is replaced | `scripts/live-cluster.sh`, stage "an mmd upgrade, one node at a time, under traffic" |
 
 The live stage replaces `mmd` with another copy of the same build. No test in

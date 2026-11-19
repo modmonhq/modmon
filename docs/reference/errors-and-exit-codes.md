@@ -97,6 +97,11 @@ Validation and status payloads also contain specific `MM_*` diagnostic codes.
 Those codes identify individual findings; process status is determined from
 their severity and category rather than from the presence of warnings.
 
+`MM_CONFIG_UNKNOWN_KEY` is the warning for a configuration key this mm does not
+read and ignores. It names the file and the key, and the known key it most
+likely meant. `mm config validate --strict` makes it an error, so the command
+exits with 2. See [keys mm does not know](configuration.md#keys-mm-does-not-know).
+
 An error from a remote host keeps the code and message it had on the host, and
 on a cluster target it starts with the node's name. Only a refusal the host
 made as policy, such as a missing access level, is reported as `MM_SECURITY`.

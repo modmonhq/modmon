@@ -228,6 +228,7 @@ fn remote_plan(
         rollout: Default::default(),
         config_files: Vec::new(),
         runtime_changes: Vec::new(),
+        unknown_config_keys: Vec::new(),
         release: None,
         plan_hash: String::new(),
     };

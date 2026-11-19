@@ -259,12 +259,12 @@ allow:
     assert_eq!(route.priority, Some(200));
     assert_eq!(route.allow.len(), 2);
     assert_eq!(route.headers["X-Robots-Tag"], "noindex");
-    assert!(
-        serde_yaml_ng::from_str::<IngressRouteConfig>(
+    assert_eq!(
+        ignored_keys::<IngressRouteConfig>(
             "domain: hooks\nallow: [{methods: [GET], paths: ['^/']}]\n"
-        )
-        .is_err(),
-        "a mistyped key is refused"
+        ),
+        ["allow[0].paths"],
+        "a mistyped key is named"
     );
     let environment: EnvironmentConfig =
         serde_yaml_ng::from_str("target: live\ningress: {headers: {X-Robots-Tag: noindex}}\n")?;
@@ -273,4 +273,14 @@ allow:
         "noindex"
     );
     Ok(())
+}
+
+fn ignored_keys<T: serde::de::DeserializeOwned>(source: &str) -> Vec<String> {
+    let (Ok((_, ignored)) | Err((_, ignored))) = mm::app::unknown_keys::deserialize_tracked::<T, _>(
+        serde_yaml_ng::Deserializer::from_str(source),
+    );
+    ignored
+        .iter()
+        .map(|path| mm::domain::config::unknown_keys::dotted(path))
+        .collect()
 }

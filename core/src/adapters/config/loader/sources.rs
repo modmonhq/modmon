@@ -15,8 +15,6 @@ macro_rules! splittable_config_keys {
         #[cfg(test)]
         const CHECKED_CONFIG_KEYS: &[&str] = &[$($key),*];
 
-        const ALL_CONFIG_KEYS: &[&str] = &["schema-version", $($key),*];
-
         /// Deserializes one split file as its key's type so errors keep the
         /// file's own line and column.
         fn check_split_source(key: &str, source: &str) -> Result<(), String> {
@@ -45,7 +43,9 @@ macro_rules! splittable_config_keys {
                 $($key => {
                     map.next_value::<$ty>()?;
                 })*
-                other => return Err(serde::de::Error::unknown_field(other, ALL_CONFIG_KEYS)),
+                _ => {
+                    map.next_value::<serde::de::IgnoredAny>()?;
+                }
             }
             Ok(())
         }
@@ -143,6 +143,7 @@ pub(super) struct ParsedConfiguration {
     pub(super) config: MmConfig,
     pub(super) source_hash: String,
     pub(super) sources: std::collections::BTreeMap<String, PathBuf>,
+    pub(super) unknown_keys: Vec<UnknownConfigKey>,
 }
 
 #[derive(Debug)]
@@ -182,7 +183,7 @@ pub(super) fn parse_configuration_with(
         })?,
     };
     let override_path = anchor.with_file_name("mm.overrides.yaml");
-    let mut split = read_split_sources(anchor)?;
+    let (mut split, unknown_files) = read_split_sources(anchor)?;
     for (path, change) in changes {
         if path == anchor || *path == override_path {
             continue;
@@ -214,7 +215,11 @@ pub(super) fn parse_configuration_with(
             ),
         });
     }
-    assemble_configuration(anchor, &anchor_source, &split, overrides.as_deref())
+    let mut parsed = assemble_configuration(anchor, &anchor_source, &split, overrides.as_deref())?;
+    parsed
+        .unknown_keys
+        .extend(unknown_files.iter().map(|key| unknown_split_file(key)));
+    Ok(parsed)
 }
 
 fn read_config_text(path: &Path) -> Result<Option<String>, MmError> {
@@ -250,11 +255,15 @@ fn unexpected_split_file(path: &Path, reason: &str) -> MmError {
     }
 }
 
-fn read_split_sources(anchor: &Path) -> Result<Vec<SplitSource>, MmError> {
+/// The split files of `anchor`, and the names of those that hold a key this
+/// release does not read.
+fn read_split_sources(anchor: &Path) -> Result<(Vec<SplitSource>, Vec<String>), MmError> {
     let directory = anchor.with_file_name("mm");
     let metadata = match fs::symlink_metadata(&directory) {
         Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok((Vec::new(), Vec::new()));
+        }
         Err(source) => {
             return Err(MmError::ConfigRead {
                 path: directory,
@@ -276,6 +285,7 @@ fn read_split_sources(anchor: &Path) -> Result<Vec<SplitSource>, MmError> {
         source,
     })?;
     let mut sources = Vec::new();
+    let mut unknown = Vec::new();
     for entry in entries {
         let entry = entry.map_err(|source| MmError::ConfigRead {
             path: directory.clone(),
@@ -307,13 +317,15 @@ fn read_split_sources(anchor: &Path) -> Result<Vec<SplitSource>, MmError> {
             };
             return Err(unexpected_split_file(&path, reason));
         };
+        if key == "schema-version" {
+            return Err(unexpected_split_file(
+                &path,
+                "schema-version must stay in .config/mm.yaml",
+            ));
+        }
         let Some(key) = SPLITTABLE_CONFIG_KEYS.iter().copied().find(|known| *known == key) else {
-            let reason = if key == "schema-version" {
-                "schema-version must stay in .config/mm.yaml".to_owned()
-            } else {
-                format!("'{key}' is not a top-level configuration key")
-            };
-            return Err(unexpected_split_file(&path, &reason));
+            unknown.push(key.to_owned());
+            continue;
         };
         let text = read_config_text(&path)?.ok_or_else(|| MmError::ConfigRead {
             path: path.clone(),
@@ -325,7 +337,8 @@ fn read_split_sources(anchor: &Path) -> Result<Vec<SplitSource>, MmError> {
         sources.push(SplitSource { key, path, text });
     }
     sources.sort_by(|left, right| left.key.cmp(right.key));
-    Ok(sources)
+    unknown.sort();
+    Ok((sources, unknown))
 }
 
 pub(super) fn has_yaml_content(source: &str) -> bool {
@@ -345,7 +358,8 @@ fn assemble_configuration(
     if split.is_empty() {
         let keys = top_level_keys(anchor, anchor_source)?;
         refuse_local_development(anchor, &keys)?;
-        let (config, source_hash) = parse_single_file(anchor, anchor_source, overrides)?;
+        let (config, source_hash, unknown_keys) =
+            parse_single_file(anchor, anchor_source, overrides)?;
         for key in keys {
             sources.insert(key, anchor.to_path_buf());
         }
@@ -353,6 +367,7 @@ fn assemble_configuration(
             config,
             source_hash,
             sources,
+            unknown_keys,
         });
     }
 
@@ -406,30 +421,65 @@ fn assemble_configuration(
         sources.insert(source.key.to_owned(), source.path.clone());
     }
 
+    let (config, unknown_keys) = read_assembled(anchor, assembled, split, overrides)?;
+    Ok(ParsedConfiguration {
+        config,
+        source_hash: split_sources_hash(anchor, anchor_source, split, overrides),
+        sources,
+        unknown_keys,
+    })
+}
+
+/// Applies the local overrides to an assembled configuration and reads it.
+fn read_assembled(
+    anchor: &Path,
+    mut assembled: Value,
+    split: &[SplitSource],
+    overrides: Option<&[u8]>,
+) -> Result<(MmConfig, Vec<UnknownConfigKey>), MmError> {
     let override_path = anchor.with_file_name("mm.overrides.yaml");
     let mut local = crate::domain::development_units::LocalDevelopment::default();
+    let mut overlay_source = None;
+    let mut unknown_development = Vec::new();
     if let Some(bytes) = overrides {
-        let (overlay, development) = parse_overlay(&override_path, bytes)?;
-        merge_configuration(&mut assembled, overlay);
+        let (overlay, development, unknown) = parse_overlay(&override_path, bytes)?;
+        merge_configuration(&mut assembled, overlay.clone());
+        overlay_source = Some(overlay);
         local = development;
+        unknown_development = unknown;
     }
-    let mut config: MmConfig = serde_yaml_ng::from_value(assembled).map_err(|error| {
-        if overrides.is_some() {
-            MmError::ConfigParse {
-                path: override_path.clone(),
-                message: format!("invalid configuration after applying local overrides: {error}"),
+    let (mut config, ignored) =
+        deserialize_tracked::<MmConfig, _>(assembled).map_err(|(error, ignored)| {
+            let error = with_unknown_keys(error.to_string(), &ignored);
+            if overrides.is_some() {
+                MmError::ConfigParse {
+                    path: override_path.clone(),
+                    message: format!(
+                        "invalid configuration after applying local overrides: {error}"
+                    ),
+                }
+            } else {
+                MmError::ConfigParse {
+                    path: anchor.to_path_buf(),
+                    message: format!(
+                        "invalid configuration after combining {SPLIT_CONFIG_RELATIVE_DIRECTORY}/: {error}"
+                    ),
+                }
             }
-        } else {
-            MmError::ConfigParse {
-                path: anchor.to_path_buf(),
-                message: format!(
-                    "invalid configuration after combining {SPLIT_CONFIG_RELATIVE_DIRECTORY}/: {error}"
-                ),
-            }
-        }
-    })?;
+        })?;
     config.development.enabled = local.enabled;
+    let mut unknown_keys = unknown_keys_in(&ignored, split, overlay_source.as_ref());
+    unknown_keys.extend(unknown_development);
+    Ok((config, unknown_keys))
+}
 
+/// The fingerprint of an anchor, its split files and the local overrides.
+fn split_sources_hash(
+    anchor: &Path,
+    anchor_source: &str,
+    split: &[SplitSource],
+    overrides: Option<&[u8]>,
+) -> String {
     let root = anchor
         .parent()
         .and_then(Path::parent)
@@ -459,11 +509,7 @@ fn assemble_configuration(
         hasher.update(&(bytes.len() as u64).to_le_bytes());
         hasher.update(bytes);
     }
-    Ok(ParsedConfiguration {
-        config,
-        source_hash: hasher.finalize().to_hex().to_string(),
-        sources,
-    })
+    hasher.finalize().to_hex().to_string()
 }
 
 fn top_level_keys(path: &Path, source: &str) -> Result<Vec<String>, MmError> {

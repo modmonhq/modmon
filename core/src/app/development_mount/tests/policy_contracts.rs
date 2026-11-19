@@ -23,6 +23,7 @@ fn test_document(root: &Path) -> Result<ConfigDocument, serde_yaml_ng::Error> {
         path: root.join(".config/mm.yaml"),
         sources: Default::default(),
         source_hash: "source".to_owned(),
+        unknown_keys: Vec::new(),
     })
 }
 

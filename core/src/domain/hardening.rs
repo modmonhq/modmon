@@ -71,7 +71,8 @@ impl HardeningKey {
 
 /// `hardening` of one service in `mm.yaml`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct ServiceHardening {
     /// The defaults of `hardening: strict` this service does not take, each
     /// with the reason, which the plan shows.
@@ -99,7 +100,8 @@ where
 
 /// Each key is a default the service leaves out; its value says why.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct HardeningExceptions {
     /// Keep the root filesystem writable. Volumes and bind mounts are
     /// writable either way: prefer a volume for the paths the service

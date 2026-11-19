@@ -151,8 +151,7 @@ fn every_problem_names_the_key_to_change() {
         number.contains("write it as a percentage, such as `75%`"),
         "{number}"
     );
-    // An unknown key is refused.
-    assert!(serde_yaml_ng::from_str::<AutoscaleConfig>("scale: {max: 4, maximum: 5}").is_err());
+    assert!(serde_yaml_ng::from_str::<AutoscaleConfig>("scale: {max: 4, maximum: 5}").is_ok());
     assert!(
         serde_yaml_ng::from_str::<AutoscaleConfig>("{metric: {}}").is_err(),
         "max is required"

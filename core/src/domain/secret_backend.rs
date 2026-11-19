@@ -265,7 +265,7 @@ impl ProviderConfiguration {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub struct ProviderInstanceConfig {
     pub driver: ProviderDriverId,
@@ -465,6 +465,8 @@ pub struct ManagedSecretDataResult {
     pub encrypted: bool,
     pub integrity_checked: bool,
 }
+
+mod instance;
 
 #[cfg(test)]
 mod tests;

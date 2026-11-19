@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path};
 
 use crate::app::config_middleware::{
-    MAX_MIDDLEWARE_FILE_BYTES, bundle_is_active, namespaced_middleware_name, parse_middleware_file,
+    MAX_MIDDLEWARE_FILE_BYTES, bundle_is_active, middleware_unknown_keys,
+    namespaced_middleware_name, read_middleware_file,
 };
 use crate::domain::config::ConfigDocument;
 use crate::domain::config::{
@@ -130,6 +131,9 @@ impl<'a> ValidationContext<'a> {
 pub fn validate(document: &ConfigDocument, environment: &str) -> ValidationReport {
     let context = ValidationContext::new(document, environment);
     let mut report = ValidationReport::default();
+    for key in &document.unknown_keys {
+        report.push(key.diagnostic(&document.root));
+    }
     validate_project(&context, &mut report);
     validate_stacks(&context, &mut report);
     validate_selected_environment(&context, &mut report);

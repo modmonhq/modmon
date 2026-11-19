@@ -22,7 +22,8 @@ const MAX_HEADER_VALUE: usize = 1024;
 #[derive(
     Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
 )]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct AllowRule {
     /// HTTP methods in capitals, such as `[GET, HEAD]`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

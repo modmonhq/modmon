@@ -312,13 +312,12 @@ impl DeploymentManager {
             dynamic_config,
             static_ingress,
         } = routes;
-        let target = compiled.target.clone();
         let runtime_secret_plan = runtime_secret_plan(&compiled, runtime_secret_items)?;
         let stacks = deployment_stacks(
             compiled.project_id,
             &compiled.project_name,
-            target.definition.id,
-            &target.name,
+            compiled.target.definition.id,
+            &compiled.target.name,
             &compiled.environment,
             compiled.stacks,
             compiled.project_directories,
@@ -332,7 +331,7 @@ impl DeploymentManager {
             (&stacks, &compiled.excluded_services),
             previous_deployment.as_ref(),
             complete_route_claims.is_empty()
-                && !self.installation_owns_ingress(target.definition.id)?,
+                && !self.installation_owns_ingress(compiled.target.definition.id)?,
         );
         let route_diff = route_diff(&previous_owner_claims, &desired_route_claims)?;
         let mut plan = DeploymentPlan {
@@ -340,8 +339,8 @@ impl DeploymentManager {
             schema: crate::domain::deployment::DEPLOYMENT_PLAN_SCHEMA.to_owned(),
             project_id: compiled.project_id,
             project_name: compiled.project_name,
-            target_name: target.name.clone(),
-            target_id: target.definition.id,
+            target_name: compiled.target.name.clone(),
+            target_id: compiled.target.definition.id,
             target_fingerprint,
             environment: compiled.environment,
             runtime: Some(compiled.selection.runtime),
@@ -380,6 +379,7 @@ impl DeploymentManager {
             rollout: compiled.rollout,
             config_files: compiled.placement.config_files,
             runtime_changes: Vec::new(),
+            unknown_config_keys: compiled.unknown_keys,
             release: compiled.release,
             plan_hash: String::new(),
         };

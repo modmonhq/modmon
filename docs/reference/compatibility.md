@@ -113,12 +113,15 @@ Nothing needs to be recreated or reset.
 
 A newer release that only adds a key or a field keeps the file's schema
 number, and an older release reads the file: it ignores what it does not
-know. For the files people read and edit, `/etc/mm/mmd.json`,
-`/etc/mm/host.yaml`, and `MM_HOME/mcp.json`, it says so:
+know. For the files people read and edit, `/etc/mm/mmd.json` and
+`/etc/mm/host.yaml`, it says so:
 
 ```text
 WARN unknown key `example` in /etc/mm/mmd.json; this mmd ignores it
 ```
+
+`MM_HOME/mcp.json` is the exception: it only narrows what agents may do, so
+`mm` refuses a key it does not read there instead of ignoring it.
 
 A newer release raises a schema number only for a change an older release
 cannot read, such as a field whose meaning changed, or a migration of the

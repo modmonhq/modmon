@@ -17,8 +17,9 @@ Adding a key or a field is not a breaking change: the schema number stays.
   still read.
 - Do not put `#[serde(deny_unknown_fields)]` on a stored type: an older
   release ignores the field. A reader of a file people read or edit
-  (`mmd.json`, `host.yaml`, `mcp.json`) warns about each key it does not
-  know, with `domain::stored_state::unknown_keys`. Types shared with project
+  (`mmd.json`, `host.yaml`) warns about each key it does not know, with
+  `domain::stored_state::unknown_keys`. `mcp.json` refuses one: it only
+  narrows what agents may do, and ignoring a key could widen it. Types shared with project
   configuration, such as `EnvironmentAccess` and `AllowRule`, follow that
   configuration's rules, and `MeshState` stays strict so that it refuses a
   private key.

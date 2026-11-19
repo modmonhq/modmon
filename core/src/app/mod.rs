@@ -57,6 +57,7 @@ mod targets;
 mod targets_apply;
 pub mod timing;
 mod traefik_dynamic;
+pub mod unknown_keys;
 mod update_check;
 mod workspaces;
 

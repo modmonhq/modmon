@@ -72,7 +72,8 @@ impl Default for WireguardMesh {
 
 /// The YAML shape of [`MeshConfig`].
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct MeshFields {
     /// The WireGuard mesh's address range. Default `10.90.0.0/24`.
     #[serde(default, skip_serializing_if = "Option::is_none")]

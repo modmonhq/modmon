@@ -22,6 +22,7 @@ fn document(root: &Path) -> Result<ConfigDocument, serde_yaml_ng::Error> {
         path: root.join(".config/mm.yaml"),
         sources: Default::default(),
         source_hash: "source".to_owned(),
+        unknown_keys: Vec::new(),
     })
 }
 
@@ -79,12 +80,27 @@ fn parser_accepts_only_bounded_named_replace_path_regex_definitions() -> Result<
 
     for source in [
         "not: [valid",
-        "http:\n  middlewares: {}\nunknown: true\n",
         "http:\n  middlewares:\n    auth:\n      forwardAuth: {}\n",
         "http:\n  middlewares:\n    empty: {}\n",
     ] {
         assert!(parse_middleware_file(path, source.as_bytes()).is_err());
     }
+    let (definitions, ignored) = read_middleware_file(
+        path,
+        b"http:\n  middlewares: {}\n  routers: {}\nunknown: true\n",
+    )?;
+    assert!(definitions.is_empty());
+    let unknown = middleware_unknown_keys(Path::new("ingress/middlewares.yaml"), &ignored);
+    let keys = unknown
+        .iter()
+        .map(|key| key.key.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(keys, ["http.routers", "unknown"]);
+    assert!(
+        unknown
+            .iter()
+            .all(|key| key.file == "ingress/middlewares.yaml")
+    );
 
     let long = "a".repeat(4097);
     for value in ["", "\n", long.as_str()] {

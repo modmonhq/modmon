@@ -705,6 +705,9 @@ Options:
       --host-policy <FILE>
           With --for-remote: check against this copy of a host's host.yaml, its `allow` list and, without --environment, the environments it runs
 
+      --strict
+          Fail on keys this mm does not know, which it otherwise ignores with a warning; for CI
+
   -h, --help
           Print help
 ```
