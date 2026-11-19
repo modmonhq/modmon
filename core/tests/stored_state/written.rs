@@ -380,6 +380,7 @@ fn deployment_plan() -> TestResult<DeploymentPlan> {
     let mut plan = DeploymentPlan {
         excluded_services: Vec::new(),
         unknown_config_keys: Vec::new(),
+        secret_file_owners: Vec::new(),
         schema: DEPLOYMENT_PLAN_SCHEMA.to_owned(),
         project_id: PROJECT,
         project_name: "web".to_owned(),

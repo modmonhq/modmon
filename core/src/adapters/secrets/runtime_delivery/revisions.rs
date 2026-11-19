@@ -104,7 +104,7 @@ impl RevisionFiles {
     }
 
     /// Writes the revision's file unless it is already kept, given to
-    /// `owner` when there is one.
+    /// `owner` when there is one; the revision's own file is mode 0444.
     fn keep(
         &self,
         operation_id: OperationId,
@@ -116,7 +116,10 @@ impl RevisionFiles {
         let path = self.path(name);
         ensure_no_symlink_components(&path)?;
         match fs::read(&path).map(zeroize::Zeroizing::new) {
-            Ok(kept) if kept.as_slice() == bytes => Ok(()),
+            Ok(kept) if kept.as_slice() == bytes => match owner {
+                Some(_) => Ok(()),
+                None => readable_by_all(&path),
+            },
             Ok(_) => Err(MmError::Security {
                 message: format!(
                     "this host keeps the same revision of runtime secret '{logical}' with other content; write a new version of the secret and plan again"
@@ -125,8 +128,9 @@ impl RevisionFiles {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 let staged = self.directory.join(format!(".{}.tmp", operation_id.0));
                 write_private_file(&staged, bytes)?;
-                if let Some(owner) = owner {
-                    give_to(&staged, owner)?;
+                match owner {
+                    Some(owner) => give_to(&staged, owner)?,
+                    None => readable_by_all(&staged)?,
                 }
                 fs::rename(&staged, &path).map_err(|source| MmError::Io {
                     context: "keeping a runtime secret revision file".to_owned(),

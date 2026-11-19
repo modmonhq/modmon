@@ -259,6 +259,11 @@ impl Application {
             match self.resolve_workspace_selection(&document, selection, &environment) {
                 Ok(context) => {
                     self.validate_runtime_kind(&context.selection, &mut validation, &document.path);
+                    super::config_validation::validate_secret_file_owners(
+                        &document,
+                        &context,
+                        &mut validation,
+                    );
                     (
                         context.target.name,
                         Some(context.selection.target_source.as_str().to_owned()),

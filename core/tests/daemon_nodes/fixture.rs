@@ -685,6 +685,7 @@ fn deployment_plan(context: &RemoteRequestContext) -> Result<DeploymentPlan, MmE
         config_files: Vec::new(),
         runtime_changes: Vec::new(),
         unknown_config_keys: Vec::new(),
+        secret_file_owners: Vec::new(),
         release: None,
         plan_hash: String::new(),
     };

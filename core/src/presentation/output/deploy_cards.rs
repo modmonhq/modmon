@@ -264,16 +264,7 @@ pub fn local_plan_card(plan: &DeploymentPlan, with: &[String]) -> Card {
         changed,
         quiet.then(|| "no route or security change".to_owned()),
     );
-    card.notes(
-        (plan.adopted_routes_line().into_iter())
-            .map(|line| (Tone::Warn, format!("The plan {line}")))
-            .chain(
-                super::environment::off_locally_notes(&plan.excluded_services)
-                    .into_iter()
-                    .map(|note| (Tone::Idle, note)),
-            )
-            .collect(),
-    );
+    card.notes(local_notes(plan));
     let apply = if with.is_empty() {
         format!(
             "mm --environment {} deploy apply --plan {}{} --yes",
@@ -296,6 +287,28 @@ pub fn local_plan_card(plan: &DeploymentPlan, with: &[String]) -> Card {
     };
     card.command("Apply it", apply);
     card
+}
+
+/// The services the plan leaves off on this machine, and the secret files
+/// that belong to the user mm runs as instead of the ids they name.
+fn local_notes(plan: &DeploymentPlan) -> Vec<(Tone, String)> {
+    let mut notes = (plan.adopted_routes_line().into_iter())
+        .map(|line| (Tone::Warn, format!("The plan {line}")))
+        .chain(
+            super::environment::off_locally_notes(&plan.excluded_services)
+                .into_iter()
+                .map(|note| (Tone::Idle, note)),
+        )
+        .collect::<Vec<_>>();
+    notes.extend(plan.secret_file_owners.iter().map(|file| {
+        let tone = if file.readable_by_all() {
+            Tone::Idle
+        } else {
+            Tone::Warn
+        };
+        (tone, file.line())
+    }));
+    notes
 }
 
 /// What one engine's apply did.

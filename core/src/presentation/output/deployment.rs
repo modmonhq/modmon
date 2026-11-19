@@ -70,6 +70,9 @@ pub(crate) fn deployment_plan_text(
     if let Some(line) = plan.adopted_routes_line() {
         writeln!(writer, "  routes: {}", terminal_safe(&line)).map_err(output_error)?;
     }
+    for file in &plan.secret_file_owners {
+        writeln!(writer, "  note: {}", terminal_safe(&file.line())).map_err(output_error)?;
+    }
     // A cluster node's routes are the cluster plan's ingress section.
     if plan.node.is_some() {
         return Ok(());

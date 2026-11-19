@@ -28,7 +28,121 @@ pub struct RuntimeSecretCapability {
     pub max_material_bytes: usize,
     pub max_runtime_name_bytes: usize,
     pub supports_uid_gid_mode: bool,
+    /// Where mm runs as an ordinary user: whom every secret file belongs
+    /// to, whatever its entry names. Each file still has its entry's mode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub files_kept_for: Option<HostIds>,
     pub plaintext_file_lifetime: Option<String>,
+}
+
+/// A user and a group of the host, by number.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+pub struct HostIds {
+    pub uid: u32,
+    pub gid: u32,
+}
+
+impl HostIds {
+    /// The user mm runs as, unless it is root: only root gives a file to
+    /// other ids.
+    #[must_use]
+    pub fn unprivileged() -> Option<Self> {
+        #[cfg(unix)]
+        {
+            let uid = rustix::process::geteuid();
+            (!uid.is_root()).then(|| Self {
+                uid: uid.as_raw(),
+                gid: rustix::process::getegid().as_raw(),
+            })
+        }
+        #[cfg(not(unix))]
+        None
+    }
+}
+
+/// A secret file that belongs to the user mm runs as, not to the ids its
+/// entry names, where the difference can matter to the service.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+pub struct SecretFileOwnerNote {
+    pub service: String,
+    pub file: String,
+    pub uid: String,
+    pub gid: String,
+    pub mode: u32,
+    pub kept_for: HostIds,
+}
+
+impl SecretFileOwnerNote {
+    /// None when `consumer` names `user`'s ids, or root's with a mode that
+    /// lets every user read the file.
+    #[must_use]
+    pub fn of(consumer: &RuntimeSecretConsumer, user: HostIds) -> Option<Self> {
+        let names = |value: &str, id: u32| value.parse::<u32>().is_ok_and(|value| value == id);
+        let applied = names(&consumer.uid, user.uid) && names(&consumer.gid, user.gid);
+        let root_for_all = consumer.uid == "0" && consumer.gid == "0" && consumer.mode & 0o004 != 0;
+        (!applied && !root_for_all).then(|| Self {
+            service: consumer.service.clone(),
+            file: consumer.target.clone(),
+            uid: consumer.uid.clone(),
+            gid: consumer.gid.clone(),
+            mode: consumer.mode,
+            kept_for: user,
+        })
+    }
+
+    /// The notes for the secret files `environment` mounts, where each
+    /// belongs to `user`.
+    #[must_use]
+    pub fn in_config(
+        config: &crate::domain::config::MmConfig,
+        environment: &str,
+        user: HostIds,
+    ) -> Vec<Self> {
+        let mut notes = config
+            .active_services(environment)
+            .flat_map(|(name, service)| {
+                service
+                    .secret_files_in(environment)
+                    .map(move |(target, file)| RuntimeSecretConsumer {
+                        stack: service.stack.clone(),
+                        service: name.clone(),
+                        target: target.clone(),
+                        uid: file.uid.clone(),
+                        gid: file.gid.clone(),
+                        mode: file.mode,
+                    })
+            })
+            .filter_map(|consumer| Self::of(&consumer, user))
+            .collect::<Vec<_>>();
+        notes.sort();
+        notes
+    }
+
+    #[must_use]
+    pub const fn readable_by_all(&self) -> bool {
+        self.mode & 0o004 != 0
+    }
+
+    #[must_use]
+    pub fn line(&self) -> String {
+        let kept = format!(
+            "secret file {} of service '{}' belongs to uid {} and gid {}, the user mm runs as on this machine, not to uid {} and gid {}: only root can give a file to other ids",
+            self.file, self.service, self.kept_for.uid, self.kept_for.gid, self.uid, self.gid
+        );
+        if self.readable_by_all() {
+            format!(
+                "{kept}. Its mode {:04o} lets every user in the container read it",
+                self.mode
+            )
+        } else {
+            format!(
+                "{kept}, and its mode {:04o} lets no other user read it, so the service's user may be refused. Use mode 0444, the default: every user in the container can read the file, and other users of this machine still cannot",
+                self.mode
+            )
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
@@ -161,6 +275,20 @@ impl RuntimeSecretPlan {
     #[must_use]
     pub fn first_host_id(&self, consumer: &RuntimeSecretConsumer) -> Option<u32> {
         self.first_host_ids.get(&consumer.owner_key()).copied()
+    }
+
+    /// What the plan's secret files lose by belonging to `user`.
+    #[must_use]
+    pub fn kept_for(&self, user: HostIds) -> Vec<SecretFileOwnerNote> {
+        let mut notes = self
+            .items
+            .iter()
+            .flat_map(|item| &item.consumers)
+            .filter_map(|consumer| SecretFileOwnerNote::of(consumer, user))
+            .collect::<Vec<_>>();
+        notes.sort();
+        notes.dedup();
+        notes
     }
 
     pub fn canonical_hash(&self) -> Result<String, String> {

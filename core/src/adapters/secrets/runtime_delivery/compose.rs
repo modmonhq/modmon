@@ -8,6 +8,12 @@
 /// other. The file of the previous revision stays until a deployment that
 /// no longer uses it has succeeded: a rollback mounts it again.
 ///
+/// Docker Engine bind-mounts the file and ignores the owner and mode a
+/// Compose file secret asks for, and its containers have the host's ids:
+/// each consumer gets a copy with its `mode`, given to its `uid` and `gid`
+/// where mm runs as root, else kept for the user mm runs as. A copy for
+/// that user with mode 0444 is the revision's own file.
+///
 /// On rootful Podman, which Docker Compose drives on a remote host, mm
 /// knows the host ids of each service's containers: every consumer gets a
 /// copy of the revision given to the host ids its `uid` and `gid` are in
@@ -21,15 +27,25 @@ pub struct DockerComposeFileSecretDelivery {
 
 impl DockerComposeFileSecretDelivery {
     pub fn new(run_directory: PathBuf) -> Result<Self, MmError> {
-        Self::serving(run_directory, RuntimeKind::DockerCompose)
+        Self::kept_for(run_directory, HostIds::unprivileged())
+    }
+
+    /// File secrets on Docker Engine, kept for `user` when mm runs as that
+    /// user, else given to the ids each entry names.
+    pub fn kept_for(run_directory: PathBuf, user: Option<HostIds>) -> Result<Self, MmError> {
+        Self::serving(run_directory, RuntimeKind::DockerCompose, user)
     }
 
     /// File secrets on rootful Podman, given to each consumer's user.
     pub fn for_podman(run_directory: PathBuf) -> Result<Self, MmError> {
-        Self::serving(run_directory, RuntimeKind::PodmanCompose)
+        Self::serving(run_directory, RuntimeKind::PodmanCompose, None)
     }
 
-    fn serving(run_directory: PathBuf, runtime: RuntimeKind) -> Result<Self, MmError> {
+    fn serving(
+        run_directory: PathBuf,
+        runtime: RuntimeKind,
+        user: Option<HostIds>,
+    ) -> Result<Self, MmError> {
         // Operation directories are swept by operation id; revisions
         // outlive operations, so they are a sibling, not a child.
         let mut name = run_directory
@@ -40,12 +56,12 @@ impl DockerComposeFileSecretDelivery {
         Ok(Self {
             revision_directory: run_directory.with_file_name(name),
             run_directory,
-            capability: compose_capability(runtime)?,
+            capability: compose_capability(runtime, user)?,
         })
     }
 
-    /// The consumers of `item` by the owner of their copy. Docker Engine
-    /// ignores owner and mode of a file secret: one root-only file.
+    /// The consumers of `item` by the owner of their copy; `None` for the
+    /// revision's own file.
     fn consumers_by_owner(
         &self,
         plan: &RuntimeSecretPlan,
@@ -53,17 +69,11 @@ impl DockerComposeFileSecretDelivery {
     ) -> Result<BTreeMap<Option<FileOwner>, Vec<RuntimeSecretConsumer>>, MmError> {
         let mut owners = BTreeMap::<_, Vec<_>>::new();
         for consumer in &item.consumers {
-            let owner = if self.capability.supports_uid_gid_mode {
-                Some(FileOwner::of(plan, consumer)?)
-            } else if consumer.uid != "0" || consumer.gid != "0" || consumer.mode != 0o444 {
-                return Err(MmError::Secret {
-                    message: format!(
-                        "Docker Compose file secrets cannot enforce uid/gid/mode; secret '{}' must use uid 0, gid 0, mode 0444",
-                        item.logical_name
-                    ),
-                });
-            } else {
-                None
+            let owner = match self.capability.runtime {
+                RuntimeKind::PodmanCompose => Some(FileOwner::of(plan, consumer)?),
+                RuntimeKind::DockerCompose => {
+                    FileOwner::on_docker(consumer, self.capability.files_kept_for)?
+                }
             };
             owners.entry(owner).or_default().push(consumer.clone());
         }
@@ -278,12 +288,15 @@ fn native_capability(engine: NativeEngine) -> Result<RuntimeSecretCapability, Mm
         max_material_bytes: MAX_NATIVE_SECRET_BYTES,
         max_runtime_name_bytes: 253,
         supports_uid_gid_mode: true,
+        files_kept_for: None,
         plaintext_file_lifetime: None,
     })
 }
 
-fn compose_capability(runtime: RuntimeKind) -> Result<RuntimeSecretCapability, MmError> {
-    let owned = runtime == RuntimeKind::PodmanCompose;
+fn compose_capability(
+    runtime: RuntimeKind,
+    user: Option<HostIds>,
+) -> Result<RuntimeSecretCapability, MmError> {
     Ok(RuntimeSecretCapability {
         delivery_driver: DeliveryDriverId::new("compose-file-secret")
             .map_err(|message| MmError::Security { message })?,
@@ -293,12 +306,12 @@ fn compose_capability(runtime: RuntimeKind) -> Result<RuntimeSecretCapability, M
         immutable_revisions: true,
         max_material_bytes: MAX_NATIVE_SECRET_BYTES,
         max_runtime_name_bytes: 253,
-        supports_uid_gid_mode: owned,
-        plaintext_file_lifetime: Some(if owned {
-            "revision; kept on the host for the container's user, in a directory only root reaches, until a deployment that no longer uses it succeeded".to_owned()
+        supports_uid_gid_mode: user.is_none(),
+        files_kept_for: user,
+        plaintext_file_lifetime: Some(if user.is_some() {
+            "revision; kept for the user mm runs as with the mode each service asks for, in a directory only that user reaches, until a deployment that no longer uses it succeeded".to_owned()
         } else {
-            "revision; kept for root on the host until a deployment that no longer uses it succeeded"
-                .to_owned()
+            "revision; kept on the host for the container's user, in a directory only root reaches, until a deployment that no longer uses it succeeded".to_owned()
         }),
     })
 }
