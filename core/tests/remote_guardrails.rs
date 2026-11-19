@@ -29,7 +29,7 @@ modules:
     path: .
     services:
       web: {stack: app}
-      vpn: {stack: tools, environments: [local]}
+      vpn: {stack: tools, environments: [local], host-network: a developer tool}
 environments:
   local: {}
   staging: {target: staging}

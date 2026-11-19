@@ -996,5 +996,6 @@ path, file, ingress, build, environment, and secret-reference checks without
 inspecting containers. It also checks every environment's Compose files the
 way `mm deploy` and `mm dev up` compile them, and reports what they would
 refuse with `MM_COMPOSE_SOURCE`, naming the environments. It knows targets by
-name only: an environment on the target `local` runs on this machine, and
-every other one on a host that decides by its own policy.
+name only, as `--for-remote` does: an environment on the target `local` runs
+on this machine, and every other one on a host that decides by its own
+policy.

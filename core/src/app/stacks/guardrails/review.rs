@@ -67,16 +67,22 @@ fn remote_environments(document: &ConfigDocument) -> Vec<String> {
     document
         .config
         .environments
-        .iter()
-        .filter(|(_, environment)| {
-            environment
-                .target
-                .as_deref()
-                .unwrap_or(&document.config.target)
-                != LOCAL_TARGET
-        })
-        .map(|(name, _)| name.clone())
+        .keys()
+        .filter(|environment| !on_local_target(document, environment))
+        .cloned()
         .collect()
+}
+
+/// Whether `environment`'s target, its own or the project's, is `local`:
+/// this machine, as far as a check without the machine's targets can tell.
+pub(in crate::app::stacks) fn on_local_target(document: &ConfigDocument, environment: &str) -> bool {
+    document
+        .config
+        .environments
+        .get(environment)
+        .and_then(|environment| environment.target.as_deref())
+        .unwrap_or(&document.config.target)
+        == LOCAL_TARGET
 }
 
 fn refused(

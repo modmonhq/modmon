@@ -370,6 +370,7 @@ fn is_empty(value: &Value) -> bool {
 }
 
 mod review;
+pub(super) use review::on_local_target;
 pub use review::remote_guardrail_diagnostics;
 
 #[cfg(test)]

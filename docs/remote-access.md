@@ -450,7 +450,9 @@ A host checks only the services the environment it plans runs: the ones
 `mm deploy plan` renders. A service whose `environments:` leaves the
 environment out is not checked there, and neither is a stack left with no
 service. A service that only `local` runs, such as a developer tool with
-`network_mode: host`, needs no exception on any host.
+`network_mode: host`, needs no exception on any host; on your machine it
+says why with
+[`host-network`](#run-a-service-on-the-hosts-network).
 
 Check before you push:
 
@@ -519,8 +521,15 @@ projects:
 ```
 
 A host without that entry refuses the plan, and the message names the
-service and the feature to allow. `mm config validate --for-remote` reports
-the same before you push.
+environment, the service, and the feature to allow. `mm config validate
+--for-remote --host-policy` with a copy of the hosts' `host.yaml` reports the
+same before you push.
+
+mm runs the service's containers in the host's user namespace
+(`userns_mode: host`) unless its Compose definition sets `userns_mode`
+itself: a capability such as `NET_ADMIN` reaches the host's network only
+from there. On Podman this means the service does not get user ids of its
+own.
 
 To run the service on your own machine too, for example in `mm dev up`, say
 why in `mm.yaml`. The plan shows the reason, on your machine and on the

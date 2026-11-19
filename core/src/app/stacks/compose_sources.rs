@@ -35,13 +35,7 @@ impl SourceScope {
     /// Without the machine's targets: an environment on the target `local`
     /// runs on this machine, any other on a host.
     fn validating(document: &ConfigDocument, environment: &str) -> Self {
-        let target = document
-            .config
-            .environments
-            .get(environment)
-            .and_then(|overlay| overlay.target.as_deref())
-            .unwrap_or(document.config.target.as_str());
-        let here = target == "local" && !document.config.targets.contains_key(target);
+        let here = super::guardrails::on_local_target(document, environment);
         Self {
             automatic_local_ingress: here
                 && automatic_local_ingress_configured(document, environment),
