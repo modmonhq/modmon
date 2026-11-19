@@ -552,7 +552,7 @@ pub(super) fn setup_view() -> crate::presentation::tui::setup::SetupView {
                         .map(str::to_owned)
                         .to_vec(),
                 },
-                "mm build --publish",
+                "mm build",
             ),
             step(
                 SetupIssue::MissingDevelopmentServices {

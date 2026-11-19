@@ -75,6 +75,8 @@ pub(super) struct DeployCommandRequest<'a> {
     pub(super) format: OutputFormat,
     pub(super) runtime: &'a RuntimeComposition,
     pub(super) runtime_kind: crate::domain::runtime::RuntimeKind,
+    /// `mm dev up`: build what is stale before deploying on this machine.
+    pub(super) rebuild: bool,
 }
 
 pub(super) async fn run(
@@ -93,6 +95,7 @@ pub(super) async fn run(
         format: invocation.format,
         runtime: &invocation.services,
         runtime_kind: invocation.runtime_kind,
+        rebuild: false,
     })
     .await
 }
@@ -108,6 +111,7 @@ pub(super) async fn run_deploy_command(request: DeployCommandRequest<'_>) -> Res
         format,
         runtime,
         runtime_kind,
+        rebuild,
     } = request;
     refuse_release_for(command.as_ref(), release.as_ref())?;
     if matches!(command, Some(DeployCommand::Logs)) {
@@ -161,7 +165,14 @@ pub(super) async fn run_deploy_command(request: DeployCommandRequest<'_>) -> Res
     }
     let selection = &selection
         .with_release(release.map(|release| composition::local_release(&selection.start, release)));
-    run_local_deploy(command, (yes, format), selection, explicit_home, runtime).await
+    run_local_deploy(
+        command,
+        (yes, format),
+        selection,
+        explicit_home,
+        (runtime, runtime_kind, rebuild),
+    )
+    .await
 }
 
 /// `--release` and `--release-input` belong to a plan: a rollback returns
@@ -195,14 +206,21 @@ fn refuse_release_for(
     })
 }
 
-/// The deployment service, with the build receipt the command names.
+/// The deployment service, with the build receipt the command names, or
+/// for `mm dev up` with the environment's local build.
 async fn local_deployment(
     command: &Option<DeployCommand>,
     selection: &WorkspaceSelection,
     explicit_home: Option<&std::path::Path>,
-    runtime: &RuntimeComposition,
+    (runtime, runtime_kind, rebuild): LocalRuntime<'_>,
 ) -> Result<crate::app::DeploymentService, MmError> {
-    let deployment = runtime.deployment_service(selection, explicit_home)?;
+    let deployment = if rebuild {
+        runtime
+            .development_deployment(selection, explicit_home, runtime_kind)
+            .await?
+    } else {
+        runtime.deployment_service(selection, explicit_home)?
+    };
     let deployment = match command {
         Some(
             DeployCommand::Plan {
@@ -229,14 +247,23 @@ async fn local_deployment(
     Ok(deployment)
 }
 
+/// The runtime composition, the runtime kind, and whether stale local
+/// images are built first.
+type LocalRuntime<'a> = (
+    &'a RuntimeComposition,
+    crate::domain::runtime::RuntimeKind,
+    bool,
+);
+
 /// Plans and applies on this machine's engine.
 async fn run_local_deploy(
     command: Option<DeployCommand>,
     (yes, format): (bool, OutputFormat),
     selection: &WorkspaceSelection,
     explicit_home: Option<&std::path::Path>,
-    runtime: &RuntimeComposition,
+    local: LocalRuntime<'_>,
 ) -> Result<u8, MmError> {
+    let runtime = local.0;
     if matches!(
         &command,
         Some(DeployCommand::Plan {
@@ -249,7 +276,7 @@ async fn run_local_deploy(
                 .to_owned(),
         });
     }
-    let deployment = local_deployment(&command, selection, explicit_home, runtime).await?;
+    let deployment = local_deployment(&command, selection, explicit_home, local).await?;
     let progress = Progress::new(format);
     let preview = inline::step(
         &progress,
@@ -356,6 +383,22 @@ async fn apply_local(
 ) -> Result<u8, MmError> {
     let started = std::time::Instant::now();
     let progress = Progress::new(format);
+    if let Some(build) = &preview.local_build {
+        inline::step(
+            &progress,
+            (
+                "build",
+                &format!(
+                    "Building {} into {}",
+                    inline::count(build.modules.len(), "image", "images"),
+                    build.engine.name()
+                ),
+            ),
+            deployment.build_reviewed(selection, plan_hash),
+            |result| result.as_ref().map(output::built_images_line),
+        )
+        .await?;
+    }
     let mut result = inline::step(
         &progress,
         ("apply", "Applying the plan"),

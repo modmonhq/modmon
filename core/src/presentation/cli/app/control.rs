@@ -32,6 +32,20 @@ impl WorkspaceControl {
             .deployment_service(&invocation.selection, invocation.home())
     }
 
+    /// The deployment a start applies, as `mm dev up` does: stale local
+    /// images are built first.
+    async fn start_deployment(&self) -> Result<crate::app::DeploymentService, MmError> {
+        let invocation = &self.invocation;
+        invocation
+            .services
+            .development_deployment(
+                &invocation.selection,
+                invocation.home(),
+                invocation.runtime_kind,
+            )
+            .await
+    }
+
     fn environment(&self) -> Result<crate::app::EnvironmentManager, MmError> {
         let invocation = &self.invocation;
         Ok(composition::environment_services(
@@ -123,7 +137,11 @@ impl tui::WorkspaceControl for WorkspaceControl {
             let preview = environment.plan_deployment(&commit, None, None).await?;
             return Ok(remote_review(&preview, environment.is_cluster()));
         }
-        let plan = self.deployment()?.plan(&self.released()).await?;
+        let plan = self
+            .start_deployment()
+            .await?
+            .plan(&self.released())
+            .await?;
         Ok(review(&plan))
     }
 
@@ -155,7 +173,8 @@ impl tui::WorkspaceControl for WorkspaceControl {
             return Ok(remote_started(&report));
         }
         let result = self
-            .deployment()?
+            .start_deployment()
+            .await?
             .apply_reviewed(&self.released(), &plan_hash)
             .await?;
         Ok(result.started_on(&result.target_name))

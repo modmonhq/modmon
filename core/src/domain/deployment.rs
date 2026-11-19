@@ -105,6 +105,10 @@ pub struct DeploymentPlan {
     /// it was built for; absent when the plan uses this machine's builds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub build_receipt: Option<crate::domain::build::BuildReceiptOrigin>,
+    /// The local build the deployment runs first, and the modules it
+    /// builds again; absent when the images on this machine are current.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_build: Option<crate::domain::build::LocalBuildReview>,
     /// Registries the runtime logs in to, and the secrets holding the logins.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub registries: BTreeMap<String, crate::domain::config::RegistryConfig>,
@@ -156,6 +160,10 @@ impl DeploymentPlan {
             hash_field(&mut hasher, &receipt.receipt_hash);
             hash_field(&mut hasher, &receipt.environment);
             hash_field(&mut hasher, &receipt.commit);
+        }
+        if let Some(build) = &self.local_build {
+            hash_field(&mut hasher, "local-build-v1");
+            hash_field(&mut hasher, &build.plan_hash);
         }
         for (host, registry) in &self.registries {
             hash_field(&mut hasher, "registry-v1");

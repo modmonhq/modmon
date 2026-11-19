@@ -153,6 +153,7 @@ async fn snapshots_context_and_never_passes_secret_material_as_an_argument()
             secrets: &secrets,
             dependencies: &[],
             upstream_contexts: &[],
+            engine: None,
         })
         .await?;
     operation_guard.preserve();
@@ -415,6 +416,7 @@ async fn local_variant_build_materializes_and_publishes_an_immutable_oci_archive
             secrets: &BTreeMap::new(),
             dependencies: &[],
             upstream_contexts: &[],
+            engine: None,
         })
         .await?;
     assert_eq!(image.digest, expected);
@@ -649,6 +651,7 @@ async fn published_variant_uses_push_without_requiring_a_local_archive()
             secrets: &BTreeMap::new(),
             dependencies: &[],
             upstream_contexts: &[],
+            engine: None,
         })
         .await?;
     assert!(image.archive.is_none());
@@ -740,6 +743,7 @@ async fn live_graph(
             secrets: &secrets,
             dependencies: &[],
             upstream_contexts: &[],
+            engine: None,
         })
         .await?;
     let immutable_reference = format!("{parent_repository}@{}", parent_image.digest);
@@ -776,6 +780,7 @@ async fn live_graph(
             secrets: &secrets,
             dependencies: &[dependency],
             upstream_contexts: &[upstream],
+            engine: None,
         })
         .await;
     if fail_child {

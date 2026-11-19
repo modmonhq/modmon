@@ -65,6 +65,15 @@ pub trait StateStore: Send + Sync {
         project_root: &Path,
         environment: &str,
     ) -> Result<Option<(ImageBuildPlan, crate::domain::build::ImageBuildResult)>, MmError>;
+    /// The newest successful build of this checkout and environment that
+    /// `filter` accepts.
+    fn latest_image_build(
+        &self,
+        project_id: ProjectId,
+        project_root: &Path,
+        environment: &str,
+        filter: crate::domain::build::ImageBuildFilter,
+    ) -> Result<Option<(ImageBuildPlan, crate::domain::build::ImageBuildResult)>, MmError>;
     fn lookup_reusable_image(
         &self,
         project_id: ProjectId,

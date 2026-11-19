@@ -490,10 +490,102 @@ pub(crate) fn deployment_images_from_receipt(
     )
 }
 
+/// Where a compilation takes the images of the modules mm builds.
+#[derive(Clone, Copy)]
+pub(super) enum ImageSource<'a> {
+    /// This machine's builds.
+    Builds,
+    Receipt(&'a crate::domain::build::BuildReceipt),
+    /// A reviewed local build, before or after it ran.
+    LocalBuild(&'a ImageBuildPlan),
+}
+
+/// The images a reviewed local build gives the modules the environment
+/// runs, by the tags it loads them under.
+pub(crate) fn deployment_images_from_local_plan(
+    document: &ConfigDocument,
+    environment: &str,
+    plan: &ImageBuildPlan,
+) -> Result<BTreeMap<String, String>, MmError> {
+    if plan.engine.is_none()
+        || plan.project_id != document.config.project.id
+        || plan.environment != environment
+    {
+        return Err(MmError::Security {
+            message: "the local build does not match the deployment identity".to_owned(),
+        });
+    }
+    let mut resolved = BTreeMap::new();
+    let mut missing = Vec::new();
+    for module in buildable_modules(document, environment) {
+        let selected = selected_build_variant(document, module, environment)?;
+        let reference = plan
+            .units
+            .iter()
+            .find(|unit| unit.module == module)
+            .and_then(|unit| {
+                let tag = unit.variant(selected.as_deref())?.tags.first()?;
+                Some(format!("{}:{tag}", unit.image))
+            });
+        match reference {
+            Some(reference) => {
+                resolved.insert(module.to_owned(), reference);
+            }
+            None => missing.extend(
+                document.config.modules[module]
+                    .services
+                    .iter()
+                    .filter(|(_, service)| service.is_active(environment))
+                    .map(|(service, _)| format!("{module}/{service}")),
+            ),
+        }
+    }
+    if !missing.is_empty() {
+        return Err(MmError::Setup {
+            issue: crate::domain::readiness::SetupIssue::MissingImages { services: missing },
+        });
+    }
+    Ok(resolved)
+}
+
+/// The builds a deployment from `selection` runs: on a host, published
+/// builds only; on this machine also those loaded into the runtime's engine.
+pub(super) fn deployable_builds(
+    selection: &WorkspaceSelection,
+    target: &NamedTarget,
+    runtime: crate::domain::runtime::RuntimeKind,
+) -> crate::domain::build::ImageBuildFilter {
+    use crate::domain::build::{ImageBuildFilter, LocalImageEngine};
+    if selection.host_values
+        || selection.node.is_some()
+        || target.definition.transport != crate::domain::target::TargetTransport::Local
+    {
+        ImageBuildFilter::Published
+    } else {
+        ImageBuildFilter::Deployable(Some(LocalImageEngine::for_runtime(runtime)))
+    }
+}
+
+/// Images from this machine's newest published build, or one loaded into
+/// any local engine.
 pub(crate) fn resolve_deployment_images(
     document: &ConfigDocument,
     environment: &str,
     state: Option<&dyn StateStore>,
+) -> Result<BTreeMap<String, String>, MmError> {
+    resolve_deployment_images_from(
+        document,
+        environment,
+        state,
+        crate::domain::build::ImageBuildFilter::Deployable(None),
+    )
+}
+
+pub(crate) fn resolve_deployment_images_from(
+    document: &ConfigDocument,
+    environment: &str,
+    state: Option<&dyn StateStore>,
+    filter: crate::domain::build::ImageBuildFilter,
 ) -> Result<BTreeMap<String, String>, MmError> {
     let buildable = buildable_modules(document, environment);
     if buildable.is_empty() {
@@ -501,10 +593,11 @@ pub(crate) fn resolve_deployment_images(
     }
     let build = state
         .map(|state| {
-            state.latest_successful_image_build(
+            state.latest_image_build(
                 document.config.project.id,
                 &document.root,
                 environment,
+                filter,
             )
         })
         .transpose()?
@@ -538,9 +631,10 @@ pub(super) fn deployment_images_from_build(
     result
         .validate_against(plan)
         .map_err(|message| MmError::Security { message })?;
-    if !plan.publish {
+    if plan.writes_archive() {
         return Err(MmError::Security {
-            message: "deployment image resolution requires a published build".to_owned(),
+            message: "deployment image resolution requires a published or locally loaded build"
+                .to_owned(),
         });
     }
     if plan.project_id != document.config.project.id || plan.environment != environment {
@@ -573,10 +667,7 @@ pub(super) fn deployment_images_from_build(
                 continue;
             }
         };
-        resolved.insert(
-            (*module).to_owned(),
-            format!("{}@{}", image.repository, image.digest),
-        );
+        resolved.insert((*module).to_owned(), deployed_reference(plan, image));
     }
     if !missing.is_empty() {
         return Err(MmError::Setup {
@@ -584,6 +675,14 @@ pub(super) fn deployment_images_from_build(
         });
     }
     Ok(resolved)
+}
+
+/// A published image by digest; a local one by the tag the engine has.
+fn deployed_reference(plan: &ImageBuildPlan, image: &crate::domain::build::BuiltImage) -> String {
+    match (plan.engine, image.tags.first()) {
+        (Some(_), Some(tag)) => tag.clone(),
+        _ => format!("{}@{}", image.repository, image.digest),
+    }
 }
 
 pub(super) fn selected_build_variant(

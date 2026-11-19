@@ -18,9 +18,9 @@ Laravel web -> pricing -> Valkey
 ## Before you start
 
 Complete [workstation setup](./first-local-app.md#set-up-the-workstation) on a
-Linux systemd host with HAProxy. You need Docker Buildx, a Compose runtime, and
-registry access. Replace both example image repositories, commit the changes,
-and use a full checkout with tags.
+Linux systemd host with HAProxy. You need Docker Compose with Docker Buildx, or
+Podman Compose. mm builds both images on this machine; no registry is
+involved.
 
 ## Inspect and deploy
 
@@ -35,15 +35,13 @@ mm env review
 mm dev mounts plan laravel
 mm secret init age
 mm secret generate --missing
-mm build --publish plan
-mm build --publish apply --plan BUILD_PLAN_HASH --yes
-mm deploy plan
-mm deploy apply --plan DEPLOY_PLAN_HASH --yes
+mm dev up
+mm dev up --plan DEPLOY_PLAN_HASH --yes
 ```
 
-Replace both illustrative repositories before publication. The build result
-contains one Laravel digest reused by `web`, `queue`, and jobs, plus one pricing
-digest.
+`mm dev up` builds both images into the local engine before it starts the
+stack. The Laravel image runs `web`, `queue`, and the jobs; the pricing service
+has its own.
 
 ## Use the local platform
 

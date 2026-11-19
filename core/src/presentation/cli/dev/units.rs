@@ -9,21 +9,20 @@ pub(super) async fn up(
     with: Vec<String>,
     invocation: &Invocation,
 ) -> Result<u8, MmError> {
-    if with.is_empty() {
-        return deploy::run(command, yes, (Vec::new(), None), invocation).await;
+    if !with.is_empty() {
+        if composition::remote_environment(
+            &invocation.selection,
+            invocation.home(),
+            invocation.runtime_kind,
+        )?
+        .is_some()
+        {
+            return Err(MmError::Environment {
+                message: "--with turns optional units on for the development environment on this machine; this environment runs on remote hosts".to_owned(),
+            });
+        }
+        composition::development_units().check_with(&invocation.selection.start, &with)?;
     }
-    if composition::remote_environment(
-        &invocation.selection,
-        invocation.home(),
-        invocation.runtime_kind,
-    )?
-    .is_some()
-    {
-        return Err(MmError::Environment {
-            message: "--with turns optional units on for the development environment on this machine; this environment runs on remote hosts".to_owned(),
-        });
-    }
-    composition::development_units().check_with(&invocation.selection.start, &with)?;
     let mut selection = invocation.selection.clone();
     selection.development_with = with;
     run_deploy_command(DeployCommandRequest {
@@ -36,6 +35,7 @@ pub(super) async fn up(
         format: invocation.format,
         runtime: &invocation.services,
         runtime_kind: invocation.runtime_kind,
+        rebuild: true,
     })
     .await
 }

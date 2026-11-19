@@ -119,7 +119,7 @@ complete -c mm -n "__fish_mm_using_subcommand dev; and __fish_seen_subcommand_fr
 complete -c mm -n "__fish_mm_using_subcommand dev; and __fish_seen_subcommand_from up" -l output -d 'Human text or machine-readable JSON. JSON errors stay JSON' -r -f -a "human\t''
 json\t''"
 complete -c mm -n "__fish_mm_using_subcommand dev; and __fish_seen_subcommand_from up" -l yes -d 'Apply the exact reviewed plan without prompting'
-complete -c mm -n "__fish_mm_using_subcommand dev; and __fish_seen_subcommand_from up" -s h -l help -d 'Print help'
+complete -c mm -n "__fish_mm_using_subcommand dev; and __fish_seen_subcommand_from up" -s h -l help -d 'Print help (see more with \'--help\')'
 complete -c mm -n "__fish_mm_using_subcommand dev; and __fish_seen_subcommand_from up" -s V -l version -d 'Print version'
 complete -c mm -n "__fish_mm_using_subcommand dev; and __fish_seen_subcommand_from enable" -l root -d 'Project root or a path inside the project' -r -F
 complete -c mm -n "__fish_mm_using_subcommand dev; and __fish_seen_subcommand_from enable" -s e -l environment -d 'Environment to operate on (overrides MM_ENVIRONMENT and default-environment)' -r
@@ -1303,6 +1303,7 @@ complete -c mm -n "__fish_mm_using_subcommand build; and not __fish_seen_subcomm
 complete -c mm -n "__fish_mm_using_subcommand build; and not __fish_seen_subcommand_from plan apply receipt import help" -l output -d 'Human text or machine-readable JSON. JSON errors stay JSON' -r -f -a "human\t''
 json\t''"
 complete -c mm -n "__fish_mm_using_subcommand build; and not __fish_seen_subcommand_from plan apply receipt import help" -l publish -d 'Push a multi-platform image index and reviewed tags to the registry'
+complete -c mm -n "__fish_mm_using_subcommand build; and not __fish_seen_subcommand_from plan apply receipt import help" -l all -d 'Build every module that has a build, not only the ones the selected environment runs and the bases they build FROM'
 complete -c mm -n "__fish_mm_using_subcommand build; and not __fish_seen_subcommand_from plan apply receipt import help" -l yes -d 'Skip the build confirmation prompt'
 complete -c mm -n "__fish_mm_using_subcommand build; and not __fish_seen_subcommand_from plan apply receipt import help" -s h -l help -d 'Print help'
 complete -c mm -n "__fish_mm_using_subcommand build; and not __fish_seen_subcommand_from plan apply receipt import help" -s V -l version -d 'Print version'
@@ -1320,6 +1321,7 @@ complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from plan" -l output -d 'Human text or machine-readable JSON. JSON errors stay JSON' -r -f -a "human\t''
 json\t''"
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from plan" -l publish -d 'Push a multi-platform image index and reviewed tags to the registry'
+complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from plan" -l all -d 'Build every module that has a build, not only the ones the selected environment runs and the bases they build FROM'
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from plan" -l yes -d 'Skip the build confirmation prompt'
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from plan" -s h -l help -d 'Print help'
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from plan" -s V -l version -d 'Print version'
@@ -1333,6 +1335,7 @@ complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from apply" -l output -d 'Human text or machine-readable JSON. JSON errors stay JSON' -r -f -a "human\t''
 json\t''"
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from apply" -l publish -d 'Push a multi-platform image index and reviewed tags to the registry'
+complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from apply" -l all -d 'Build every module that has a build, not only the ones the selected environment runs and the bases they build FROM'
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from apply" -l yes -d 'Skip the build confirmation prompt'
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from apply" -s h -l help -d 'Print help'
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from apply" -s V -l version -d 'Print version'
@@ -1345,6 +1348,7 @@ complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from receipt" -l output -d 'Human text or machine-readable JSON. JSON errors stay JSON' -r -f -a "human\t''
 json\t''"
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from receipt" -l publish -d 'Push a multi-platform image index and reviewed tags to the registry'
+complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from receipt" -l all -d 'Build every module that has a build, not only the ones the selected environment runs and the bases they build FROM'
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from receipt" -l yes -d 'Skip the build confirmation prompt'
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from receipt" -s h -l help -d 'Print help'
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from receipt" -s V -l version -d 'Print version'
@@ -1359,6 +1363,7 @@ complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_
 json\t''"
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from import" -l cache-only -d 'Only seed build reuse; never select deployment images'
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from import" -l publish -d 'Push a multi-platform image index and reviewed tags to the registry'
+complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from import" -l all -d 'Build every module that has a build, not only the ones the selected environment runs and the bases they build FROM'
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from import" -l yes -d 'Skip the build confirmation prompt'
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from import" -s h -l help -d 'Print help (see more with \'--help\')'
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from import" -s V -l version -d 'Print version'

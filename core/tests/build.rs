@@ -1250,14 +1250,15 @@ async fn canonical_local_builds_execute_once_without_cross_repository_retagging(
     let builder = Arc::new(FakeBuilder::default());
     let service = fixture.service(builder.clone());
     let selection = WorkspaceSelection::new(fixture.project.path(), None);
-    let plan = service.plan(&selection, false).await?;
+    let every = mm::app::BuildRequest::new(false, true);
+    let plan = service.plan(&selection, every).await?;
     assert_eq!(
         plan.units[0].input_fingerprint,
         plan.units[1].input_fingerprint
     );
 
     let result = service
-        .apply_reviewed(&selection, false, &plan.plan_hash)
+        .apply_reviewed(&selection, every, &plan.plan_hash)
         .await?;
 
     assert_eq!(builder.built.lock().map_err(|_| "lock poisoned")?.len(), 1);
@@ -1288,10 +1289,11 @@ async fn canonical_published_builds_execute_once_and_retag_the_reviewed_reposito
     let builder = Arc::new(FakeBuilder::default());
     let service = fixture.service(builder.clone());
     let selection = WorkspaceSelection::new(fixture.project.path(), None);
-    let plan = service.plan(&selection, true).await?;
+    let every = mm::app::BuildRequest::new(true, true);
+    let plan = service.plan(&selection, every).await?;
 
     let result = service
-        .apply_reviewed(&selection, true, &plan.plan_hash)
+        .apply_reviewed(&selection, every, &plan.plan_hash)
         .await?;
 
     assert_eq!(builder.built.lock().map_err(|_| "lock poisoned")?.len(), 1);
@@ -2275,10 +2277,11 @@ async fn current_and_cached_retag_adapter_failures_propagate()
         ..FakeBuilder::default()
     }));
     let selection = WorkspaceSelection::new(fixture.project.path(), None);
-    let plan = service.plan(&selection, true).await?;
+    let every = mm::app::BuildRequest::new(true, true);
+    let plan = service.plan(&selection, every).await?;
     assert!(matches!(
         service
-            .apply_reviewed(&selection, true, &plan.plan_hash)
+            .apply_reviewed(&selection, every, &plan.plan_hash)
             .await,
         Err(MmError::Build { .. })
     ));

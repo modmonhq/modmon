@@ -16,6 +16,8 @@ struct GeneratedOverlay<'a> {
 struct GeneratedService {
     #[serde(skip_serializing_if = "Option::is_none")]
     image: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pull_policy: Option<&'static str>,
     labels: BTreeMap<String, String>,
     deploy: GeneratedDeploy,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
@@ -284,6 +286,10 @@ fn empty_generated_service(
     labels: &BTreeMap<String, String>,
 ) -> GeneratedService {
     GeneratedService {
+        pull_policy: image
+            .as_deref()
+            .filter(|image| crate::domain::build::is_local_image_reference(image))
+            .map(|_| "never"),
         image,
         labels: labels.clone(),
         deploy: GeneratedDeploy {

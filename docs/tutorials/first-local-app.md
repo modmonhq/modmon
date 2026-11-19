@@ -13,11 +13,10 @@ You need:
 
 - [mm installed](../start/install.md).
 - A supported Linux systemd machine with HAProxy, Docker Compose, and Docker Buildx.
-- A full Git checkout of this repository, including tags.
-- Two container repositories you can push to, with Docker already logged in.
+- A Git checkout of this repository.
 
-This example publishes images even for local deployment. It cannot deploy
-first-party images from a local-only build. Use a development machine.
+mm builds the example's images into Docker on this machine. No registry or
+registry login is involved, and nothing is pushed.
 
 ## Set up the workstation
 
@@ -36,32 +35,12 @@ certificate trust and ports 80/443 can require `sudo`.
 
 The saved runtime preference makes later commands use Docker Compose. If you
 prefer Podman Compose, use `podman-compose` in setup and the preference command;
-Docker Buildx is still needed for builds.
+mm then builds the images with Podman.
 
 On an existing checkout, bare `mm` opens the terminal UI and lists what the
 environment still needs on its Overview; `enter` runs a step. `mm doctor` ends
 with the same list. At this stage, a missing image is expected until the build
-step below. Neither command publishes images without a reviewed build.
-
-## Configure the image repositories
-
-Open `.config/mm.yaml` in this example directory. Replace the two
-`modules.*.build.image` values with repositories you own:
-
-- `ghcr.io/example/mm-node-fullstack-frontend`
-- `ghcr.io/example/mm-node-fullstack-backend`
-
-Commit those changes before building. Publication requires a clean worktree
-and complete Git history and tags. Check both:
-
-```sh
-git status --short
-git rev-parse --is-shallow-repository
-```
-
-The first command should print nothing; the second should print `false`. For a
-shallow clone, run `git fetch --unshallow --tags`. Otherwise fetch missing tags
-with `git fetch --tags`.
+step below. Neither command builds images without a reviewed plan.
 
 ## Prepare the environment
 
@@ -78,25 +57,20 @@ the password is not written into project configuration.
 
 ## Build and deploy
 
-Run the plan command first. Review its output, then replace `BUILD_PLAN_HASH`
+`mm dev up` reviews one plan that builds the frontend and backend images into
+Docker and then starts the stack. Review it, then replace `DEPLOY_PLAN_HASH`
 with the hash it prints:
 
 ```sh
-mm build --publish plan
-mm build --publish apply --plan BUILD_PLAN_HASH --yes
-```
-
-After the build succeeds, do the same for deployment:
-
-```sh
-mm deploy plan
-mm deploy apply --plan DEPLOY_PLAN_HASH --yes
+mm dev up
+mm dev up --plan DEPLOY_PLAN_HASH --yes
 mm service status
 ```
 
 The frontend, backend, and MongoDB should now be running. Check the reported
 health before continuing. If a plan becomes stale, generate a new one rather
-than reusing its hash.
+than reusing its hash. After you change the frontend or backend source, `mm dev
+up` builds that image again before it deploys; an unchanged image is kept.
 
 ## Check the API
 

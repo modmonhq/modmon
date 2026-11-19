@@ -76,7 +76,7 @@ impl SetupIssue {
                 "Run `mm` for guided runtime selection, or `mm target preference set-runtime RUNTIME` to save a private preference. Runtimes: docker-compose, podman-compose. Use --runtime RUNTIME for one invocation."
             }
             Self::MissingImages { .. } => {
-                "Run `mm build --publish` to review and execute the build plan. Publishing pushes images to the configured registry; mm asks before executing. Project configuration can still be checked with `mm config validate`."
+                "Run `mm build` to review and run the build plan: for an environment on this machine it loads the images into the local engine and pushes nothing, and `mm dev up` does it for you when the images are missing or out of date. A remote environment runs published images: build them with `mm build --publish`. Project configuration can still be checked with `mm config validate`."
             }
         }
     }

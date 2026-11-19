@@ -57,7 +57,19 @@ pub(super) async fn fix(
             Ok(())
         }
         SetupIssue::MissingImages { .. } => {
-            super::build::run(None, crate::app::BuildRequest::from(true), false, invocation).await?;
+            let local = composition::local_build_engine(
+                &invocation.selection,
+                invocation.home(),
+                invocation.runtime_kind,
+            )?
+            .is_some();
+            super::build::run(
+                None,
+                crate::app::BuildRequest::from(!local),
+                false,
+                invocation,
+            )
+            .await?;
             Ok(())
         }
         SetupIssue::LegacyState { .. } => {

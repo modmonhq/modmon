@@ -1804,6 +1804,7 @@ fn hardened_node_plan() -> mm::domain::deployment::DeploymentPlan {
         ingress: Vec::new(),
         route_state_changed: false,
         build_receipt: None,
+        local_build: None,
         registries: BTreeMap::new(),
         node: None,
         rollout: Default::default(),

@@ -13,7 +13,7 @@ impl RecoveryContext {
             SetupIssue::MissingTarget { name, .. } if name == "local" => &["target", "local"],
             SetupIssue::MissingTarget { .. } => &["target", "list"],
             SetupIssue::MissingRuntime => &[],
-            SetupIssue::MissingImages { .. } => &["build", "--publish"],
+            SetupIssue::MissingImages { .. } => &["build"],
             SetupIssue::MissingDevelopmentServices { .. } => &["dev", "services", "plan"],
             SetupIssue::LocalTlsRequired => &["dev", "setup"],
         };

@@ -195,7 +195,9 @@ The first command is read-only. Apply requires both reviewed hashes. Secret plai
 ### `mm dev up`
 
 ```text
-Review or apply the local development deployment
+Review or apply the local development deployment.
+
+Images that have no local build yet, or whose build inputs changed since their last local build, are built first, as part of the reviewed plan.
 
 Usage: up [OPTIONS]
 
@@ -210,7 +212,7 @@ Options:
           Apply the exact reviewed plan without prompting
 
   -h, --help
-          Print help
+          Print help (see a summary with '-h')
 ```
 
 ### `mm dev enable`
@@ -4045,6 +4047,9 @@ Options:
       --publish
           Push a multi-platform image index and reviewed tags to the registry
 
+      --all
+          Build every module that has a build, not only the ones the selected environment runs and the bases they build FROM
+
       --yes
           Skip the build confirmation prompt
 
@@ -4054,6 +4059,9 @@ Options:
 Examples:
   mm build plan
   mm build apply --plan HASH --yes
+  mm -e production build --publish plan
+
+Without --publish, an environment whose target is this machine gets its images loaded into the local container engine, where `mm deploy` and `mm dev up` run them, and nothing is pushed. Remote environments run published images.
 ```
 
 ### `mm build plan`

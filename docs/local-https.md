@@ -95,16 +95,15 @@ the project's deployment rather than reinstalling the workstation CA.
 
 Workstation setup creates shared-service certificates. Project certificates and
 routes are published by a reviewed project deployment. Running containers alone
-does not register their routes. From the project directory, prepare a matching
-published build and apply a fresh deployment plan:
+does not register their routes. From the project directory, review and apply a
+fresh deployment, which builds the project's images first when needed:
 
 ```sh
-mm build --publish
-mm deploy plan
-mm deploy apply --plan PLAN_HASH
+mm dev up
+mm dev up --plan PLAN_HASH --yes
 ```
 
-Use the same runtime and environment for all three commands. Once the project's
+Use the same runtime and environment for both commands. Once the project's
 HTTPS route and certificate are published, its HTTP route redirects to HTTPS
 automatically. There is no need to add a `domains` entry for the conventional
 service hostname. An unknown/unpublished hostname is not redirected to a broken

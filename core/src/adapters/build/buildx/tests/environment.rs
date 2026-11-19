@@ -150,6 +150,7 @@ async fn exercise_buildx(operation: &str) -> Result<(), Box<dyn std::error::Erro
             secrets: &BTreeMap::new(),
             dependencies: &[],
             upstream_contexts: &[],
+            engine: None,
         })
         .await?;
     assert_eq!(image.digest, expected);

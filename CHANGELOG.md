@@ -1004,6 +1004,14 @@ installations `mm target setup` upgrades in place and what it refuses.
   environment's age secrets and its git deploy key from the operator's
   machine. Imported secrets keep the operator's revisions, and an installed
   deploy key replaces the generated one and survives later setup runs.
+- `mm build` for an environment whose target is this machine builds into the
+  local engine, Docker or Podman, under `mm.invalid/PROJECT/MODULE:TAG`, with
+  no registry, no login and no push. `mm deploy` and `mm dev up` run these
+  images with `pull_policy: never`; remote environments still run published
+  builds only.
+- `mm dev up` builds first, in the plan it shows, every local image that is
+  missing or whose build inputs changed since its last local build, and
+  keeps the others.
 
 ### Fixed
 

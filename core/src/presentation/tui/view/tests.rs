@@ -199,7 +199,7 @@ fn overview_lists_setup_steps_once_in_plain_words() -> Result<(), Box<dyn std::e
         "development cannot start until these are done.",
         "Other environments still open from the Environments view (2).",
         "4 services have no built image yet: api/api, docs/docs, web/web and 1 more.",
-        "mm build --publish",
+        "mm build",
         "2  Install the shared development services",
         "mm dev services plan",
         "migrate exited with code 137",

@@ -116,6 +116,21 @@ macro_rules! sqlite_builds { () => {
         project_root: &std::path::Path,
         environment: &str,
     ) -> Result<Option<(ImageBuildPlan, ImageBuildResult)>, MmError> {
+        self.latest_image_build(
+            project_id,
+            project_root,
+            environment,
+            crate::domain::build::ImageBuildFilter::Published,
+        )
+    }
+
+    fn latest_image_build(
+        &self,
+        project_id: crate::domain::workspace::ProjectId,
+        project_root: &std::path::Path,
+        environment: &str,
+        filter: crate::domain::build::ImageBuildFilter,
+    ) -> Result<Option<(ImageBuildPlan, ImageBuildResult)>, MmError> {
         let project_root = project_root.to_str().ok_or_else(|| MmError::State {
             message: "workspace roots must be valid Unicode paths".to_owned(),
         })?;
@@ -132,7 +147,8 @@ macro_rules! sqlite_builds { () => {
                    AND operations.kind = 'build'
                    AND operations.state = 'succeeded'
                    AND snapshots.result_json IS NOT NULL
-                 ORDER BY operations.finished_at_ms DESC, operations.requested_at_ms DESC",
+                 ORDER BY operations.finished_at_ms DESC, operations.requested_at_ms DESC,
+                          snapshots.rowid DESC",
             )
             .map_err(state_error)?;
         let rows = statement
@@ -176,7 +192,7 @@ macro_rules! sqlite_builds { () => {
                     message: "stored image build does not match its operation owner".to_owned(),
                 });
             }
-            if plan.publish {
+            if filter.accepts(&plan) {
                 return Ok(Some((plan, result)));
             }
         }

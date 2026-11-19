@@ -55,7 +55,7 @@ during a step stops it and leaves mm.
 | --------------------------------------- | ------------------------------------------ |
 | Choose a container runtime              | `mm target preference set-runtime RUNTIME` |
 | Set up local HTTPS                      | `mm dev setup`                             |
-| Build the images                        | `mm build --publish`                       |
+| Build the images                        | `mm build`                                 |
 | Install the shared development services | `mm dev services plan`, then `apply`       |
 
 A step marked `after the steps above` needs an earlier one first. A step mm

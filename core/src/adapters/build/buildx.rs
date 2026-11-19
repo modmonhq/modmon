@@ -16,12 +16,16 @@ use crate::app::ports::{
     BuildOperationGuard, BuildVariantRequest, CommandSpec, ImageBuilder, ProcessRunner,
     UpstreamBuildContext,
 };
-use crate::domain::build::{BuiltImage, ImageBuildUnitPlan, ImageBuildVariantPlan};
+use crate::domain::build::{
+    BuiltImage, ImageBuildUnitPlan, ImageBuildVariantPlan, LocalImageEngine,
+};
 use crate::domain::error::MmError;
 use crate::domain::runtime::DOCKER_INHERITED_ENVIRONMENT;
 use crate::domain::secret::SecretMaterial;
 
 const MAX_METADATA_BYTES: usize = 1024 * 1024;
+
+mod engine;
 
 #[derive(Clone)]
 pub struct DockerBuildxBuilder {
@@ -86,6 +90,10 @@ impl ImageBuilder for DockerBuildxBuilder {
     }
 
     async fn build_variant(&self, request: BuildVariantRequest<'_>) -> Result<BuiltImage, MmError> {
+        if let Some(engine) = request.engine {
+            return engine::build_variant(self.process.as_ref(), &self.artifacts, engine, request)
+                .await;
+        }
         let staging = prepare_build_staging(&self.artifacts, &request)?;
         let command = build_command(&self.executable, &request, &staging)?;
         let BuildVariantRequest {
@@ -182,6 +190,14 @@ impl ImageBuilder for DockerBuildxBuilder {
             }
         }
         Ok(digest.to_owned())
+    }
+
+    async fn local_image_id(
+        &self,
+        engine: LocalImageEngine,
+        reference: &str,
+    ) -> Result<Option<String>, MmError> {
+        engine::image_id(self.process.as_ref(), engine, reference).await
     }
 }
 
