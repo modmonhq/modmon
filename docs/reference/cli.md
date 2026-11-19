@@ -696,7 +696,10 @@ Usage: validate [OPTIONS]
 
 Options:
       --for-remote
-          Also refuse Compose features a remote host blocks unless its host policy allows them
+          Also refuse Compose features a remote host blocks, in the services the environment runs; without --environment, in every environment whose target is not `local`
+
+      --host-policy <FILE>
+          With --for-remote: check against this copy of a host's host.yaml, its `allow` list and, without --environment, the environments it runs
 
   -h, --help
           Print help

@@ -772,6 +772,7 @@ Register-ArgumentCompleter -Native -CommandName 'mm' -ScriptBlock {
             break
         }
         'mm;config;validate' {
+            [CompletionResult]::new('--host-policy', '--host-policy', [CompletionResultType]::ParameterName, 'With --for-remote: check against this copy of a host''s host.yaml, its `allow` list and, without --environment, the environments it runs')
             [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root or a path inside the project')
             [CompletionResult]::new('-e', '-e', [CompletionResultType]::ParameterName, 'Environment to operate on (overrides MM_ENVIRONMENT and default-environment)')
             [CompletionResult]::new('--environment', '--environment', [CompletionResultType]::ParameterName, 'Environment to operate on (overrides MM_ENVIRONMENT and default-environment)')
@@ -779,7 +780,7 @@ Register-ArgumentCompleter -Native -CommandName 'mm' -ScriptBlock {
             [CompletionResult]::new('--target', '--target', [CompletionResultType]::ParameterName, 'Ephemeral target name for this invocation only')
             [CompletionResult]::new('--mm-home', '--mm-home', [CompletionResultType]::ParameterName, 'Directory containing mm''s local state and target catalog')
             [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Human text or machine-readable JSON. JSON errors stay JSON')
-            [CompletionResult]::new('--for-remote', '--for-remote', [CompletionResultType]::ParameterName, 'Also refuse Compose features a remote host blocks unless its host policy allows them')
+            [CompletionResult]::new('--for-remote', '--for-remote', [CompletionResultType]::ParameterName, 'Also refuse Compose features a remote host blocks, in the services the environment runs; without --environment, in every environment whose target is not `local`')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('-V', '-V ', [CompletionResultType]::ParameterName, 'Print version')

@@ -956,6 +956,7 @@ _arguments "${_arguments_options[@]}" : \
         case $line[1] in
             (validate)
 _arguments "${_arguments_options[@]}" : \
+'--host-policy=[With --for-remote\: check against this copy of a host'\''s host.yaml, its \`allow\` list and, without --environment, the environments it runs]:FILE:_files' \
 '--root=[Project root or a path inside the project]:PATH:_files' \
 '-e+[Environment to operate on (overrides MM_ENVIRONMENT and default-environment)]:NAME:_default' \
 '--environment=[Environment to operate on (overrides MM_ENVIRONMENT and default-environment)]:NAME:_default' \
@@ -963,7 +964,7 @@ _arguments "${_arguments_options[@]}" : \
 '--target=[Ephemeral target name for this invocation only]:NAME:_default' \
 '--mm-home=[Directory containing mm'\''s local state and target catalog]:PATH:_files' \
 '--output=[Human text or machine-readable JSON. JSON errors stay JSON]:OUTPUT:(human json)' \
-'--for-remote[Also refuse Compose features a remote host blocks unless its host policy allows them]' \
+'--for-remote[Also refuse Compose features a remote host blocks, in the services the environment runs; without --environment, in every environment whose target is not \`local\`]' \
 '-h[Print help]' \
 '--help[Print help]' \
 '-V[Print version]' \

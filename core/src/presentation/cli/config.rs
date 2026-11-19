@@ -53,9 +53,12 @@ pub enum ResourceCommand {
 pub enum ConfigCommand {
     /// Validate .config/mm.yaml, its split files, and local overrides, without probing a runtime.
     Validate {
-        /// Also refuse Compose features a remote host blocks unless its host policy allows them.
+        /// Also refuse Compose features a remote host blocks, in the services the environment runs; without --environment, in every environment whose target is not `local`.
         #[arg(long)]
         for_remote: bool,
+        /// With --for-remote: check against this copy of a host's host.yaml, its `allow` list and, without --environment, the environments it runs.
+        #[arg(long, value_name = "FILE", requires = "for_remote")]
+        host_policy: Option<PathBuf>,
     },
     /// Review typed module declarations.
     Module {
@@ -162,36 +165,10 @@ pub(super) fn run(
     invocation: &super::dispatch::Invocation,
 ) -> Result<u8, MmError> {
     match command {
-        ConfigCommand::Validate { for_remote } => {
-            let mut validation = crate::app::Application::read_only(
-                composition::project_documents(),
-                composition::environment_sources(),
-                Arc::clone(&invocation.runtime),
-                Arc::clone(&invocation.clock),
-            )
-            .validate(&invocation.selection)?;
-            if for_remote {
-                let document = composition::project_documents().load_from(&invocation.start)?;
-                for finding in crate::app::workload_guardrails(&document, &[])? {
-                    validation.validation.push(
-                        crate::domain::diagnostic::Diagnostic::error(
-                            "MM_REMOTE_GUARDRAIL",
-                            format!("a remote host refuses this: {finding}"),
-                        )
-                        .at_path(document.source("stacks"))
-                        .with_help(
-                            "drop the feature, or ask the host admin to allow it for this service in host.yaml",
-                        ),
-                    );
-                }
-            }
-            output::write_validation(&validation, invocation.format)?;
-            Ok(if validation.validation.is_valid() {
-                0
-            } else {
-                2
-            })
-        }
+        ConfigCommand::Validate {
+            for_remote,
+            host_policy,
+        } => run_validate(invocation, for_remote, host_policy.as_deref()),
         ConfigCommand::Schema { key: None } => {
             output::write_json(&composition::schema())?;
             Ok(0)
@@ -244,6 +221,39 @@ pub(super) fn run(
             run_resource_command(kind, resource, &invocation.start, invocation.format)
         }
     }
+}
+
+fn run_validate(
+    invocation: &super::dispatch::Invocation,
+    for_remote: bool,
+    host_policy: Option<&std::path::Path>,
+) -> Result<u8, MmError> {
+    let mut validation = crate::app::Application::read_only(
+        composition::project_documents(),
+        composition::environment_sources(),
+        Arc::clone(&invocation.runtime),
+        Arc::clone(&invocation.clock),
+    )
+    .validate(&invocation.selection)?;
+    if for_remote {
+        let document = composition::project_documents().load_from(&invocation.start)?;
+        let policy = host_policy
+            .map(|path| composition::host_policy_file(path).map(|policy| (path, policy)))
+            .transpose()?;
+        for diagnostic in crate::app::remote_guardrail_diagnostics(
+            &document,
+            invocation.selection.environment.as_deref(),
+            policy.as_ref().map(|(path, policy)| (*path, policy)),
+        )? {
+            validation.validation.push(diagnostic);
+        }
+    }
+    output::write_validation(&validation, invocation.format)?;
+    Ok(if validation.validation.is_valid() {
+        0
+    } else {
+        2
+    })
 }
 
 fn resource_command(

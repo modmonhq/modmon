@@ -6,6 +6,17 @@ fn compose(yaml: &str) -> Result<Mapping, serde_yaml_ng::Error> {
     serde_yaml_ng::from_str(yaml)
 }
 
+fn check_compose(
+    stack: &str,
+    compose: &Mapping,
+    project_root: &Path,
+    allowed: &[GuardrailException],
+) -> Vec<GuardrailFinding> {
+    let mut findings = compose_findings(stack, compose, project_root);
+    findings.retain(|finding| !allows(allowed, finding));
+    findings
+}
+
 fn features(findings: &[GuardrailFinding]) -> BTreeSet<String> {
     findings
         .iter()

@@ -69,3 +69,18 @@ pub(crate) fn secret_capabilities()
 pub(crate) fn discover_project(start: &Path) -> Result<PathBuf, MmError> {
     ConfigLoader.discover(start)
 }
+
+/// A host's `host.yaml`, checked as `mmd` checks its own, from a file
+/// anyone may own, such as a copy kept for CI.
+pub(crate) fn host_policy_file(
+    path: &Path,
+) -> Result<crate::domain::host_policy::HostPolicy, MmError> {
+    let bytes =
+        crate::domain::path_policy::read_regular_file(path, 4 * 1024 * 1024)?.ok_or_else(|| {
+            MmError::ConfigRead {
+                path: path.to_path_buf(),
+                source: std::io::Error::new(std::io::ErrorKind::NotFound, "no host policy here"),
+            }
+        })?;
+    crate::adapters::remote::parse_host_policy(path, &bytes)
+}

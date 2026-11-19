@@ -165,6 +165,11 @@ projects:
   repo may grant up to `admin`.
 - **`origin`** is the only place `mmd` fetches code from, with the key at
   `/var/lib/mm/projects/PROJECT_ID/deploy-key`.
+- **`allow`** lets one service use one Compose feature that reaches the host,
+  in the environments the host runs. See
+  [what a deploy may run](./remote-access.md#what-a-deploy-may-run); `mm config
+  validate --for-remote --host-policy FILE` checks a project against a copy of
+  this file.
 - **`runtimes`** and **`exposed-runtime`**, at the top of the file, say which
   OCI runtimes a service may name and which one the host runs everything
   under that is reachable from outside. Without them a service that sets

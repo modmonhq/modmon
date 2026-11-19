@@ -444,11 +444,23 @@ capabilities beyond Docker's defaults, devices, host namespaces (`pid`, `ipc`,
 `uts`, `userns_mode`, `cgroup`, `network_mode: host`), `cgroup_parent`,
 unconfined `security_opt`, non-`net.*` sysctls, bind or device `driver_opts`
 volumes, external volumes and networks, `configs`/`secrets` files outside the
-project, and `build:` (remote hosts never build). Check before you push:
+project, and `build:` (remote hosts never build).
+
+A host checks only the services the environment it plans runs: the ones
+`mm deploy plan` renders. A service whose `environments:` leaves the
+environment out is not checked there, and neither is a stack left with no
+service. A service that only `local` runs, such as a developer tool with
+`network_mode: host`, needs no exception on any host.
+
+Check before you push:
 
 ```sh
-mm config validate --for-remote
+mm config validate --for-remote                  # every environment whose target is not local
+mm -e staging config validate --for-remote       # one environment
 ```
+
+Expected result: `config: valid`, or one `MM_REMOTE_GUARDRAIL` error per
+feature, naming the environment, the `<stack>/<service>`, and the Compose key.
 
 Only a host admin can make an exception, for one feature of one service, in
 `/etc/mm/host.yaml`:
@@ -460,6 +472,19 @@ projects:
       - service: monitoring/node-exporter # <stack>/<service>
         features: [pid-host]
 ```
+
+To check a project against the policy its hosts have, for example in CI,
+keep a copy of their `host.yaml` and pass it:
+
+```sh
+mm config validate --for-remote --host-policy ops/staging-host.yaml
+```
+
+With `--host-policy`, mm reads the file as `mmd` does and checks the
+environments it runs for the project, or the one `-e` names. A feature its
+`allow` list grants is reported as `MM_REMOTE_GUARDRAIL_ALLOWED` and does not
+fail the command; anything else fails as before. A policy that does not
+enroll the project is refused with the project's id.
 
 A host also decides which OCI runtimes a service's `runtime:` may name, and
 can run every service that is reachable from outside under one of them. See

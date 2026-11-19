@@ -175,6 +175,11 @@ overrides' `development.enabled` that is no module, service or job;
 `MM_SERVICE_ENVIRONMENT_UNKNOWN` is the finding for a service, or a
 `secret-files` or `config-files` entry, whose `environments` names an
 environment that `environments:` does not declare.
+`MM_REMOTE_GUARDRAIL` is the finding of `mm config validate --for-remote` for
+a Compose feature that [a remote host refuses](../remote-access.md#what-a-deploy-may-run)
+in a service the named environment runs. With `--host-policy`, a feature the
+policy's `allow` list grants is the information `MM_REMOTE_GUARDRAIL_ALLOWED`
+instead, which does not fail the command.
 A deployment that does not become healthy says why inside its message:
 `MM_RUNTIME_UNHEALTHY` (the health check fails), `MM_RUNTIME_EXITED` (the
 container exited), `MM_RUNTIME_RESTARTING` (the engine keeps restarting it),

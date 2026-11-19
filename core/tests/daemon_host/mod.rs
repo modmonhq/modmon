@@ -703,6 +703,23 @@ impl Host {
         git(&work, &["rev-parse", "HEAD"])
     }
 
+    /// A new commit on the origin's `main` that writes each file, by its
+    /// path in the project, with the text given.
+    pub fn commit_files(&self, files: &[(&str, &str)]) -> TestResult<String> {
+        let work = self.temporary.path().join("origin-work");
+        for (path, text) in files {
+            std::fs::write(work.join(path), text)?;
+        }
+        git(&work, &["add", "--all"])?;
+        git(&work, &["commit", "--quiet", "-m", "change files"])?;
+        let origin = self.temporary.path().join("origin.git");
+        git(
+            &work,
+            &["push", "--quiet", &origin.to_string_lossy(), "main"],
+        )?;
+        git(&work, &["rev-parse", "HEAD"])
+    }
+
     /// Plans an access sync of the host's commit as `key` and returns the
     /// hash to apply.
     pub async fn sync_plan(&self, key: &str) -> TestResult<String> {
