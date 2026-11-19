@@ -2759,9 +2759,12 @@ another name with `MM_NODE_MISMATCH`. If two nodes' addresses are mixed up in
 the repo, nothing is applied on the wrong host; check `host` for each node
 under `nodes:` and run `mm target setup record`.
 
-`mm` and the `mmd` of every node must be the same version: a client and a
-node that speak different remote protocol versions do not work together. The
-error says which side to upgrade: `mm` on your machine, or the host (run
+Each node agrees on a remote protocol with `mm` by itself, so `mm` and the
+nodes may run different releases as long as they share one (see
+[compatibility between releases](reference/compatibility.md)). Keep the nodes
+on one release: `mm doctor` warns with `MM_NODE_VERSION_SKEW` until they are.
+When `mm` and a node share no protocol, the error says which side to upgrade:
+`mm` on your machine (`mm update`), or the host (run
 `mm target setup plan --upgrade` and apply that plan with `--upgrade`).
 
 ### When mmd stops answering
@@ -3067,10 +3070,12 @@ not touched:
 - Setup keeps `/var/lib/mm`, so the daemon identity stays the same and
   nothing needs to be recorded again.
 
-A client and a host on different protocol versions refuse to work together,
-and the error says which side to upgrade. Between releases of one protocol,
-`mm doctor` warns with `MM_HOST_RELEASE_OLDER` or `MM_HOST_RELEASE_NEWER` and
-names the hosts. To keep a team on one release, pin it per environment with
+A client and a host on different releases use the newest remote protocol both
+speak, and refuse each other only when they share none; the error then says
+which side to upgrade (see
+[compatibility between releases](reference/compatibility.md)). While the
+releases differ, `mm doctor` warns with `MM_HOST_RELEASE_OLDER` or
+`MM_HOST_RELEASE_NEWER` and names the hosts. To keep a team on one release, pin it per environment with
 [`deploy.mm-version`](reference/configuration.md#bindings-environments-and-secrets):
 plans from another mm, and for hosts that run another `mmd`, are refused.
 

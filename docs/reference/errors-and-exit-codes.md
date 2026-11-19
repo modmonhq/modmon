@@ -75,6 +75,7 @@ Human output prints the corresponding quoted command. Other errors may have
 | `MM_TUNNEL_TOKEN_MISSING`         |                       3 | An environment with `ingress.type: cloudflared` cannot plan: the secret its `cloudflared.token` names is not declared, has no value on an ingress node, or does not hold a Cloudflare Tunnel token. The message names the `mm secret set` command. |
 | `MM_TUNNEL_NOT_CONNECTED`         |                       3 | A node's Cloudflare Tunnel connector held no connection to Cloudflare within 90 seconds of a deployment. That node went back to what it ran before, and the nodes after it were not changed. The message names the connector's container, whose log says why. |
 | `MM_REMOTE`                       |                       3 | A remote host reported an error under a code this `mm` does not know; the message starts with that code. Upgrade `mm`. |
+| `MM_REMOTE_UPGRADE_REQUIRED`      |                       3 | A host's `mmd` is too old for what this `mm` asked: the command needs a newer remote protocol than the host speaks, or the host could not read the request. Nothing was changed. The message names the host's release and the upgrade, `mm target setup plan --upgrade`. See [compatibility between releases](compatibility.md). |
 | `MM_TERMINAL`                     |                       1 | Prompt or terminal contract failure.                                                                          |
 | `MM_CLI_PARSE`                    | Clap status, normally 2 | Arguments could not be parsed.                                                                                |
 | `MM_OUTPUT`                       |         original status | Fallback when mm cannot print the intended output.                                                            |
@@ -208,7 +209,7 @@ Readiness findings include `MM_STATE_LEGACY`, `MM_TARGET_MISSING`,
 `MM_RUNTIME_REQUIRED`, `MM_BUILD_REQUIRED`, and `MM_SERVICES_REQUIRED`. On an
 environment whose target lists nodes, `mm doctor` also asks every node and
 reports `MM_NODE_UNREACHABLE`, `MM_NODE_REFUSED` (its `mmd` answered and
-refused, such as another remote protocol or a host policy it cannot read; the
+refused, such as no remote protocol in common or a host policy it cannot read; the
 message says what to do), `MM_NODE_NOT_SET_UP`, `MM_NODE_MISMATCH`,
 `MM_NODE_VERSION_SKEW`, `MM_NODE_COMMIT_SKEW`, `MM_ROLLOUT_UNFINISHED` (a
 rollout that was begun and neither finished nor rolled back; `mm deploy

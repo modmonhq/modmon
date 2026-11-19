@@ -8,9 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [0.1.1] - 2026-11-18
 
-Remote protocol: 19. `mm` and the `mmd` on your hosts must speak the same
-remote protocol: [Upgrade mm and your hosts](docs/how-to/upgrade.md) says which
-installations `mm target setup` upgrades in place and what it refuses.
+Remote protocol: 19. From this release on, `mm` and the `mmd` on your hosts
+use the newest remote protocol both speak: a newer `mm` works with hosts on
+0.1.1 or later, and a host upgraded first keeps serving older clients as long
+as it speaks their protocol. See
+[compatibility between releases](docs/reference/compatibility.md);
+[upgrade mm and your hosts](docs/how-to/upgrade.md) says which installations
+`mm target setup` upgrades in place and what it refuses.
 
 ### Removed
 
@@ -26,6 +30,11 @@ installations `mm target setup` upgrades in place and what it refuses.
 
 ### Changed
 
+- A host's `mmd` that cannot read a request, such as one from a newer `mm`,
+  answers `MM_REMOTE_UPGRADE_REQUIRED` with both releases and acts on none of
+  it, instead of closing the connection. When `mm` and a host share no
+  protocol, the refusal names the release and the protocols of each side, and
+  the command for the side to upgrade.
 - The installer is served at `https://modmon.dev/install.sh` (the site build
   copies `packaging/release/install.sh`) and installs from the releases on
   GitHub: the latest by default, or the one `--version` names, release

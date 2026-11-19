@@ -77,6 +77,7 @@ export const docsNav: DocsNavGroup[] = [
       "reference/cli",
       "reference/environment-variables",
       "reference/errors-and-exit-codes",
+      "reference/compatibility",
       "reference/capability-matrix",
       "reference/known-issues",
       "architecture/security-and-trust",
@@ -84,7 +85,13 @@ export const docsNav: DocsNavGroup[] = [
   },
   {
     title: "Contribute",
-    pages: ["project/contributing", "project/security", "contribute/releases", "project/license"],
+    pages: [
+      "project/contributing",
+      "project/security",
+      "contribute/releases",
+      "contribute/remote-protocol",
+      "project/license",
+    ],
   },
 ];
 

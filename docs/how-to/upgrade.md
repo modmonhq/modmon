@@ -4,12 +4,12 @@ description: Upgrade mm on your machine and mm and mmd on your hosts, which upgr
 ---
 
 An upgrade has two halves: `mm` on every machine that deploys, and `mm` (the
-relay) and `mmd` on every host. Each release's notes start with the remote
-protocol it speaks, such as `Remote protocol: 19`. A client and a host on
-different remote protocols refuse to work together, so when the protocol
-changes, upgrade the hosts and every machine that deploys to them. When it does
-not change, they keep working together and `mm doctor` warns until they run the
-same release.
+relay) and `mmd` on every host. Each release's notes start with the newest
+remote protocol it speaks, such as `Remote protocol: 19`. From 0.1.1 on, a
+client and a host use the newest protocol both speak, so you can upgrade the
+hosts and the machines that deploy to them in either order, and `mm doctor`
+warns until they run the same release. See
+[compatibility between releases](../reference/compatibility.md).
 
 ## Before you start
 
@@ -152,15 +152,26 @@ others are not contacted and keep their release.
 
 ## Clients and hosts on different releases
 
-When the remote protocols differ, the error says which side to upgrade:
+From 0.1.1 on, `mm` and a host's `mmd` each say the oldest and the newest
+remote protocol they speak, and use the newest one both have. A newer `mm`
+works with hosts on 0.1.1 or later, and a host upgraded first keeps serving
+older clients as long as it still speaks their protocol. On a cluster, each
+node agrees on its protocol by itself.
+
+When they share no protocol, the error names the release and the protocols of
+each side, and the side to upgrade:
 
 ```text
-this mm speaks remote protocol 18, and the host's mmd 0.1.1 speaks 19. Upgrade mm on this machine to 0.1.1 or newer
-this mm speaks remote protocol 19, and the host's mmd 0.1.0 speaks only 18. Upgrade the host: run `mm target setup plan --upgrade` and apply that plan with --upgrade
+This mm speaks remote protocol 18, and the host's mmd 0.1.1 speaks 19. Update mm on this machine to 0.1.1 or newer: run `mm update`, or the installer, https://modmon.dev/install.sh
+target 'production' (203.0.113.10:22) runs an mm from before 0.1.1, which cannot read the hello of this mm 0.1.1 (remote protocol 19). Upgrade the host: run `mm target setup plan --upgrade` and apply that plan with --upgrade
 ```
 
-When only the versions differ, `mm doctor` warns with
-`MM_HOST_RELEASE_OLDER` or `MM_HOST_RELEASE_NEWER` and names the hosts.
+A command that needs something the host's `mmd` does not have yet stops before
+it sends anything, with `MM_REMOTE_UPGRADE_REQUIRED` and the upgrade to run.
+
+While the releases differ, `mm doctor` warns with `MM_HOST_RELEASE_OLDER`
+(upgrade the hosts with `mm target setup plan --upgrade`) or
+`MM_HOST_RELEASE_NEWER` (run `mm update` on this machine) and names the hosts.
 
 ## Upgrades that need more than setup
 
@@ -179,9 +190,12 @@ When only the versions differ, `mm doctor` warns with
 | --------- | --------- |
 | What the plan says for each kind of node, and what it refuses | `core/tests/upgrade_paths.rs`; `core/tests/mesh.rs`: `setup_refuses_to_downgrade_a_node_and_says_what_it_replaces`, `setup_refuses_another_build_of_the_same_release_unless_asked` |
 | A single host is held to the same rules | `core/tests/upgrade_paths.rs`: `a_target_without_nodes_reads_its_host_release_as_a_cluster_reads_each_node` |
-| Which side to upgrade when the protocols differ | `core/tests/upgrade_paths.rs`: `a_client_and_a_host_on_different_protocols_are_told_which_side_to_upgrade` |
+| Which side to upgrade when the protocols differ | `core/tests/upgrade_paths.rs`: `a_client_and_a_host_on_different_protocols_are_told_which_side_to_upgrade`; `core/tests/protocol_compatibility.rs`: `a_daemon_refuses_a_client_it_has_no_protocol_in_common_with` |
+| A client and a host on different releases agree on a protocol | `core/tests/protocol_compatibility.rs`: `client_and_daemon_speak_the_newest_protocol_both_have`, `a_daemon_answers_a_newer_client_in_the_protocol_both_speak` |
 | No container restarts and no lookup or request fails while `mmd` is replaced | `scripts/live-cluster.sh`, stage "an mmd upgrade, one node at a time, under traffic" |
 
 The live stage replaces `mmd` with another copy of the same build. No test in
-the repository upgrades real hosts from one release to another yet: try an
-upgrade on a staging cluster before production.
+the repository upgrades real hosts from one release to another yet, or runs
+two releases against each other: the protocol tests play the other side with
+the frames it would send. Try an upgrade on a staging cluster before
+production.
