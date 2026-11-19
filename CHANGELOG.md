@@ -1446,6 +1446,11 @@ hosts up again with `mm target setup plan --upgrade`. See
 - A managed OpenBao or Vault provider starts on Docker Compose: its Compose
   file gave the options of its `/tmp` mount as separate `tmpfs` entries,
   which the engine refused.
+- A build secret without a usable value said only that it was unavailable.
+  It now says whether the secret is unset or invalid and why: an `env`
+  secret whose variable holds a newline is `invalid` and points to the
+  `file` provider for multi-line values. `mm secret status` gives the same
+  reason.
 
 ### Security
 

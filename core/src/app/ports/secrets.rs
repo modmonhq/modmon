@@ -39,6 +39,15 @@ pub trait SecretMetadataInspector: Send + Sync {
         }
         Ok(found)
     }
+
+    /// Why `reference` is `Invalid` here, without its value.
+    async fn invalid_reason(
+        &self,
+        _scope: &SecretScope,
+        _reference: &SecretReference,
+    ) -> Option<String> {
+        None
+    }
 }
 
 #[async_trait]

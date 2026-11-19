@@ -573,9 +573,16 @@ impl BuildService {
                 .secret_resolver
                 .resolve(&scope, &reference)
                 .await?;
-            let material = resolution.material.ok_or_else(|| MmError::Secret {
-                message: format!("build secret '{id}' is unavailable"),
-            })?;
+            let Some(material) = resolution.material else {
+                return Err(self
+                    .missing_build_secret(
+                        (id, name),
+                        &scope,
+                        &reference,
+                        resolution.metadata.status,
+                    )
+                    .await);
+            };
             resolved.insert(id.clone(), material);
         }
         Ok(resolved)
@@ -767,6 +774,7 @@ fn require_plan_hash(plan: &ImageBuildPlan, expected: &str) -> Result<(), MmErro
 
 mod import;
 mod local;
+mod secret_state;
 pub use local::LocalBuild;
 
 #[cfg(test)]

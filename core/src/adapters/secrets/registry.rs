@@ -145,6 +145,17 @@ impl SecretMetadataInspector for SecretProviderRegistry {
             })
             .collect()
     }
+
+    async fn invalid_reason(
+        &self,
+        scope: &SecretScope,
+        reference: &SecretReference,
+    ) -> Option<String> {
+        let Ok(provider) = self.provider(reference) else {
+            return None;
+        };
+        provider.inspector.invalid_reason(scope, reference).await
+    }
 }
 
 #[async_trait]

@@ -87,6 +87,32 @@ impl SecretMetadataInspector for EnvironmentSecretStore {
             candidate_revision: None,
         })
     }
+
+    async fn invalid_reason(
+        &self,
+        _scope: &SecretScope,
+        reference: &SecretReference,
+    ) -> Option<String> {
+        if validate(reference).is_err() {
+            return None;
+        }
+        let name = reference.locator();
+        let Ok(value) = std::env::var_os(name)?.into_string() else {
+            return Some(format!("environment variable {name} is not UTF-8 text"));
+        };
+        let value = Zeroizing::new(value);
+        if value.contains(['\n', '\r']) {
+            Some(format!(
+                "environment variable {name} contains a newline; use the file provider for multi-line values"
+            ))
+        } else if is_safe_environment_value(&value) {
+            None
+        } else {
+            Some(format!(
+                "environment variable {name} contains a control character"
+            ))
+        }
+    }
 }
 
 #[async_trait]

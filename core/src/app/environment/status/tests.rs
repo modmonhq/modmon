@@ -85,7 +85,7 @@ fn provider_diagnostics_distinguish_each_actionable_status() {
         SecretStatus::Unset,
         SecretStatus::NotChecked,
     ] {
-        append_secret_diagnostic("provider", &metadata(status), &mut diagnostics);
+        append_secret_diagnostic("provider", &metadata(status), None, &mut diagnostics);
     }
     assert_eq!(
         diagnostics
