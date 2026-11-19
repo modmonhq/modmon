@@ -102,7 +102,7 @@ impl RemoteDaemon {
             }
         }
         self.audit_cancelled(context, &outcome, deployment.as_ref())?;
-        send_result(writer, context.request_id, RemoteResult::Cancelled(Box::new(outcome))).await
+        send_result(writer, context, RemoteResult::Cancelled(Box::new(outcome))).await
     }
 
     /// Stops the job runs of what was cancelled that have not ended, in

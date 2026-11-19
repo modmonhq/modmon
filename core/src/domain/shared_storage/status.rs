@@ -17,7 +17,6 @@ pub const STORAGE_REACH_TIMEOUT_MS: u64 = 3_000;
 
 /// A shared volume's directory on the storage node.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct StoredVolume {
     pub stack: String,
     pub volume: String,
@@ -44,7 +43,6 @@ const fn is_true(value: &bool) -> bool {
 
 /// What one node's `mmd` says about shared storage.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct StorageNodeStatus {
     /// The node's own name from `/etc/mm/node.env`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -399,7 +397,6 @@ impl VolumeDeletePlan {
 
 /// What deleting a shared volume removed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct VolumeDeleted {
     pub node: String,
     pub stack: String,

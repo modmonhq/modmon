@@ -1,5 +1,5 @@
 use super::*;
-use crate::domain::remote::{RemoteScope, protocol_mismatch};
+use crate::domain::remote::RemoteScope;
 use crate::domain::runtime::RuntimeKind;
 
 fn scope() -> RemoteScope {
@@ -365,23 +365,4 @@ fn the_subset_hint_names_the_nodes_to_pass() {
         "To go ahead without app-2, db-1, add `--nodes app-1`: app-2, db-1 keep what they run now"
     );
     assert!(unreachable_help(&["app-1"], &[]).contains("No other node"));
-}
-
-#[test]
-fn a_protocol_mismatch_says_which_side_to_upgrade() {
-    let old_client = protocol_mismatch(2, 3, "0.2.0");
-    assert!(
-        old_client.contains("Upgrade mm on this machine"),
-        "{old_client}"
-    );
-    assert!(old_client.contains("protocol 2"), "{old_client}");
-    assert!(!old_client.contains("mm target setup"), "{old_client}");
-
-    let old_daemon = protocol_mismatch(3, 2, "0.1.0");
-    assert!(old_daemon.contains("Upgrade the host"), "{old_daemon}");
-    assert!(
-        old_daemon.contains("mm target setup plan --upgrade"),
-        "{old_daemon}"
-    );
-    assert!(old_daemon.contains("speaks only 2"), "{old_daemon}");
 }

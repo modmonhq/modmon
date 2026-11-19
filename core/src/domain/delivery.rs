@@ -124,7 +124,6 @@ impl BundleOffer {
 
 /// What a host holds for a commit after a delivery.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct Delivered {
     pub commit: String,
     /// BLAKE3 of the bundle the host verified and unpacked for the commit.

@@ -23,8 +23,13 @@ use crate::domain::workspace::{ProjectId, WorkspaceSnapshot};
 /// a node reports its member of the environment's managed secret store with
 /// its facts (`NodeFacts.secret_store`, `NodeReport.secret_store`), takes a
 /// snapshot of it (`StoreSnapshot`), puts one back (`StoreRestore`), and
-/// moves the age store's secrets into it (`StoreMigrate`). (Protocol 18
-/// had the Compose overlay a host generates keep a service with
+/// moves the age store's secrets into it (`StoreMigrate`). A client's hello
+/// names the oldest protocol it speaks and its release (`minimum`,
+/// `ClientHello.client_version`), and the two sides speak the newest
+/// protocol both have ([`negotiate`]); a daemon answers a request it cannot
+/// read with `MM_REMOTE_UPGRADE_REQUIRED`. 0.1.1 shipped protocol 19, and
+/// every later release speaks it until a release note says otherwise.
+/// (Protocol 18 had the Compose overlay a host generates keep a service with
 /// `role: job` out of a deployment, and its status is `job_only`; a
 /// `secret-files` or `config-files` entry may name the `environments` it is
 /// mounted in; a deployment plan carries the release it deploys, the
@@ -77,23 +82,14 @@ use crate::domain::workspace::{ProjectId, WorkspaceSnapshot};
 /// step of its own, after every node has applied. Protocol 3 made requests
 /// name the cluster node they are for and sealed a cluster plan on every
 /// node under one hash. Protocol 2 made identity the SSH key alone and
-/// stopped clients from sending paths.) A client and a daemon on different
-/// versions refuse each other and say which side to upgrade
-/// ([`protocol_mismatch`]).
+/// stopped clients from sending paths.) This build speaks protocols
+/// [`MINIMUM_PROTOCOL_VERSION`] to this one.
 pub const PROTOCOL_VERSION: u16 = 19;
 
-pub const PROTOCOL_REFUSED: &str = "speaks another remote protocol version than this mm";
-pub const IDENTITY_REFUSED: &str = "runs an mmd with another identity than the one recorded for it";
-pub const HANDSHAKE_MISMATCH: &str =
-    "answered the handshake with an unexpected identity, nonce, or version";
+/// The oldest remote protocol this build speaks. Raising it drops every
+/// client and host that speaks only older ones: a breaking release.
+pub const MINIMUM_PROTOCOL_VERSION: u16 = 19;
 
-/// Whether `problem` says the host's `mmd` refused the handshake.
-#[must_use]
-pub fn refused_handshake(problem: &str) -> bool {
-    [PROTOCOL_REFUSED, IDENTITY_REFUSED, HANDSHAKE_MISMATCH]
-        .iter()
-        .any(|refused| problem.starts_with(refused))
-}
 pub const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_STREAM_FRAMES: u64 = 1_000_000;
 pub const MAX_STREAM_BYTES: u64 = 256 * 1024 * 1024;
@@ -138,14 +134,15 @@ impl RemoteScope {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct ClientHello {
     pub client_nonce: Uuid,
     pub expected_daemon_fingerprint: String,
+    /// The client's release of mm, such as `0.1.1`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub client_version: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct ServerHello {
     pub client_nonce: Uuid,
     pub server_nonce: Uuid,
@@ -164,8 +161,11 @@ pub enum ClientFrame {
         source: String,
         session_id: Uuid,
     },
+    /// `version` is the newest protocol the client speaks, `minimum` the
+    /// oldest.
     Hello {
         version: u16,
+        minimum: u16,
         hello: ClientHello,
     },
     Request {
@@ -493,7 +493,6 @@ pub enum RemotePlanKind {
 
 /// The caller's identity and effective access, as the daemon enforces it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct RemoteIdentity {
     pub principal: String,
     pub principal_id: PrincipalId,
@@ -511,6 +510,7 @@ pub struct RemoteIdentity {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RemotePlanBinding {
+    /// The protocol of the session the plan was made in.
     pub protocol_version: u16,
     pub daemon_version: String,
     pub daemon_fingerprint: String,
@@ -543,7 +543,7 @@ pub struct RemotePlanBinding {
 
 impl RemotePlanBinding {
     pub fn canonical_hash(&self) -> Result<String, String> {
-        if self.protocol_version != PROTOCOL_VERSION
+        if !ProtocolRange::THIS.contains(self.protocol_version)
             || self.daemon_version.is_empty()
             || !is_lower_hex_digest(&self.daemon_fingerprint)
             || !is_lower_hex_digest(&self.target_fingerprint)
@@ -611,7 +611,6 @@ pub enum MutationState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct RemoteError {
     pub code: String,
     pub message: String,
@@ -620,7 +619,7 @@ pub struct RemoteError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServerFrame {
     Hello {
         version: u16,
@@ -664,12 +663,7 @@ impl ServerFrame {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(
-    tag = "result",
-    content = "value",
-    rename_all = "snake_case",
-    deny_unknown_fields
-)]
+#[serde(tag = "result", content = "value", rename_all = "snake_case")]
 pub enum RemoteResult {
     Status(Box<WorkspaceSnapshot>),
     DeploymentPlan(Box<RemoteDeploymentPlan>),
@@ -711,12 +705,7 @@ pub enum RemoteResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(
-    tag = "item",
-    content = "value",
-    rename_all = "snake_case",
-    deny_unknown_fields
-)]
+#[serde(tag = "item", content = "value", rename_all = "snake_case")]
 pub enum RemoteStreamItem {
     Log(LogRecord),
     Exec(ExecEvent),
@@ -731,21 +720,6 @@ pub fn is_commit_sha(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
-}
-
-/// What to upgrade when a client and a daemon speak different protocol
-/// versions: the side that is behind.
-#[must_use]
-pub fn protocol_mismatch(client: u16, daemon: u16, daemon_release: &str) -> String {
-    if client < daemon {
-        format!(
-            "this mm speaks remote protocol {client}, and the host's mmd {daemon_release} speaks {daemon}. Upgrade mm on this machine to {daemon_release} or newer"
-        )
-    } else {
-        format!(
-            "this mm speaks remote protocol {client}, and the host's mmd {daemon_release} speaks only {daemon}. Upgrade the host: run `mm target setup plan --upgrade` and apply that plan with --upgrade"
-        )
-    }
 }
 
 /// The deployment hash a node's binding carries when the plan places no
@@ -784,6 +758,13 @@ mod engine;
 pub use engine::{EngineFacts, PODMAN_MINIMUM, engine_diagnostics};
 #[path = "remote/method.rs"]
 mod method;
+#[path = "remote/protocol.rs"]
+mod protocol;
+pub use protocol::{
+    Behind, FrameHead, HANDSHAKE_MISMATCH, HelloOffer, IDENTITY_REFUSED, MethodHead,
+    PROTOCOL_REFUSED, ProtocolRange, RequestHead, UPGRADE_REQUIRED_CODE, negotiate,
+    protocol_refusal, refused_handshake, request_not_understood, require_protocol,
+};
 #[path = "remote/moves.rs"]
 mod moves;
 pub use moves::{ServiceMove, check_moves_are_planned, service_moves};

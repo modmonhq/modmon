@@ -100,7 +100,6 @@ impl NodeRollout {
 
 /// What one host says about its deployments.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct NodeDeploymentStatus {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub current: Option<DeploymentRecord>,

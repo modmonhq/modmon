@@ -598,9 +598,11 @@ pub(super) async fn connected_client(
         &mut client,
         &ClientFrame::Hello {
             version: PROTOCOL_VERSION,
+            minimum: PROTOCOL_VERSION,
             hello: ClientHello {
                 client_nonce,
                 expected_daemon_fingerprint: fingerprint,
+                client_version: String::new(),
             },
         },
     )

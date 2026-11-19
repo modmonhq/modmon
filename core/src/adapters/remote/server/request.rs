@@ -282,7 +282,7 @@ impl RemoteDaemon {
                 self.audit(context, method_name, "failed", Some(error.code()))?;
                 send_operation_error(
                     writer,
-                    context.request_id,
+                    (context.protocol, context.request_id),
                     &error,
                     if changed {
                         MutationState::Unknown
@@ -318,7 +318,7 @@ impl RemoteDaemon {
                 let cancellation = OperationCancellation::default();
                 let stream = timed(timeout, self.use_cases.logs(context, request.clone(), cancellation.clone())).await?;
                 let stream = self.with_restart_lines(context, &request, stream, cancellation.clone());
-                send_result(writer, context.request_id, RemoteResult::StreamStarted).await?;
+                send_result(writer, context, RemoteResult::StreamStarted).await?;
                 self.stream_logs(reader, writer, context, stream, cancellation, timeout).await
             }
             RemoteMethod::Exec(request) => {
@@ -329,7 +329,7 @@ impl RemoteDaemon {
                 self.journal.set_request_phase(context.operation_nonce, "running")?;
                 let cancellation = OperationCancellation::default();
                 let stream = timed(timeout, self.use_cases.exec(context, request, cancellation.clone())).await?;
-                send_result(writer, context.request_id, RemoteResult::StreamStarted).await?;
+                send_result(writer, context, RemoteResult::StreamStarted).await?;
                 self.stream_exec(reader, writer, context, (stream, pass), cancellation, timeout).await
             }
             RemoteMethod::Forward { service, port } => {
@@ -373,7 +373,7 @@ impl RemoteDaemon {
             RemoteMethod::Status => {
                 let mut result = timed(timeout, self.use_cases.status(context)).await?;
                 self.finish_status(context, &mut result)?;
-                send_result(writer, context.request_id, RemoteResult::Status(Box::new(result))).await
+                send_result(writer, context, RemoteResult::Status(Box::new(result))).await
             }
             RemoteMethod::PlanDeployment { commit, receipt, release } => {
                 self.plan(writer, context, &commit, PlanRequest::Deployment(receipt, release), timeout).await
@@ -439,16 +439,16 @@ impl RemoteDaemon {
             RemoteMethod::MeshStatus => {
                 let mut status = timed(timeout, self.use_cases.mesh_status(context)).await?;
                 status.node = self.config.node_env()?.map(|node| node.name);
-                send_result(writer, context.request_id, RemoteResult::MeshStatus(Box::new(status))).await
+                send_result(writer, context, RemoteResult::MeshStatus(Box::new(status))).await
             }
             RemoteMethod::Networks => {
                 let mut status = timed(timeout, self.use_cases.networks(context)).await?;
                 status.node = self.config.node_env()?.map(|node| node.name);
-                send_result(writer, context.request_id, RemoteResult::Networks(Box::new(status))).await
+                send_result(writer, context, RemoteResult::Networks(Box::new(status))).await
             }
             RemoteMethod::Names => {
                 let report = timed(timeout, self.use_cases.names(context)).await?;
-                send_result(writer, context.request_id, RemoteResult::Names(Box::new(report))).await
+                send_result(writer, context, RemoteResult::Names(Box::new(report))).await
             }
             RemoteMethod::Runtimes => self.runtimes(writer, context, timeout).await,
             method @ RemoteMethod::JobRuns(_) => self.operate(writer, context, method, pass, timeout).await,

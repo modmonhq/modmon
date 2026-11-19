@@ -567,14 +567,16 @@ impl Host {
     fn hello(&self, client_nonce: uuid::Uuid) -> ClientFrame {
         ClientFrame::Hello {
             version: PROTOCOL_VERSION,
+            minimum: PROTOCOL_VERSION,
             hello: ClientHello {
                 client_nonce,
                 expected_daemon_fingerprint: self.daemon.identity().fingerprint.clone(),
+                client_version: String::new(),
             },
         }
     }
 
-    fn request(method: RemoteMethod, deadline: Duration) -> TestResult<ClientFrame> {
+    pub fn request(method: RemoteMethod, deadline: Duration) -> TestResult<ClientFrame> {
         Ok(ClientFrame::Request {
             version: PROTOCOL_VERSION,
             request_id: uuid::Uuid::new_v4(),

@@ -6,7 +6,9 @@ use std::net::Ipv4Addr;
 use base64::Engine;
 use mm::domain::cluster_setup::{HostRelease, ReleaseConsent, release_notices};
 use mm::domain::mesh::{MeshFacts, MeshMember, MeshNodeOrigin, PeerAction, plan_node};
-use mm::domain::remote::{PROTOCOL_VERSION, protocol_mismatch};
+use mm::domain::remote::{
+    Behind, MINIMUM_PROTOCOL_VERSION, PROTOCOL_VERSION, ProtocolRange, negotiate, protocol_refusal,
+};
 use mm::domain::repo_target::WireguardMesh;
 
 mod temp_dirs;
@@ -232,15 +234,36 @@ fn the_same_build_is_installed_again_without_a_flag() -> TestResult {
 
 #[test]
 fn a_client_and_a_host_on_different_protocols_are_told_which_side_to_upgrade() {
-    let older_client = protocol_mismatch(PROTOCOL_VERSION - 1, PROTOCOL_VERSION, THIS);
+    let host = ProtocolRange::THIS;
+    let only = |version: u16| ProtocolRange {
+        minimum: version,
+        maximum: version,
+    };
+    let older_client = protocol_refusal(("", only(MINIMUM_PROTOCOL_VERSION - 1)), (THIS, host));
     assert!(
-        older_client.contains(&format!("Upgrade mm on this machine to {THIS} or newer")),
+        older_client.contains(&format!(
+            "This mm speaks remote protocol {}, and the host's mmd {THIS} speaks {host}. Update mm on this machine to {THIS} or newer: run `mm update`",
+            MINIMUM_PROTOCOL_VERSION - 1
+        )),
         "{older_client}"
     );
-    let older_host = protocol_mismatch(PROTOCOL_VERSION, PROTOCOL_VERSION - 1, "0.1.0");
+    let newer_client = ProtocolRange {
+        minimum: PROTOCOL_VERSION + 1,
+        maximum: PROTOCOL_VERSION + 3,
+    };
+    let older_host = protocol_refusal(("9.0.0", newer_client), (THIS, host));
     assert!(
-        older_host.contains("Upgrade the host: run `mm target setup plan --upgrade` and apply that plan with --upgrade"),
+        older_host.contains(&format!(
+            "This mm 9.0.0 speaks remote protocol {} to {}, and the host's mmd {THIS} speaks {host}. Upgrade the host: run `mm target setup plan --upgrade` and apply that plan with --upgrade",
+            PROTOCOL_VERSION + 1,
+            PROTOCOL_VERSION + 3
+        )),
         "{older_host}"
+    );
+    assert_eq!(negotiate(newer_client, host), Err(Behind::Daemon));
+    assert_eq!(
+        negotiate(only(MINIMUM_PROTOCOL_VERSION - 1), host),
+        Err(Behind::Client)
     );
 }
 

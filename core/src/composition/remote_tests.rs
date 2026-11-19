@@ -36,6 +36,7 @@ fn context(
         scope,
         project_root: project_root.to_path_buf(),
         release: None,
+        protocol: crate::domain::remote::PROTOCOL_VERSION,
     }
 }
 

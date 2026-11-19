@@ -19,7 +19,7 @@ use crate::domain::workspace::ProjectId;
 #[serde(rename_all = "kebab-case")]
 pub struct HostRelease {
     pub version: String,
-    /// The remote protocol it speaks: a client of another one is refused.
+    /// The newest remote protocol it speaks.
     pub protocol: u16,
     /// The digest of the `mmd` executable ([`build_digest`]), which tells
     /// two builds of one release apart.

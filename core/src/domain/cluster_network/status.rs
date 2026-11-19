@@ -24,7 +24,7 @@ pub enum NetworkDriftKind {
 
 /// One difference between a node and the state it stored.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct NetworkDrift {
     pub kind: NetworkDriftKind,
     pub detail: String,
@@ -42,7 +42,7 @@ impl NetworkDrift {
 
 /// One node's cluster networks, as its `mmd` reads them.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct NodeNetworkStatus {
     /// The node's own name from `/etc/mm/node.env`.
     #[serde(default, skip_serializing_if = "Option::is_none")]

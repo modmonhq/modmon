@@ -10,6 +10,26 @@ enum HandshakeRefusal {
     Mismatch,
 }
 
+/// What the daemon's answer to the hello agreed on: the protocol of the
+/// session and the daemon's release.
+fn agreed(
+    frame: ServerFrame,
+    nonce: uuid::Uuid,
+    daemon_fingerprint: &str,
+) -> Result<(u16, String), Option<HandshakeRefusal>> {
+    match frame {
+        ServerFrame::Hello { version, hello }
+            if ProtocolRange::THIS.contains(version)
+                && hello.client_nonce == nonce
+                && hello.daemon_fingerprint == daemon_fingerprint =>
+        {
+            Ok((version, hello.daemon_version))
+        }
+        ServerFrame::Error { error, .. } => Err(Some(HandshakeRefusal::Daemon(error))),
+        _ => Err(Some(HandshakeRefusal::Mismatch)),
+    }
+}
+
 /// How long the daemon may take to answer the hello on a new connection.
 const HELLO_PATIENCE: Duration = Duration::from_secs(15);
 /// The same on a kept connection, which has no key exchange to wait for: a
@@ -152,6 +172,8 @@ impl SshEndpoint {
         });
         let mut connection = Connection {
             subject: self.subject.clone(),
+            protocol: MINIMUM_PROTOCOL_VERSION,
+            daemon_version: String::new(),
             child,
             stdin,
             stdout: FrameReader::new(stdout),
@@ -226,10 +248,14 @@ impl SshEndpoint {
 
     fn refused(&self, refusal: HandshakeRefusal) -> MmError {
         let (problem, help) = match refusal {
-            HandshakeRefusal::Daemon(error) if error.code == "MM_REMOTE_UPGRADE_REQUIRED" => (
-                crate::domain::remote::PROTOCOL_REFUSED.to_owned(),
-                error.message,
-            ),
+            HandshakeRefusal::Daemon(error)
+                if error.code == crate::domain::remote::UPGRADE_REQUIRED_CODE =>
+            {
+                (
+                    crate::domain::remote::PROTOCOL_REFUSED.to_owned(),
+                    error.message,
+                )
+            }
             HandshakeRefusal::Daemon(error) if error.code == "MM_REMOTE_IDENTITY" => (
                 crate::domain::remote::IDENTITY_REFUSED.to_owned(),
                 REPLACED_HOST_HELP.to_owned(),
@@ -299,10 +325,14 @@ fn connect_failure(stderr: &str) -> (String, String) {
             REPLACED_HOST_HELP.to_owned(),
         );
     }
-    if has("rejected a client protocol version") {
+    if has("rejected a client protocol version")
+        || has("malformed or unsupported") && has("unknown field")
+    {
         return (
             format!(
-                "runs an mmd that speaks an older remote protocol than this mm ({PROTOCOL_VERSION})"
+                "runs an mm from before 0.1.1, which cannot read the hello of this mm {} (remote protocol {})",
+                env!("CARGO_PKG_VERSION"),
+                ProtocolRange::THIS
             ),
             "Upgrade the host: run `mm target setup plan --upgrade` and apply that plan with --upgrade".to_owned(),
         );

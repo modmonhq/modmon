@@ -20,6 +20,7 @@ struct ReceivedRequest {
     scope: crate::domain::remote::RemoteScope,
     method: Box<RemoteMethod>,
     now_unix_ms: i64,
+    protocol: u16,
 }
 
 struct PreparedRequest {
@@ -137,8 +138,8 @@ impl RemoteDaemon {
         // reader keeps a frame that arrives in pieces.
         let reader = &mut FrameReader::new(reader);
         let session = self.authenticate_relay(reader, writer).await?;
-        self.handshake(reader, writer).await?;
-        let Some(received) = self.receive_request(reader, writer).await? else {
+        let agreed = self.handshake(reader, writer).await?;
+        let Some(received) = self.receive_request(reader, writer, &agreed).await? else {
             return Ok(());
         };
         let Some(prepared) = self.authorize_request(writer, &session, received).await? else {
@@ -182,10 +183,10 @@ impl RemoteDaemon {
         let ClientFrame::RelaySession { version, key_fingerprint, source, session_id } = frame else {
             return Err(protocol("first frame must be trusted relay session attribution"));
         };
-        if version != PROTOCOL_VERSION {
-            send_error(writer, None, remote_error(
-                "MM_REMOTE_UPGRADE_REQUIRED",
-                "the relay and mmd on this host are different versions; install both again with `mm target setup plan` and apply it",
+        if !ProtocolRange::THIS.contains(version) {
+            send_error(writer, (PROTOCOL_VERSION, None), remote_error(
+                UPGRADE_REQUIRED_CODE,
+                "the relay and mmd on this host are different versions; install both again with `mm target setup plan --upgrade` and apply it with --upgrade",
                 false, MutationState::NotStarted,
             )).await?;
             return Err(protocol("relay session protocol version is incompatible"));
@@ -196,22 +197,27 @@ impl RemoteDaemon {
         Ok(AuthenticatedSession { key_fingerprint, source, session_id })
     }
 
-    async fn handshake<R, W>(&self, reader: &mut FrameReader<&mut R>, writer: &mut W) -> Result<(), MmError>
+    /// Agrees on the newest protocol the client and this daemon both
+    /// speak, which every later frame of the session has.
+    async fn handshake<R, W>(&self, reader: &mut FrameReader<&mut R>, writer: &mut W) -> Result<Agreed, MmError>
     where R: AsyncRead + Unpin + ?Sized, W: AsyncWrite + Unpin + ?Sized {
         let first = tokio::time::timeout(
             Duration::from_millis(self.config.idle_timeout_ms),
-            reader.next::<ClientFrame>(),
+            reader.next_raw(),
         ).await.map_err(|_| protocol("client hello timed out"))??
             .ok_or_else(|| protocol("client disconnected before hello"))?;
-        let ClientFrame::Hello { version, hello } = first else {
-            return Err(protocol("relay session must be followed by a client hello"));
+        let offer = read_hello(&first)?;
+        let release = env!("CARGO_PKG_VERSION");
+        let Ok(version) = negotiate(offer.protocols(), ProtocolRange::THIS) else {
+            let refusal = protocol_refusal((offer.release(), offer.protocols()), (release, ProtocolRange::THIS));
+            send_error(writer, (PROTOCOL_VERSION, None), remote_error(
+                UPGRADE_REQUIRED_CODE, &refusal, false, MutationState::NotStarted,
+            )).await?;
+            return Err(protocol("the client speaks no protocol this daemon speaks"));
         };
-        if version != PROTOCOL_VERSION {
-            send_error(writer, None, upgrade_error(version)).await?;
-            return Err(protocol("unsupported protocol version"));
-        }
+        let hello = &offer.hello;
         if hello.expected_daemon_fingerprint != self.identity.fingerprint {
-            send_error(writer, None, remote_error(
+            send_error(writer, (version, None), remote_error(
                 "MM_REMOTE_IDENTITY", "daemon identity does not match the enrolled target",
                 false, MutationState::NotStarted,
             )).await?;
@@ -220,49 +226,59 @@ impl RemoteDaemon {
             });
         }
         write_frame(writer, &ServerFrame::Hello {
-            version: PROTOCOL_VERSION,
+            version,
             hello: ServerHello {
                 client_nonce: hello.client_nonce, server_nonce: uuid::Uuid::new_v4(),
-                daemon_version: env!("CARGO_PKG_VERSION").to_owned(),
+                daemon_version: release.to_owned(),
                 daemon_fingerprint: self.identity.fingerprint.clone(), instance_id: self.instance_id,
             },
-        }).await.map(|_| ())
+        }).await?;
+        Ok(Agreed { protocol: version, offered: offer.version, client_release: offer.release().to_owned() })
     }
 
+    /// The session's one request. A request read whole is checked here;
+    /// one this daemon cannot read whole is answered and never acted on.
     async fn receive_request<R, W>(
-        &self, reader: &mut FrameReader<&mut R>, writer: &mut W,
+        &self, reader: &mut FrameReader<&mut R>, writer: &mut W, agreed: &Agreed,
     ) -> Result<Option<ReceivedRequest>, MmError>
     where R: AsyncRead + Unpin + ?Sized, W: AsyncWrite + Unpin + ?Sized {
-        let frame = tokio::time::timeout(
+        let bytes = tokio::time::timeout(
             Duration::from_millis(self.config.idle_timeout_ms),
-            reader.next::<ClientFrame>(),
+            reader.next_raw(),
         ).await.map_err(|_| protocol("request timed out while idle"))??
             .ok_or_else(|| protocol("client disconnected before request"))?;
+        let frame = match decode_frame::<ClientFrame>(&bytes) {
+            Ok(frame) => frame,
+            Err(error) => return refuse_unread(writer, agreed, &bytes, error).await.map(|()| None),
+        };
         let ClientFrame::Request {
             version, request_id, operation_nonce, deadline_unix_ms, scope, method,
         } = frame else {
             return Err(protocol("hello must be followed by one request"));
         };
-        if version != PROTOCOL_VERSION {
-            send_error(writer, Some(request_id), upgrade_error(version)).await?;
+        if version != agreed.protocol && version != agreed.offered {
+            send_operation_error(writer, (agreed.protocol, request_id),
+                &protocol(&format!("the request has protocol {version}, and the session agreed on {}", agreed.protocol)),
+                MutationState::NotStarted).await?;
             return Err(protocol("request protocol version changed"));
         }
         let now = now_unix_ms()?;
         if deadline_unix_ms <= now || deadline_unix_ms.saturating_sub(now)
             > i64::try_from(MAX_REQUEST_TIMEOUT_MS).unwrap_or(i64::MAX)
         {
-            send_error(writer, Some(request_id), remote_error(
+            send_error(writer, (agreed.protocol, Some(request_id)), remote_error(
                 "MM_REMOTE_DEADLINE", "request deadline is expired or outside the supported bound",
                 true, MutationState::NotStarted,
             )).await?;
             return Ok(None);
         }
         if let Err(message) = scope.validate() {
-            send_operation_error(writer, request_id, &MmError::Security { message }, MutationState::NotStarted).await?;
+            send_operation_error(writer, (agreed.protocol, request_id), &MmError::Security { message }, MutationState::NotStarted).await?;
             return Ok(None);
         }
         Ok(Some(ReceivedRequest {
             request_id, operation_nonce, deadline_unix_ms, scope, method, now_unix_ms: now,
+            protocol: agreed.protocol,
         }))
     }
 
@@ -284,7 +300,7 @@ impl RemoteDaemon {
             Err(error) => {
                 self.audit_denied(session, request.request_id, request.operation_nonce,
                     &request.scope, &request.method, error.code())?;
-                send_operation_error(writer, request.request_id, &error, MutationState::NotStarted).await?;
+                send_operation_error(writer, (request.protocol, request.request_id), &error, MutationState::NotStarted).await?;
                 return Ok(None);
             }
         };
@@ -293,14 +309,14 @@ impl RemoteDaemon {
             if exec.stdin != crate::domain::observability::ExecStdinMode::Closed
                 || exec.tty != crate::domain::observability::ExecTtyMode::Disabled)
         {
-            send_operation_error(writer, request.request_id,
+            send_operation_error(writer, (request.protocol, request.request_id),
                 &protocol("this remote protocol does not transport exec stdin or TTY state yet"),
                 MutationState::NotStarted).await?;
             return Ok(None);
         }
         bind_principal(&mut request.method, &principal.name);
         if let Err(error) = self.journal.begin_request(request.operation_nonce, request.request_id) {
-            send_operation_error(writer, request.request_id, &error, MutationState::NotStarted).await?;
+            send_operation_error(writer, (request.protocol, request.request_id), &error, MutationState::NotStarted).await?;
             return Ok(None);
         }
         let context = RemoteRequestContext {
@@ -310,7 +326,7 @@ impl RemoteDaemon {
             source: session.source.clone(),
             request_plan_hash: request.method.reviewed_plan().map(str::to_owned),
             authorization, deadline_unix_ms: request.deadline_unix_ms,
-            scope: request.scope, project_root, release: None,
+            scope: request.scope, project_root, release: None, protocol: request.protocol,
         };
         Ok(Some(PreparedRequest {
             context,
@@ -408,7 +424,7 @@ impl RemoteDaemon {
                     Some(Ok(record)) => {
                         count = count.saturating_add(1);
                         let frame = ServerFrame::Stream {
-                            version: PROTOCOL_VERSION,
+                            version: context.protocol,
                             request_id: context.request_id,
                             sequence: count,
                             item: Box::new(RemoteStreamItem::Log(record)),
@@ -421,7 +437,7 @@ impl RemoteDaemon {
                     None => break,
                 },
                 frame = reader.next::<ClientFrame>() => {
-                    if is_cancel(frame?, context.request_id)? {
+                    if is_cancel(frame?, (context.protocol, context.request_id))? {
                         cancellation.cancel();
                         break;
                     }
@@ -432,7 +448,7 @@ impl RemoteDaemon {
                 }
             }
         }
-        send_end(writer, context.request_id, count, bytes).await
+        send_end(writer, context, count, bytes).await
     }
 
     async fn stream_exec<R, W>(
@@ -466,7 +482,7 @@ impl RemoteDaemon {
                     Some(Ok(event)) => {
                         count = count.saturating_add(1);
                         let frame = ServerFrame::Stream {
-                            version: PROTOCOL_VERSION,
+                            version: context.protocol,
                             request_id: context.request_id,
                             sequence: count,
                             item: Box::new(RemoteStreamItem::Exec(event)),
@@ -479,7 +495,7 @@ impl RemoteDaemon {
                     None => break,
                 },
                 frame = reader.next::<ClientFrame>() => {
-                    if is_cancel(frame?, context.request_id)? {
+                    if is_cancel(frame?, (context.protocol, context.request_id))? {
                         cancellation.cancel();
                         return Err(protocol(
                             "exec stream was cancelled; command outcome is unknown",
@@ -492,7 +508,7 @@ impl RemoteDaemon {
                 }
             }
         }
-        send_end(writer, context.request_id, count, bytes).await
+        send_end(writer, context, count, bytes).await
     }
 
     fn audit(

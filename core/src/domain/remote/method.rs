@@ -1,10 +1,10 @@
-//! What kind of request a remote method is: its name, whether it changes
-//! the host, waits for the host's turn, or is an operation in flight, and
-//! the operation it belongs to.
+//! What kind of request a remote method is: its name, the protocol it
+//! needs, whether it changes the host, waits for the host's turn, or is an
+//! operation in flight, and the operation it belongs to.
 
 use uuid::Uuid;
 
-use super::RemoteMethod;
+use super::{MINIMUM_PROTOCOL_VERSION, RemoteMethod};
 
 impl RemoteMethod {
     #[must_use]
@@ -44,6 +44,13 @@ impl RemoteMethod {
             Self::StoreRestore(_) => "store_restore",
             Self::StoreMigrate { .. } => "store_migrate",
         }
+    }
+
+    /// The oldest protocol whose daemons read this request as it is: a
+    /// method or field added later names the protocol that added it here.
+    #[must_use]
+    pub const fn protocol(&self) -> u16 {
+        MINIMUM_PROTOCOL_VERSION
     }
 
     #[must_use]

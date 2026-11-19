@@ -65,17 +65,20 @@ async fn delivery_answer(
         .await
         .map_err(|_| late(&connection.subject, "deliver", waited, state))??
         .ok_or_else(|| disconnect(&connection.subject, state))?;
+    let agreed = connection.protocol;
     match frame {
         ServerFrame::Result {
-            version: PROTOCOL_VERSION,
+            version,
             request_id: received,
             result,
-        } if received == request_id => Ok(*result),
+        } if version == agreed && received == request_id => Ok(*result),
         ServerFrame::Error {
-            version: PROTOCOL_VERSION,
+            version,
             request_id: received,
             error,
-        } if received.is_none() || received == Some(request_id) => Err(server_error(error)),
+        } if version == agreed && (received.is_none() || received == Some(request_id)) => {
+            Err(server_error(error))
+        }
         _ => Err(protocol("remote delivery response did not match the request")),
     }
 }
@@ -96,6 +99,7 @@ async fn send_bundle(
         source,
     })?;
     let engine = base64::engine::general_purpose::STANDARD;
+    let version = connection.protocol;
     let Connection { stdin, stdout, subject, .. } = connection;
     let upload = async {
         let mut buffer = vec![0_u8; crate::domain::delivery::BUNDLE_CHUNK_BYTES];
@@ -110,7 +114,7 @@ async fn send_bundle(
             write_frame(
                 stdin,
                 &ClientFrame::Data {
-                    version: PROTOCOL_VERSION,
+                    version,
                     request_id,
                     bytes: engine.encode(&buffer[..count]),
                 },

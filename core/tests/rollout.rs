@@ -566,7 +566,7 @@ fn the_same_commit_with_the_same_images_is_the_same_release() {
 fn deploy_status_names_the_nodes_that_did_not_answer() {
     let silent = |node: &str| NodeStatusRow {
         node: node.to_owned(),
-        problem: Some("speaks another remote protocol version than this mm".to_owned()),
+        problem: Some("has no remote protocol in common with this mm".to_owned()),
         status: None,
     };
     let answered = status(vec![row("app-1", Some(record('a', 10, '1')), None)]);
@@ -642,7 +642,7 @@ fn small_findings_name_the_place_and_the_next_step() -> TestResult {
         secret_store: None,
     };
     assert!(refused_handshake(
-        "speaks another remote protocol version than this mm. Upgrade mm on this machine"
+        "has no remote protocol in common with this mm. Update mm on this machine"
     ));
     assert!(!refused_handshake("did not answer on 203.0.113.11:22"));
     let found: Vec<Diagnostic> = node_diagnostics(

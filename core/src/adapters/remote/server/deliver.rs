@@ -117,11 +117,11 @@ impl RemoteDaemon {
         if let Some(record) = self.already_delivered(&scope, &offer)? {
             let delivered = record.delivered(false);
             self.audit_delivery(context, &delivered, &record.branches)?;
-            return send_result(writer, context.request_id, RemoteResult::Delivered(Box::new(delivered))).await;
+            return send_result(writer, context, RemoteResult::Delivered(Box::new(delivered))).await;
         }
         let mut receiver = self.repositories.receive(&scope, &offer)?;
         self.journal.set_request_phase(context.operation_nonce, "running")?;
-        send_result(writer, context.request_id, RemoteResult::StreamStarted).await?;
+        send_result(writer, context, RemoteResult::StreamStarted).await?;
         let deadline = tokio::time::Instant::now() + timeout;
         // The upload is at work while the loop looks (`mm deploy status`
         // shows it), and `mm deploy cancel` stops it like any operation.
@@ -163,7 +163,7 @@ impl RemoteDaemon {
         };
         let delivered = self.watched(context, pass, remaining(context)?, checked).await?;
         self.audit_delivery(context, &delivered, &offer.branches)?;
-        send_result(writer, context.request_id, RemoteResult::Delivered(Box::new(delivered))).await
+        send_result(writer, context, RemoteResult::Delivered(Box::new(delivered))).await
     }
 
     /// The audit record of a commit a client delivered or the host held.

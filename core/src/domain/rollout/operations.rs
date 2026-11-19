@@ -13,7 +13,6 @@ pub const SHORT_ID: usize = 12;
 /// One operation a host's `mmd` is running: a deployment or one step of
 /// it, an access sync, a restart, a job run.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct OperationInFlight {
     /// The operation's ID: the reviewed plan's hash for a deployment or an
     /// access sync, which every step and node of it shares, and the
@@ -70,7 +69,6 @@ pub fn short_id(id: &str) -> &str {
 /// A child process of `mmd` that is still there after its deadline: its
 /// supervisor ended its process group, and something kept it alive.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct LateChild {
     pub pid: u32,
     /// The program, without its arguments.
@@ -81,7 +79,6 @@ pub struct LateChild {
 
 /// How a host's daemon fares: what `mm doctor` reports for each node.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct DaemonHealth {
     /// When this `mmd` process started: a recent time after a long uptime
     /// means it was restarted, by its watchdog or by hand.
@@ -102,7 +99,6 @@ pub struct DaemonHealth {
 
 /// What `mm deploy cancel` did on one host.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct CancelOutcome {
     /// The operations it stopped.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -129,7 +125,6 @@ pub struct CancelOutcome {
 /// stopped and the run recorded as cancelled, or, while the host's job
 /// keeper looks at it, is being cancelled.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct CancelledRun {
     pub job: String,
     pub run: uuid::Uuid,

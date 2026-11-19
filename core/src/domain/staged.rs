@@ -162,7 +162,6 @@ pub enum StageState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct StageAnswer {
     pub stage: Uuid,
     pub state: StageState,
@@ -384,7 +383,6 @@ pub struct StagedRevision {
 
 /// One declared secret or variable as one node holds it. Never a value.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct HostValue {
     pub key: String,
     pub kind: ValueKind,
@@ -419,7 +417,6 @@ impl HostValue {
 /// What one node holds for an environment's declared secrets and the
 /// variables that may be set on it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct NodeValues {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub node: Option<String>,

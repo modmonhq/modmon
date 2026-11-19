@@ -8,7 +8,7 @@ use crate::domain::diagnostic::Diagnostic;
 
 /// One runtime of a host's `runtimes:`, tried on that host.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct RuntimeCheck {
     pub name: String,
     /// Whether the engine ran a container under it.
@@ -20,7 +20,7 @@ pub struct RuntimeCheck {
 
 /// What a host's `mmd` says about the OCI runtimes of its policy.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct HostRuntimeStatus {
     /// Each runtime the host offers, tried.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

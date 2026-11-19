@@ -55,11 +55,11 @@ async fn receive_stream(context: StreamReceiveContext) {
                 };
                 match frame {
                     ServerFrame::Stream {
-                        version: PROTOCOL_VERSION,
+                        version,
                         request_id: received,
                         sequence: received_sequence,
                         item,
-                    } if received == request_id && received_sequence == sequence.saturating_add(1) => {
+                    } if version == connection.protocol && received == request_id && received_sequence == sequence.saturating_add(1) => {
                         sequence = received_sequence;
                         bytes = bytes.saturating_add(u64::try_from(encoded).unwrap_or(u64::MAX));
                         if sequence > MAX_STREAM_FRAMES || bytes > MAX_STREAM_BYTES {
@@ -80,11 +80,11 @@ async fn receive_stream(context: StreamReceiveContext) {
                         }
                     }
                     ServerFrame::End {
-                        version: PROTOCOL_VERSION,
+                        version,
                         request_id: received,
                         frames,
                         bytes: reported_bytes,
-                    } if received == request_id && frames == sequence && reported_bytes == bytes => break,
+                    } if version == connection.protocol && received == request_id && frames == sequence && reported_bytes == bytes => break,
                     ServerFrame::Error { request_id: received, error, .. }
                         if received.is_none() || received == Some(request_id) => {
                             send_stream_error(&sender, &cancellation, server_error(error)).await;
@@ -98,7 +98,7 @@ async fn receive_stream(context: StreamReceiveContext) {
             }
             () = tokio::time::sleep(Duration::from_millis(25)), if !cancel_sent => {
                 if cancellation.is_cancelled() {
-                    let cancel = ClientFrame::Cancel { version: PROTOCOL_VERSION, request_id };
+                    let cancel = ClientFrame::Cancel { version: connection.protocol, request_id };
                     if write_frame(&mut connection.stdin, &cancel).await.is_err() {
                         break;
                     }
@@ -109,7 +109,7 @@ async fn receive_stream(context: StreamReceiveContext) {
                 cancellation.cancel();
                 if write_frame(
                     &mut connection.stdin,
-                    &ClientFrame::Cancel { version: PROTOCOL_VERSION, request_id },
+                    &ClientFrame::Cancel { version: connection.protocol, request_id },
                 ).await.is_err() {
                     tracing::debug!(%request_id, "remote cancellation frame could not be delivered");
                 }

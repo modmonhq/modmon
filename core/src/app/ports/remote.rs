@@ -32,6 +32,9 @@ pub struct RemoteRequestContext {
     pub project_root: std::path::PathBuf,
     /// Set by the daemon for a plan and its apply: the release it deploys.
     pub release: Option<crate::domain::release_facts::ReleaseFacts>,
+    /// The protocol the client and the daemon agreed on: every frame of
+    /// the session has it, and an answer holds nothing newer.
+    pub protocol: u16,
 }
 
 #[async_trait]

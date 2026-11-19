@@ -132,6 +132,8 @@ fn test_connection(
     let stdout = child.stdout.take().ok_or("stdout missing")?;
     Ok(Connection {
         subject: "target 'remote' (example.test:2222)".to_owned(),
+        protocol: PROTOCOL_VERSION,
+        daemon_version: "0.1.1".to_owned(),
         child,
         stdin,
         stdout: FrameReader::new(stdout),
