@@ -39,6 +39,13 @@ installations `mm target setup` upgrades in place and what it refuses.
 - A client newer than its host now says to run `mm target setup plan
   --upgrade` and to apply that plan with `--upgrade`; before, it named the
   plan without the flag that a cluster's setup asks for.
+- A build reads the ignore file next to its Dockerfile, such as
+  `web/Dockerfile.dockerignore` for `web/Dockerfile`, instead of the
+  context's `.dockerignore` when it exists, as Docker does, and matches
+  ignore patterns by Docker's rules: from the top of the context, so
+  `node_modules` no longer excludes `web/node_modules` (write
+  `**/node_modules`). An image's context hash covers only what its own
+  ignore file sends.
 - `mm build` builds only the build variant the environment selects (every
   variant when it selects none of several), and a build receipt deploys to
   another environment only when it holds the variant that environment
@@ -994,6 +1001,10 @@ installations `mm target setup` upgrades in place and what it refuses.
   declared secrets in the stores it uses. Before, they read every declared
   secret, so on a machine with no connection to another environment's secret
   store a local before-deploy job, and with it `mm dev up`, failed.
+- A symlink, special file, or `.env` file that the ignore file excludes no
+  longer stops a build. One that would be sent is refused with its path in
+  the context and the ignore file to exclude it in, in the terminal and over
+  MCP.
 - A node of a cluster no longer refuses a deployment plan for want of a
   secret that only a service placed on other nodes mounts, such as the
   secret file of a `role: job` service pinned to one node.
