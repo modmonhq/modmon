@@ -143,6 +143,45 @@ secrets:
 }
 
 #[tokio::test]
+async fn a_plan_lists_the_keys_its_planner_ignored_outside_its_hash()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = Fixture::new(false)?;
+    fs::write(
+        fixture.project.join(".config/mm.overrides.yaml"),
+        "modules:\n  app:\n    services:\n      web:\n        replicaz: 2\nnewer-key: {}\n",
+    )?;
+    let plan = fixture.service.plan(&fixture.selection).await?;
+    let keys = plan
+        .unknown_config_keys
+        .iter()
+        .map(|key| {
+            (
+                key.file.as_str(),
+                key.key.as_str(),
+                key.suggestion.as_deref(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        keys,
+        [
+            (
+                ".config/mm.overrides.yaml",
+                "modules.app.services.web.replicaz",
+                Some("replicas")
+            ),
+            (".config/mm.overrides.yaml", "newer-key", None),
+        ]
+    );
+    let json = serde_json::to_value(&plan)?;
+    assert_eq!(json["unknown_config_keys"][1]["key"], "newer-key");
+    let mut without = plan.clone();
+    without.unknown_config_keys.clear();
+    assert_eq!(without.canonical_hash()?, plan.plan_hash);
+    Ok(())
+}
+
+#[tokio::test]
 async fn deployment_requires_a_matching_published_build_and_pins_its_digest()
 -> Result<(), Box<dyn std::error::Error>> {
     let fixture = Fixture::new(false)?;
