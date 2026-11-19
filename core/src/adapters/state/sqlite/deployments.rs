@@ -128,7 +128,8 @@ macro_rules! sqlite_deployments { () => {
                    AND operations.environment = ?2
                    AND operations.kind = 'deploy'
                    AND operations.state = 'succeeded'
-                 ORDER BY operations.finished_at_ms DESC, operations.requested_at_ms DESC",
+                 ORDER BY operations.finished_at_ms DESC, operations.requested_at_ms DESC,
+                          snapshots.rowid DESC",
             )
             .map_err(state_error)?;
         let rows = statement
@@ -164,7 +165,8 @@ macro_rules! sqlite_deployments { () => {
                    AND operations.environment = ?2
                    AND operations.kind = 'deploy'
                    AND operations.state = 'succeeded'
-                 ORDER BY operations.finished_at_ms DESC, operations.requested_at_ms DESC",
+                 ORDER BY operations.finished_at_ms DESC, operations.requested_at_ms DESC,
+                          snapshots.rowid DESC",
             )
             .map_err(state_error)?;
         let rows = statement
@@ -200,7 +202,7 @@ macro_rules! sqlite_deployments { () => {
                    AND operations.environment = ?2
                    AND operations.kind = 'deploy'
                    AND operations.state IN ('succeeded', 'running')
-                 ORDER BY operations.requested_at_ms DESC",
+                 ORDER BY operations.requested_at_ms DESC, snapshots.rowid DESC",
             )
             .map_err(state_error)?;
         let rows = statement
@@ -238,7 +240,7 @@ macro_rules! sqlite_deployments { () => {
                    AND operations.environment = ?2
                    AND operations.kind = 'deploy'
                    AND operations.state = 'running'
-                 ORDER BY operations.requested_at_ms DESC",
+                 ORDER BY operations.requested_at_ms DESC, snapshots.rowid DESC",
             )
             .map_err(state_error)?;
         let rows = statement

@@ -1076,6 +1076,7 @@ fn deployment_plan(context: &RemoteRequestContext) -> Result<DeploymentPlan, MmE
         preserved_volumes: Vec::new(),
         removed_preserved_volumes: Vec::new(),
         previous_owner_claims: Vec::new(),
+        adopted_route_claims: Vec::new(),
         desired_route_claims: Vec::new(),
         complete_route_claims: Vec::new(),
         desired_middlewares: std::collections::BTreeMap::new(),

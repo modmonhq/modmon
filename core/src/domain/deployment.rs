@@ -86,6 +86,10 @@ pub struct DeploymentPlan {
     pub preserved_volumes: Vec<crate::domain::development_mount::PreservedVolumeManifest>,
     pub removed_preserved_volumes: Vec<crate::domain::development_mount::PreservedVolumeManifest>,
     pub previous_owner_claims: Vec<IngressRouteClaim>,
+    /// The routes the environment holds that the last finished deployment
+    /// did not record; the plan takes them back and replaces them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub adopted_route_claims: Vec<IngressRouteClaim>,
     pub desired_route_claims: Vec<IngressRouteClaim>,
     pub complete_route_claims: Vec<IngressRouteClaim>,
     pub desired_middlewares: BTreeMap<String, CanonicalMiddleware>,
@@ -145,6 +149,23 @@ pub struct DeploymentPlan {
 }
 
 impl DeploymentPlan {
+    /// The plan's line for the routes it takes back, if it takes any.
+    #[must_use]
+    pub fn adopted_routes_line(&self) -> Option<String> {
+        let count = self.adopted_route_claims.len();
+        (count > 0).then(|| {
+            format!(
+                "takes back {count} {} this environment holds that {}",
+                if count == 1 { "route" } else { "routes" },
+                if self.expected_previous_plan_hash.is_some() {
+                    "the last finished deployment did not record"
+                } else {
+                    "no finished deployment recorded"
+                }
+            )
+        })
+    }
+
     pub fn canonical_hash(&self) -> Result<String, String> {
         self.validate_canonical_inputs()?;
         let mut hasher = blake3::Hasher::new();
@@ -296,6 +317,13 @@ impl DeploymentPlan {
             },
         );
         hash_field(hasher, &self.previous_dynamic_config.manifest.digest);
+        if !self.adopted_route_claims.is_empty() {
+            hash_field(hasher, "adopted-route-claims-v1");
+            hash_count(hasher, self.adopted_route_claims.len());
+            for claim in &self.adopted_route_claims {
+                hash_claim(hasher, claim)?;
+            }
+        }
         Ok(())
     }
 
@@ -512,6 +540,15 @@ impl DeploymentPlan {
         {
             return Err(
                 "removed deployment ingress does not match an empty target route set".to_owned(),
+            );
+        }
+        if !self.adopted_route_claims.is_empty()
+            && (self.adopted_route_claims != self.previous_owner_claims
+                || !self.route_state_changed)
+        {
+            return Err(
+                "deployment takes back routes other than the ones its environment holds, or does not commit them"
+                    .to_owned(),
             );
         }
         let desired_volume_names = self

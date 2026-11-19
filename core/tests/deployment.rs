@@ -4042,21 +4042,6 @@ async fn stale_runtime_snapshot_is_rejected_before_preflight_or_recovery_mutatio
 #[tokio::test]
 async fn prior_snapshot_permutations_and_cross_owner_route_conflicts_fail_closed()
 -> Result<(), Box<dyn std::error::Error>> {
-    let orphan = Fixture::new(false)?;
-    let plan = orphan.service.plan(&orphan.selection).await?;
-    orphan.routes.replace_owner_claims(
-        orphan.target_id,
-        plan.project_id,
-        &plan.environment,
-        &plan.desired_route_claims,
-        &plan.desired_middlewares,
-        900,
-    )?;
-    assert!(matches!(
-        orphan.service.plan(&orphan.selection).await,
-        Err(MmError::State { message }) if message.contains("no successful deployment snapshot")
-    ));
-
     let corrupt = Fixture::new(false)?;
     let initial = corrupt.service.plan(&corrupt.selection).await?;
     corrupt
