@@ -1,6 +1,9 @@
-//! The Compose source policy of one stack in one environment: the
-//! compilation keeps a file only when it passes.
+//! The Compose source policy of one stack in one environment. The
+//! compilation keeps a file only when it passes, and `mm config validate`
+//! asks the same policy about every environment, so a file it accepts is
+//! not refused later at `mm deploy` or `mm dev up`.
 
+use crate::domain::diagnostic::{Diagnostic, ValidationReport};
 use crate::domain::target::TargetTransport;
 
 use super::*;
@@ -26,6 +29,24 @@ impl SourceScope {
             host_decides: document.config.host_runtimes.is_some()
                 || target.definition.transport != TargetTransport::Local,
             proxy_ports: Some(ingress_loopback_ports(target.definition.id)),
+        }
+    }
+
+    /// Without the machine's targets: an environment on the target `local`
+    /// runs on this machine, any other on a host.
+    fn validating(document: &ConfigDocument, environment: &str) -> Self {
+        let target = document
+            .config
+            .environments
+            .get(environment)
+            .and_then(|overlay| overlay.target.as_deref())
+            .unwrap_or(document.config.target.as_str());
+        let here = target == "local" && !document.config.targets.contains_key(target);
+        Self {
+            automatic_local_ingress: here
+                && automatic_local_ingress_configured(document, environment),
+            host_decides: !here,
+            proxy_ports: None,
         }
     }
 
@@ -93,5 +114,63 @@ impl<'a> SourcePolicy<'a> {
             &self.document.config.networks.keys().cloned().collect(),
         )?;
         Ok(bytes)
+    }
+}
+
+/// What compiling each environment would refuse in the stacks' Compose
+/// files, as findings. Files that are missing or not YAML, and stacks whose
+/// routes do not resolve, are left to the other checks.
+pub(crate) fn compose_source_diagnostics(document: &ConfigDocument, report: &mut ValidationReport) {
+    let mut refused = BTreeMap::<(PathBuf, String), Vec<&str>>::new();
+    for environment in document.config.environments.keys() {
+        let scope = SourceScope::validating(document, environment);
+        for (stack_name, stack) in &document.config.stacks {
+            let Ok(routes) = resolve_ingress_services(document, environment, stack_name, stack)
+            else {
+                continue;
+            };
+            let policy = SourcePolicy::new(document, environment, stack_name, &routes, scope);
+            for file in &stack.files {
+                let path = document.root.join(file);
+                let Ok(Some(bytes)) = read_regular_file(&path, MAX_COMPOSE_FILE_BYTES) else {
+                    continue;
+                };
+                if serde_yaml_ng::from_slice::<serde_yaml_ng::Value>(&bytes).is_err() {
+                    continue;
+                }
+                let checked = reject_transitive_compose_files(&path, &bytes)
+                    .and_then(|()| policy.check(&path, bytes));
+                if let Err(error) = checked {
+                    let message = match error {
+                        MmError::Environment { message } => message,
+                        other => other.to_string(),
+                    };
+                    refused
+                        .entry((path, message))
+                        .or_default()
+                        .push(environment);
+                }
+            }
+        }
+    }
+    for ((path, message), environments) in refused {
+        if report
+            .diagnostics
+            .iter()
+            .any(|known| known.message == message)
+        {
+            continue;
+        }
+        let environments = match environments.as_slice() {
+            [one] => format!("environment {one}"),
+            many => format!("environments {}", many.join(", ")),
+        };
+        report.push(
+            Diagnostic::error(
+                "MM_COMPOSE_SOURCE",
+                format!("{message} (in {environments})"),
+            )
+            .at_path(path),
+        );
     }
 }

@@ -96,6 +96,7 @@ use ports::*;
 mod source_policy;
 use source_policy::*;
 mod compose_sources;
+pub(crate) use compose_sources::compose_source_diagnostics;
 use compose_sources::{SourcePolicy, SourceScope};
 mod file_references;
 mod host_network;

@@ -278,3 +278,56 @@ async fn a_host_plans_host_networking_only_for_a_service_its_policy_allows() -> 
     host.plan_at(ALICE, &commit).await?;
     Ok(())
 }
+
+#[test]
+fn config_validate_reports_the_refusal_for_each_environment() -> TestResult {
+    let temporary = temp_dirs::tempdir()?;
+    let project = temporary.path().join("project");
+    write_project(&project, VPN, &vpn(""), "")?;
+    let validate = || -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+        let output = temp_dirs::mm()
+            .arg("--root")
+            .arg(&project)
+            .arg("--mm-home")
+            .arg(temporary.path().join("home"))
+            .args(["--output", "json", "config", "validate"])
+            .output()?;
+        Ok(serde_json::from_slice(&output.stdout)?)
+    };
+    let report = validate()?;
+    let found = report["validation"]["diagnostics"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|diagnostic| diagnostic["code"] == "MM_COMPOSE_SOURCE")
+        .map(|diagnostic| {
+            diagnostic["message"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(found.len(), 1, "{report:#}");
+    assert!(
+        found[0].contains("add `host-network: <why>` under modules.app.services.vpn"),
+        "{}",
+        found[0]
+    );
+    assert!(
+        found[0].ends_with("(in environments development, production)"),
+        "{}",
+        found[0]
+    );
+
+    write_project(&project, VPN, &declared(), "")?;
+    let report = validate()?;
+    assert!(
+        report["validation"]["diagnostics"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .all(|diagnostic| diagnostic["code"] != "MM_COMPOSE_SOURCE"),
+        "{report:#}"
+    );
+    Ok(())
+}

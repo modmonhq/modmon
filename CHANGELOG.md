@@ -1021,6 +1021,10 @@ installations `mm target setup` upgrades in place and what it refuses.
   longer stops a build. One that would be sent is refused with its path in
   the context and the ignore file to exclude it in, in the terminal and over
   MCP.
+- `mm config validate` checks every environment's Compose files the way
+  `mm deploy` and `mm dev up` compile them and reports what they would
+  refuse as `MM_COMPOSE_SOURCE`. Before, such a file passed validation and
+  CI and failed first at the deployment.
 - A node of a cluster no longer refuses a deployment plan for want of a
   secret that only a service placed on other nodes mounts, such as the
   secret file of a `role: job` service pinned to one node.

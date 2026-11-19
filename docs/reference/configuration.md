@@ -993,4 +993,8 @@ versions are rejected rather than guessed or rewritten.
 
 `mm config validate` resolves the selected environment and performs cross-resource,
 path, file, ingress, build, environment, and secret-reference checks without
-inspecting containers.
+inspecting containers. It also checks every environment's Compose files the
+way `mm deploy` and `mm dev up` compile them, and reports what they would
+refuse with `MM_COMPOSE_SOURCE`, naming the environments. It knows targets by
+name only: an environment on the target `local` runs on this machine, and
+every other one on a host that decides by its own policy.
