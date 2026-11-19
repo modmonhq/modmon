@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { copyFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,12 +8,28 @@ import docsCodeTheme from "./app/docs.code-theme";
 const ui = fileURLToPath(new URL("../packages/ui/src", import.meta.url));
 const installer = fileURLToPath(new URL("../packaging/release/install.sh", import.meta.url));
 
+function latestRelease(): string {
+  try {
+    return execFileSync(
+      "git",
+      ["describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", "--exclude", "*-*"],
+      {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    ).trim();
+  } catch {
+    return "";
+  }
+}
+
 export default defineNuxtConfig({
   compatibilityDate: "2026-11-01",
   devtools: { enabled: false },
   telemetry: false,
   modules: ["@nuxt/content"],
   alias: { "@mm/ui": ui },
+  runtimeConfig: { public: { release: latestRelease() } },
   components: [
     { path: "~/components", pathPrefix: false },
     { path: `${ui}/components`, pathPrefix: false },

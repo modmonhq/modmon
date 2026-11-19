@@ -30,6 +30,7 @@ const does = [
   "Checks the archive's SHA-256 against the release's SHA256SUMS before extracting it.",
   "Installs mm in ~/.local/bin, with its ingress helper on Linux. No sudo, and no toolchain to build.",
   "Replaces an existing mm atomically, and refuses to downgrade unless you pass --force.",
+  "Later, mm update installs each new release the same way, checksum first.",
 ];
 </script>
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 const { site } = useAppConfig();
+const { release } = useRuntimeConfig().public;
 
 const columns = [
   {
@@ -33,6 +34,7 @@ const columns = [
     title: "Project",
     links: [
       { label: "GitHub", href: site.repo },
+      { label: "Releases", href: `${site.repo}/releases` },
       { label: "Contributing", to: "/docs/project/contributing" },
       { label: "Security", to: "/docs/project/security" },
       { label: "License", to: "/docs/project/license" },
@@ -86,7 +88,17 @@ const columns = [
       </div>
       <div class="footer__base">
         <span>MIT licensed.</span>
-        <span class="mono">mm · {{ site.url.replace("https://", "") }}</span>
+        <span class="mono">
+          mm
+          <a
+            v-if="release"
+            :href="`${site.repo}/releases/tag/${release}`"
+            class="footer__release"
+            rel="noopener"
+            >{{ release }}</a
+          >
+          · {{ site.url.replace("https://", "") }}
+        </span>
       </div>
     </div>
   </footer>
@@ -177,6 +189,14 @@ const columns = [
 }
 
 .footer__column a:hover {
+  color: var(--mm-ink);
+}
+
+.footer__release {
+  color: inherit;
+}
+
+.footer__release:hover {
   color: var(--mm-ink);
 }
 
