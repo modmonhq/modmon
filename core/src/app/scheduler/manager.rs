@@ -715,27 +715,13 @@ impl JobSchedulerService {
         document: &ConfigDocument,
         environment: &str,
     ) -> Result<Vec<zeroize::Zeroizing<String>>, MmError> {
-        let scope = SecretScope::new(environment);
-        let mut values = Vec::new();
-        for declaration in document.config.secrets.values() {
-            let reference = declaration
-                .storage
-                .reference()
-                .map_err(|message| MmError::Secret { message })?;
-            let resolution = self.secrets.resolve(&scope, &reference).await?;
-            match (resolution.metadata.status, resolution.material) {
-                (SecretStatus::Set, Some(material)) => values.push(material.into_zeroizing()),
-                (SecretStatus::Unset, None) => {}
-                _ => {
-                    return Err(MmError::Secret {
-                        message:
-                            "job output redaction could not resolve all configured secret material"
-                                .to_owned(),
-                    });
-                }
-            }
-        }
-        Ok(values)
+        crate::app::environment::environment_redactions(
+            &self.application,
+            self.secrets.as_ref(),
+            document,
+            environment,
+        )
+        .await
     }
 
     pub(super) fn context(

@@ -28,7 +28,7 @@ use crate::domain::runtime::{
     RuntimeEnvironment, RuntimeKind, RuntimeProbe, RuntimeTarget, ServiceIdentity,
 };
 use crate::domain::secret::{
-    SecretMaterial, SecretMetadata, SecretReference, SecretResolution, SecretScope,
+    SecretMaterial, SecretMetadata, SecretReference, SecretResolution, SecretScope, SecretStatus,
 };
 use crate::domain::target::{TargetDefinition, TargetId};
 use crate::domain::workspace::ProjectId;
@@ -254,6 +254,9 @@ modules:
     services:
       web:
         stack: app
+        secret-files:
+          token:
+            secret: token
 secrets:
   token:
     storage:

@@ -18,7 +18,6 @@ use crate::domain::scheduler::{
     ScheduleRecord, ScheduleTickCommit, due_occurrences, next_occurrence, reconciliation_plan,
     retry_delay,
 };
-use crate::domain::secret::{SecretScope, SecretStatus};
 
 const SCHEDULER_LEASE: Duration = Duration::from_secs(30);
 const MAX_SCHEDULES_PER_CYCLE: usize = 100;

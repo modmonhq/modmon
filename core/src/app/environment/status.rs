@@ -209,6 +209,38 @@ pub(super) fn used_secret_references(
     Ok(references)
 }
 
+/// Every secret the environment hands out: what its services read, its
+/// registry logins, its tunnel token, and its certificate.
+pub(crate) fn delivered_secret_references(
+    document: &ConfigDocument,
+    environment: &str,
+    index: &EnvironmentIndex,
+) -> Result<BTreeMap<String, SecretReference>, MmError> {
+    let mut references = used_secret_references(document, environment, index)?;
+    let config = &document.config;
+    let settings = config.environments.get(environment);
+    let tunnel = settings
+        .and_then(|settings| settings.ingress.as_ref()?.tunnel())
+        .map(|(token, _)| token);
+    let certificate = settings
+        .and_then(|settings| settings.tls.as_ref())
+        .into_iter()
+        .flat_map(|tls| [tls.certificate.clone(), tls.key.clone()]);
+    let credentials = config
+        .registries
+        .values()
+        .map(|registry| registry.password.secret.clone())
+        .chain(tunnel)
+        .chain(certificate);
+    for name in credentials {
+        if let Some(declaration) = config.secrets.get(&name) {
+            let reference = configured_reference(declaration)?;
+            references.insert(reference.canonical(), reference);
+        }
+    }
+    Ok(references)
+}
+
 pub(super) fn configured_reference(
     declaration: &SecretDeclaration,
 ) -> Result<SecretReference, MmError> {

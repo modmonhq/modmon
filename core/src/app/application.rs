@@ -589,6 +589,14 @@ impl Application {
         self.runtime.kind()
     }
 
+    pub(crate) fn environment_index(
+        &self,
+        document: &ConfigDocument,
+        environment: &str,
+    ) -> crate::domain::environment::EnvironmentIndex {
+        self.environment_sources.index(document, environment)
+    }
+
     /// Waits, at most `timeout`, until the containers of `services` in
     /// `target` run and pass their health checks, as a deployment does.
     pub(crate) async fn wait_for_services(

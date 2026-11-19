@@ -87,6 +87,8 @@ impl std::fmt::Debug for EnvironmentManager {
 mod manager;
 mod secret_driver;
 use secret_driver::runtime_secret_driver;
+mod redaction;
+pub(crate) use redaction::environment_redactions;
 mod registry;
 mod tls;
 mod tunnel;
