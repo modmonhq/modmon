@@ -1,4 +1,4 @@
-schema-version: 2
+schema-version: 1
 break-glass:
   - name: ops
     key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFkPDuJzgp2r/scZMqe+noBIAdbQcrLlOG3w6WBNqR+w

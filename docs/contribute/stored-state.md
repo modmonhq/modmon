@@ -11,28 +11,35 @@ rules when you change a type that `mm` or `mmd` writes to disk.
 
 ## Add a field
 
+Adding a key or a field is not a breaking change: the schema number stays.
+
 - Give it `#[serde(default)]`, or make it an `Option`, so files without it
   still read.
 - Do not put `#[serde(deny_unknown_fields)]` on a stored type: an older
-  release ignores the field. That type stays strict only when it is also
-  written by hand (`mm.yaml`, `host.yaml`, `mcp.json`) or is a security
-  check, such as `MeshState` refusing a private key.
+  release ignores the field. A reader of a file people read or edit
+  (`mmd.json`, `host.yaml`, `mcp.json`) warns about each key it does not
+  know, with `domain::stored_state::unknown_keys`. Types shared with project
+  configuration, such as `EnvironmentAccess` and `AllowRule`, follow that
+  configuration's rules, and `MeshState` stays strict so that it refuses a
+  private key.
 - An older release drops the field when it rewrites the file. If the field
-  must survive that, or an older release would act wrongly without it, bump
-  the schema instead.
+  must survive that, or an older release would act wrongly without it, such
+  as grant more than the file allows, it is a breaking change.
 - In a record with a hash (plans, seals, build receipts), add the field to
   the hash, and skip it when it holds its default
   (`skip_serializing_if`) so that records written before it keep their
   hash. An older release then refuses a record that sets it instead of
   acting on part of it.
 
-## Change a format
+## Make a breaking change
 
-Raise the file's version field (`schema`, `schema_version`, `version`, or
-`format`) and read every earlier version forward. Readers call
-`domain::stored_state::check_schema` before they parse the rest, so an older
-release refuses a newer file with `written by a newer mm (schema N)` and the
-command that updates it. A type without a version field gets one, read as
+Only a change an older release cannot read raises the file's version field
+(`schema`, `schema_version`, `version`, or `format`); every one starts at 1
+in 0.1.1. Read every earlier version forward, or refuse it with the command
+that writes it again, such as `mm target setup plan --upgrade` for a host
+file. Readers call `domain::stored_state::check_schema` before they parse the
+rest, so an older release refuses a newer file with `written by a newer mm
+(schema N)` and the command that updates it. A type without a version field gets one, read as
 1 when it is missing, the first time its format changes; the releases before
 it cannot refuse the new format, so that first change must stay one they can
 read.

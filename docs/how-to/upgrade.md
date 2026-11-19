@@ -181,10 +181,6 @@ While the releases differ, `mm doctor` warns with `MM_HOST_RELEASE_OLDER`
 
 ## Upgrades that need more than setup
 
-- **Hosts set up with `access.yaml`.** Builds that gave each developer an
-  account on the host kept access in `/etc/mm/access.yaml`, which `mmd` now
-  refuses. Move them first: see
-  [hosts set up with access.yaml](../remote-daemon.md#hosts-set-up-with-accessyaml).
 - **A rebuilt node.** It has a new SSH host key: plan with
   `--trust-new-host-keys` and check the fingerprints the plan prints. To bring
   back its records, see

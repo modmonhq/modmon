@@ -28,7 +28,7 @@ fn store(root: &Path, host: &str) -> Result<HostAccessStore, Box<dyn std::error:
     fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
     let config: crate::adapters::remote::DaemonConfig =
         serde_json::from_value(serde_json::json!({
-            "schema_version": 2,
+            "schema_version": 1,
             "socket_path": root.join("run/mm.sock"),
             "state_root": root.join("state"),
             "mm_home": root.join("home"),
@@ -44,7 +44,7 @@ fn store(root: &Path, host: &str) -> Result<HostAccessStore, Box<dyn std::error:
 
 fn host_yaml() -> String {
     format!(
-        "schema-version: 2\nbreak-glass:\n  - name: ops\n    key: {BOB}\nprojects:\n  {PROJECT}:\n    name: shop\n    origin: /srv/git/shop.git\n    environments: [staging, production]\n    ceiling:\n      production: {{level: view}}\n"
+        "schema-version: 1\nbreak-glass:\n  - name: ops\n    key: {BOB}\nprojects:\n  {PROJECT}:\n    name: shop\n    origin: /srv/git/shop.git\n    environments: [staging, production]\n    ceiling:\n      production: {{level: view}}\n"
     )
 }
 
@@ -185,18 +185,15 @@ fn rejects_old_access_policies_unsafe_files_and_bad_policies()
         temporary.path(),
         "schema_version: 1\nrevision: 1\nprincipals: []\n",
     )?;
-    assert!(
-        old.load()
-            .is_err_and(|error| error.to_string().contains("schema-1 access.yaml"))
-    );
+    assert!(old.load().is_err());
 
-    let missing_break_glass = store(temporary.path(), "schema-version: 2\nbreak-glass: []\n")?;
+    let missing_break_glass = store(temporary.path(), "schema-version: 1\nbreak-glass: []\n")?;
     assert!(missing_break_glass.load().is_err());
 
     let merge = store(
         temporary.path(),
         &format!(
-            "schema-version: 2\nbase: &base {{name: ops, key: \"{BOB}\"}}\nbreak-glass: [{{<<: *base}}]\n"
+            "schema-version: 1\nbase: &base {{name: ops, key: \"{BOB}\"}}\nbreak-glass: [{{<<: *base}}]\n"
         ),
     )?;
     assert!(

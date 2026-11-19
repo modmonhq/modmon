@@ -238,7 +238,7 @@ async fn a_hosts_records_are_exported_without_a_key_and_restored_on_the_same_nod
     std::fs::write(&rebuilt.config.node_env_path, "MM_NODE_NAME=app-1\n")?;
     std::fs::write(
         &rebuilt.config.host_policy_path,
-        "schema-version: 2\nprojects: {}\n",
+        "schema-version: 1\nprojects: {}\n",
     )?;
     let imported = import_state(&rebuilt.config, archive.as_slice())?;
     assert!(

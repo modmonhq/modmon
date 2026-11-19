@@ -9,9 +9,9 @@ use crate::domain::onboarding::ConfigMutationRequest;
 use crate::domain::release_facts::ReleaseRequest;
 use crate::domain::runtime::RuntimeKind;
 
-pub const MCP_TOOL_SCHEMA_VERSION: &str = "mm-mcp-tools-v2";
-pub const MCP_RESOURCE_SCHEMA_VERSION: &str = "mm-mcp-resources-v2";
-pub const MCP_CONFIG_SCHEMA_VERSION: u32 = 2;
+pub const MCP_TOOL_SCHEMA_VERSION: &str = "mm-mcp-tools-v1";
+pub const MCP_RESOURCE_SCHEMA_VERSION: &str = "mm-mcp-resources-v1";
+pub const MCP_CONFIG_SCHEMA_VERSION: u32 = 1;
 pub const MCP_PROJECT_SCHEMA_VERSION: &str = "mm-project-v1";
 pub const MCP_MAX_PAGE_SIZE: usize = 100;
 pub const MCP_MAX_LOG_RECORDS: u32 = 200;
@@ -29,7 +29,6 @@ pub const MCP_SOURCE: &str = "mcp-stdio";
 /// What an agent may do comes from the project's reviewed `agents:` block;
 /// this file can only narrow it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct McpServerConfig {
     pub schema_version: u32,
     /// The name audit records attribute agent requests to.
@@ -64,7 +63,7 @@ impl McpServerConfig {
     pub fn validate(&self) -> Result<(), String> {
         if self.schema_version != MCP_CONFIG_SCHEMA_VERSION {
             return Err(format!(
-                "unsupported MCP configuration schema {}; expected {MCP_CONFIG_SCHEMA_VERSION}. Version 1 listed environments and capabilities here; they now come from the project's `agents:` block, so delete the file or keep only `schema_version`, `principal`, `ceiling`, and the bounds",
+                "unsupported MCP configuration schema {}; expected {MCP_CONFIG_SCHEMA_VERSION}",
                 self.schema_version
             ));
         }

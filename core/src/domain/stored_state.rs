@@ -86,3 +86,97 @@ pub fn unreadable(path: &Path, what: &str, error: &serde_json::Error, on: Stored
         message: format!("{what} in {} is invalid: {error}", path.display()),
     }
 }
+
+/// The keys in `value` that `T` does not read, as paths such as
+/// `projects.<id>.added`. A newer release may write them; the reader ignores
+/// them and says so.
+#[must_use]
+pub fn unknown_keys<T: schemars::JsonSchema>(value: &serde_json::Value) -> Vec<String> {
+    let schema = schemars::schema_for!(T);
+    let root = schema.as_value();
+    let mut unknown = Vec::new();
+    collect_unknown(root, root, value, "", &mut unknown);
+    unknown
+}
+
+fn collect_unknown(
+    root: &serde_json::Value,
+    schema: &serde_json::Value,
+    value: &serde_json::Value,
+    at: &str,
+    unknown: &mut Vec<String>,
+) {
+    let schema = resolve(root, schema);
+    if let Some(choices) = schema
+        .get("anyOf")
+        .or_else(|| schema.get("oneOf"))
+        .and_then(serde_json::Value::as_array)
+    {
+        let present = choices
+            .iter()
+            .map(|choice| resolve(root, choice))
+            .filter(|choice| choice.get("type").and_then(serde_json::Value::as_str) != Some("null"))
+            .collect::<Vec<_>>();
+        if let [only] = present.as_slice() {
+            collect_unknown(root, only, value, at, unknown);
+        }
+        return;
+    }
+    let path = |key: &str| {
+        if at.is_empty() {
+            key.to_owned()
+        } else {
+            format!("{at}.{key}")
+        }
+    };
+    match value {
+        serde_json::Value::Object(fields) => {
+            let values = schema
+                .get("additionalProperties")
+                .filter(|values| values.is_object());
+            match schema
+                .get("properties")
+                .and_then(serde_json::Value::as_object)
+            {
+                Some(properties) => {
+                    for (key, field) in fields {
+                        match properties.get(key) {
+                            Some(property) => {
+                                collect_unknown(root, property, field, &path(key), unknown);
+                            }
+                            None if values.is_none() => unknown.push(path(key)),
+                            None => {}
+                        }
+                    }
+                }
+                None => {
+                    if let Some(values) = values {
+                        for (key, field) in fields {
+                            collect_unknown(root, values, field, &path(key), unknown);
+                        }
+                    }
+                }
+            }
+        }
+        serde_json::Value::Array(items) => {
+            if let Some(item) = schema.get("items") {
+                for (index, entry) in items.iter().enumerate() {
+                    collect_unknown(root, item, entry, &format!("{at}[{index}]"), unknown);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn resolve<'a>(
+    root: &'a serde_json::Value,
+    schema: &'a serde_json::Value,
+) -> &'a serde_json::Value {
+    schema
+        .get("$ref")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|reference| reference.strip_prefix("#/$defs/"))
+        .and_then(|name| root.get("$defs")?.get(name))
+        .unwrap_or(schema)
+}

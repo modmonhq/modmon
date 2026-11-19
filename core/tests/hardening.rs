@@ -476,7 +476,7 @@ fn a_host_puts_what_is_reachable_from_outside_under_its_runtime() -> TestResult 
 
 fn policy(extra: &str) -> Result<HostPolicy, serde_yaml_ng::Error> {
     serde_yaml_ng::from_str(&format!(
-        "schema-version: 2\nbreak-glass:\n  - name: ops\n    key: {KEY}\n{extra}"
+        "schema-version: 1\nbreak-glass:\n  - name: ops\n    key: {KEY}\n{extra}"
     ))
 }
 

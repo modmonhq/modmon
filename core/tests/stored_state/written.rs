@@ -586,7 +586,7 @@ fn host(root: &Path) -> TestResult {
     Ok(())
 }
 
-pub const HOST_POLICY: &str = "schema-version: 2
+pub const HOST_POLICY: &str = "schema-version: 1
 break-glass:
   - name: ops
     key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFkPDuJzgp2r/scZMqe+noBIAdbQcrLlOG3w6WBNqR+w
@@ -599,7 +599,7 @@ projects:
 
 pub fn daemon_config() -> DaemonConfig {
     DaemonConfig {
-        schema_version: 2,
+        schema_version: 1,
         socket_path: PathBuf::from("/run/mm/mm.sock"),
         state_root: PathBuf::from("/var/lib/mm"),
         mm_home: PathBuf::from("/var/lib/mm-home"),

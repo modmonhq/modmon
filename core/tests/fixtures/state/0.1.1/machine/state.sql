@@ -4,7 +4,7 @@ CREATE TABLE schema_migrations (
                 version TEXT PRIMARY KEY NOT NULL,
                 applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
-INSERT INTO "schema_migrations" VALUES('0001_initial','2026-11-19 18:22:57');
+INSERT INTO "schema_migrations" VALUES('0001_initial','2026-11-19 18:45:09');
 CREATE TABLE workspaces (
     id TEXT PRIMARY KEY NOT NULL,
     project_id TEXT NOT NULL,
@@ -13,7 +13,7 @@ CREATE TABLE workspaces (
     created_at_ms INTEGER NOT NULL,
     last_seen_at_ms INTEGER NOT NULL
 );
-INSERT INTO "workspaces" VALUES('38fa4aab-5223-4d5d-b886-6efee1b361a6','00010000-0000-4000-8000-000000000001','/work/web','/work/web/.config/mm.yaml',1000,1000);
+INSERT INTO "workspaces" VALUES('1e9a9ff7-80bc-46ce-8be9-9af3cb5eb9a2','00010000-0000-4000-8000-000000000001','/work/web','/work/web/.config/mm.yaml',1000,1000);
 CREATE TABLE operations (
     id TEXT PRIMARY KEY NOT NULL,
     workspace_id TEXT NOT NULL REFERENCES workspaces(id),
@@ -25,8 +25,8 @@ CREATE TABLE operations (
     plan_hash TEXT,
     error_code TEXT
 );
-INSERT INTO "operations" VALUES('00010000-0000-4000-8000-000000000003','38fa4aab-5223-4d5d-b886-6efee1b361a6','build','production','succeeded',1500,2000,'9e85a5f2155443594284b9ecf2854dfa951502308983118c731c7491d831c1a8',NULL);
-INSERT INTO "operations" VALUES('00010000-0000-4000-8000-000000000004','38fa4aab-5223-4d5d-b886-6efee1b361a6','deploy','production','succeeded',1500,3200,'ff2fc70899a737473e78e5eb76125c74112a0a79cbdad55a85833c20a9e02b5f',NULL);
+INSERT INTO "operations" VALUES('00010000-0000-4000-8000-000000000003','1e9a9ff7-80bc-46ce-8be9-9af3cb5eb9a2','build','production','succeeded',1500,2000,'9e85a5f2155443594284b9ecf2854dfa951502308983118c731c7491d831c1a8',NULL);
+INSERT INTO "operations" VALUES('00010000-0000-4000-8000-000000000004','1e9a9ff7-80bc-46ce-8be9-9af3cb5eb9a2','deploy','production','succeeded',1500,3200,'ff2fc70899a737473e78e5eb76125c74112a0a79cbdad55a85833c20a9e02b5f',NULL);
 CREATE TABLE operation_events (
     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
     operation_id TEXT NOT NULL REFERENCES operations(id) ON DELETE CASCADE,
@@ -129,7 +129,7 @@ CREATE TABLE environment_value_overrides (
     updated_at_ms INTEGER NOT NULL,
     PRIMARY KEY (workspace_id, environment, global_key)
 );
-INSERT INTO "environment_value_overrides" VALUES('38fa4aab-5223-4d5d-b886-6efee1b361a6','production','LOG.LEVEL','debug',1,1100);
+INSERT INTO "environment_value_overrides" VALUES('1e9a9ff7-80bc-46ce-8be9-9af3cb5eb9a2','production','LOG.LEVEL','debug',1,1100);
 CREATE TABLE local_project_preferences (
     project_id TEXT PRIMARY KEY NOT NULL,
     runtime TEXT,
@@ -153,7 +153,7 @@ CREATE TABLE environment_override_revisions (
     revision INTEGER NOT NULL CHECK (revision > 0),
     PRIMARY KEY (workspace_id, environment, global_key)
 );
-INSERT INTO "environment_override_revisions" VALUES('38fa4aab-5223-4d5d-b886-6efee1b361a6','production','LOG.LEVEL',1);
+INSERT INTO "environment_override_revisions" VALUES('1e9a9ff7-80bc-46ce-8be9-9af3cb5eb9a2','production','LOG.LEVEL',1);
 CREATE TABLE gate_policies (
     id TEXT PRIMARY KEY NOT NULL,
     project_id TEXT NOT NULL,

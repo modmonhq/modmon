@@ -144,7 +144,7 @@ keyring_entries() { docker exec "${KEYRING[@]}" "$CLIENT" sh -c 'secret-tool sea
 
 step "writing the host policy"
 cat >"$TMP/host.yaml" <<YAML
-schema-version: 2
+schema-version: 1
 break-glass:
   - name: ops
     key: $OPS_KEY
@@ -156,7 +156,7 @@ projects:
 YAML
 cat >"$TMP/mmd.json" <<'JSON'
 {
-  "schema_version": 2,
+  "schema_version": 1,
   "socket_path": "/run/mm/mm.sock",
   "state_root": "/var/lib/mm",
   "mm_home": "/var/lib/mm-home",

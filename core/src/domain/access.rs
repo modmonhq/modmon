@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::domain::workspace::ProjectId;
 
 /// Schema 2 identifies principals by SSH key alone, not by Unix account.
-pub const ACCESS_POLICY_SCHEMA_VERSION: u32 = 2;
+pub const ACCESS_POLICY_SCHEMA_VERSION: u32 = 1;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,

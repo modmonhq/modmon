@@ -1,6 +1,6 @@
 # /etc/mm/host.yaml — root-owned, mode 0600. The host's limits on every
 # project; users come from each project's committed users file.
-schema-version: 2
+schema-version: 1
 break-glass:
   # Admin on every enrolled project. Keep the private key offline.
   - name: ops-recovery

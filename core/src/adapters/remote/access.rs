@@ -13,7 +13,9 @@ use crate::domain::host_policy::{
     ACCESS_RECORD_SCHEMA_VERSION, EmergencyBlock, EnvironmentAccessRecord,
     HOST_POLICY_SCHEMA_VERSION, HostPolicy, ProjectEnrollment, effective_policy,
 };
-use crate::domain::stored_state::{StoredOn, check_schema, stored_version, unreadable};
+use crate::domain::stored_state::{
+    StoredOn, check_schema, stored_version, unknown_keys, unreadable,
+};
 use crate::domain::workspace::ProjectId;
 
 const MAX_POLICY_BYTES: usize = 4 * 1024 * 1024;
@@ -500,22 +502,20 @@ pub fn parse_host_policy(path: &Path, bytes: &[u8]) -> Result<HostPolicy, MmErro
             "host policy cannot contain YAML tags or merge keys",
         ));
     }
-    if value.get("schema_version").is_some()
-        || value
-            .get("schema-version")
-            .and_then(serde_yaml_ng::Value::as_u64)
-            == Some(1)
-    {
-        return Err(security(
-            "this is a schema-1 access.yaml; mmd now reads /etc/mm/host.yaml (schema-version: 2) and takes users from each project's users file. See the migration guide in the remote access docs.",
-        ));
-    }
     if let Some(version) = value
         .get("schema-version")
         .and_then(serde_yaml_ng::Value::as_u64)
         .and_then(|version| u32::try_from(version).ok())
     {
         check_schema(path, version, HOST_POLICY_SCHEMA_VERSION, StoredOn::Host)?;
+    }
+    if let Ok(value) = serde_json::to_value(&value) {
+        for key in unknown_keys::<HostPolicy>(&value) {
+            tracing::warn!(
+                "unknown key `{key}` in {}; this mmd ignores it",
+                path.display()
+            );
+        }
     }
     let host: HostPolicy = serde_yaml_ng::from_slice(bytes).map_err(duplicate)?;
     host.validate().map_err(|message| MmError::ConfigParse {

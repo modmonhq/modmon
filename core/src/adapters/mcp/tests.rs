@@ -61,8 +61,8 @@ fn rejects_directory_symlink_and_insecure_policy_files() -> Result<(), Box<dyn s
 }
 
 #[test]
-fn rejects_oversized_malformed_invalid_and_version_one_content()
--> Result<(), Box<dyn std::error::Error>> {
+fn rejects_oversized_malformed_invalid_and_newer_content() -> Result<(), Box<dyn std::error::Error>>
+{
     let temp = crate::test_support::tempdir()?;
     let policy = temp.path().join("policy.json");
     write_policy(&policy, &vec![b'x'; MAX_CONFIG_BYTES + 1])?;
@@ -76,26 +76,21 @@ fn rejects_oversized_malformed_invalid_and_version_one_content()
     write_policy(&policy, &serde_json::to_vec(&invalid)?)?;
     assert!(McpPolicyStore::load(&policy, false).is_err());
 
-    // The old private policy is refused with the way forward, never ignored.
     write_policy(
         &policy,
-        br#"{"schema_version":1,"principal":"local-agent","project_root":"/p","environments":["local"],"targets":["local"],"capabilities":["inspect","deploy_apply"]}"#,
+        format!(r#"{{"schema_version":{MCP_CONFIG_SCHEMA_VERSION},"added_later":["inspect"]}}"#)
+            .as_bytes(),
     )?;
+    assert!(McpPolicyStore::load(&policy, false).is_ok());
+    write_policy(&policy, br#"{"schema_version":2}"#)?;
     let error = McpPolicyStore::load(&policy, false)
         .err()
         .map(|error| error.to_string())
         .unwrap_or_default();
     assert!(
-        error.contains("schema 1") && error.contains("agents:"),
+        error.contains("written by a newer mm (schema 2)"),
         "{error}"
     );
-
-    write_policy(
-        &policy,
-        format!(r#"{{"schema_version":{MCP_CONFIG_SCHEMA_VERSION},"capabilities":["inspect"]}}"#)
-            .as_bytes(),
-    )?;
-    assert!(McpPolicyStore::load(&policy, false).is_err());
     Ok(())
 }
 

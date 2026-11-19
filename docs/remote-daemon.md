@@ -144,7 +144,7 @@ origin, environments, and break-glass keys; add ceilings, the first
 `deploy-from` rule, and workload exceptions by hand:
 
 ```yaml
-schema-version: 2
+schema-version: 1
 break-glass: # admin everywhere; keep the private key offline
   - name: ops-recovery
     key: ssh-ed25519 AAAA… ops@offline
@@ -3139,10 +3139,3 @@ mmd access validate
 
 No restart is needed after the fix. Until then sshd accepts the keys of the
 last policy that loaded.
-
-### Hosts set up with access.yaml
-
-Hosts set up with the earlier per-developer accounts and `access.yaml` must
-move to this layout: `mmd` refuses a schema-1 `access.yaml`. Write
-`host.yaml`, add each developer to the users file with `mm team join`, sync,
-check with `mm team whoami`, and then delete the old `mm-*` accounts.

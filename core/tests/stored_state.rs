@@ -18,6 +18,8 @@ use mm::app::ports::{
     EnvironmentValueStore, IngressRouteRegistry, ServiceStackStore, ServiceUserIds, StateStore,
     TargetStore,
 };
+use mm::domain::host_policy::HostPolicy;
+use mm::domain::stored_state::unknown_keys;
 use mm::domain::workspace::WorkspaceRegistration;
 
 #[path = "stored_state/sql_dump.rs"]
@@ -251,6 +253,10 @@ fn the_files_0_1_1_keeps_on_a_host_read() -> TestResult {
 
     let policy = &config.host_policy_path;
     parse_host_policy(policy, &fs::read(policy)?)?;
+    let mmd: serde_json::Value = serde_json::from_slice(&fs::read(root.join("etc/mm/mmd.json"))?)?;
+    assert_eq!(unknown_keys::<DaemonConfig>(&mmd), Vec::<String>::new());
+    let host: serde_json::Value = serde_yaml_ng::from_slice(&fs::read(policy)?)?;
+    assert_eq!(unknown_keys::<HostPolicy>(&host), Vec::<String>::new());
     let access = HostAccessStore::new(&config);
     let snapshot = access.load()?;
     assert_eq!((snapshot.records.len(), snapshot.blocks.len()), (1, 1));
@@ -348,7 +354,7 @@ fn state_a_newer_release_wrote_is_refused_with_the_command_that_updates() -> Tes
 
     let policy = root.join("etc/mm/host.yaml");
     let newer = fs::read_to_string(&policy)?
-        .replace("schema-version: 2", "schema-version: 3\nadded-later: true");
+        .replace("schema-version: 1", "schema-version: 3\nadded-later: true");
     let message = refusal(parse_host_policy(&policy, newer.as_bytes()))?;
     assert!(
         message.contains("host.yaml was written by a newer mm (schema 3)"),
@@ -375,5 +381,28 @@ fn state_a_newer_release_wrote_is_refused_with_the_command_that_updates() -> Tes
         message.contains("was written by a newer mm (schema 2)"),
         "{message}"
     );
+    Ok(())
+}
+
+#[test]
+fn keys_a_newer_release_added_are_found_and_ignored() -> TestResult {
+    let mut mmd: serde_json::Value =
+        serde_json::from_slice(&fs::read(fixtures().join("host/etc/mm/mmd.json"))?)?;
+    mmd["added_later"] = true.into();
+    assert_eq!(unknown_keys::<DaemonConfig>(&mmd), ["added_later"]);
+    DaemonConfig::parse(Path::new("/etc/mm/mmd.json"), &serde_json::to_vec(&mmd)?)?;
+
+    let path = fixtures().join("host/etc/mm/host.yaml");
+    let mut host: serde_json::Value = serde_yaml_ng::from_slice(&fs::read(&path)?)?;
+    host["projects"][PROJECT.0.to_string()]["added-later"] = true.into();
+    host["break-glass"][0]["comment"] = "kept offline".into();
+    assert_eq!(
+        unknown_keys::<HostPolicy>(&host),
+        [
+            "break-glass[0].comment".to_owned(),
+            format!("projects.{}.added-later", PROJECT.0)
+        ]
+    );
+    parse_host_policy(&path, serde_yaml_ng::to_string(&host)?.as_bytes())?;
     Ok(())
 }

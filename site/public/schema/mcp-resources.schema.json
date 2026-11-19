@@ -22,5 +22,5 @@
       "uri": "mm://docs/workflow"
     }
   ],
-  "schema_version": "mm-mcp-resources-v2"
+  "schema_version": "mm-mcp-resources-v1"
 }

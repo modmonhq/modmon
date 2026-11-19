@@ -111,11 +111,20 @@ Nothing needs to be recreated or reset.
 
 ### After a downgrade
 
-An older release reads what a newer one wrote as long as the newer one only
-added to it; it ignores what it does not know. When a newer release changed
-the format of a file or the state database, the older one refuses it and
-changes nothing. The message names the file, what it does not know, and what
-to run:
+A newer release that only adds a key or a field keeps the file's schema
+number, and an older release reads the file: it ignores what it does not
+know. For the files people read and edit, `/etc/mm/mmd.json`,
+`/etc/mm/host.yaml`, and `MM_HOME/mcp.json`, it says so:
+
+```text
+WARN unknown key `example` in /etc/mm/mmd.json; this mmd ignores it
+```
+
+A newer release raises a schema number only for a change an older release
+cannot read, such as a field whose meaning changed, or a migration of the
+state database. The older release then refuses the file and changes
+nothing. The message names the file, what it does not know, and what to
+run:
 
 ```text
 state store error: ~/.mm/state.sqlite3 was written by a newer mm (state migration 0002_example); update with `mm update`
@@ -128,10 +137,10 @@ Plans and build receipts carry a hash of what was reviewed. An older release
 never acts on part of one: it refuses one with a field or schema it does not
 know, or whose hash no longer matches what it can read.
 
-`mm.yaml` and its includes, `MM_HOME/mcp.json`, and `/etc/mm/host.yaml` are
-written by hand, so a key mm does not know there is an error: a misspelled
-key never goes unnoticed. A `schema-version` newer than the release knows is
-refused with the message above.
+Every schema number starts at 1 in 0.1.1. Files that builds before 0.1.1
+wrote with another number are not read: `mm target setup --upgrade` writes
+`mmd.json` again, and a `host.yaml` from such a build needs
+`schema-version: 1` by hand.
 
 How mm keeps these promises as it changes is in
 [stored state](../contribute/stored-state.md).

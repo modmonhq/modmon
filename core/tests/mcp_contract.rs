@@ -27,7 +27,7 @@ fn private_limits_are_optional_private_and_bounded() -> Result<(), Box<dyn std::
     );
     fs::write(
         &path,
-        br#"{"schema_version":2,"ceiling":{"production":"view"}}"#,
+        br#"{"schema_version":1,"ceiling":{"production":"view"}}"#,
     )?;
     fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
     let loaded = McpPolicyStore::load(&path, true)?;
