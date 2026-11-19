@@ -136,9 +136,11 @@ fn protocol_version_and_plan_scope_are_cryptographically_bound()
 -> Result<(), Box<dyn std::error::Error>> {
     let hello = ClientFrame::Hello {
         version: PROTOCOL_VERSION + 1,
+        minimum: PROTOCOL_VERSION + 1,
         hello: ClientHello {
             client_nonce: Uuid::from_u128(1),
             expected_daemon_fingerprint: "a".repeat(64),
+            client_version: String::new(),
         },
     };
     let decoded: ClientFrame = decode_frame(&encode_frame(&hello)?)?;

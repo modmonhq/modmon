@@ -334,7 +334,7 @@ or a WireGuard key after review means planning again.
 
 The plan also says, for each node whose host key the repo records, which
 release of `mm` and `mmd` it replaces with this one's, such as `app-1: replaces
-mm and mmd 0.1.0 (remote protocol 15) with 0.2.0 (remote protocol 16)`. A node
+mm and mmd 0.1.1 (remote protocol 1) with 0.1.2 (remote protocol 1)`. A node
 that runs a newer release than the `mm` you run setup with is refused: setup
 would install the older `mm` and `mmd` there, and clients that are up to date
 could no longer reach it. Install that release or a later one of `mm` on your
@@ -346,8 +346,8 @@ running setup never swaps the `mm` and `mmd` that run your hosts by
 accident. Pass `--upgrade` to install this one, or pin the release with
 [`deploy.mm-version`](reference/configuration.md#bindings-environments-and-secrets),
 which lets setup install exactly that release. The plan names each node's
-build, such as `app-1: replaces mm and mmd 0.2.0 (remote protocol 17, build
-3f9a1c2e7b4d) with 0.2.0 (remote protocol 17, build 7d0e5a91c2f3)`. Nodes
+build, such as `app-1: replaces mm and mmd 0.1.2 (remote protocol 1, build
+3f9a1c2e7b4d) with 0.1.2 (remote protocol 1, build 7d0e5a91c2f3)`. Nodes
 report their release from this release of `mm` on, and only on a target whose
 `cluster.mesh` mm runs (WireGuard).
 
@@ -2759,9 +2759,12 @@ another name with `MM_NODE_MISMATCH`. If two nodes' addresses are mixed up in
 the repo, nothing is applied on the wrong host; check `host` for each node
 under `nodes:` and run `mm target setup record`.
 
-`mm` and the `mmd` of every node must be the same version: a client and a
-node that speak different remote protocol versions do not work together. The
-error says which side to upgrade: `mm` on your machine, or the host (run
+Each node agrees on a remote protocol with `mm` by itself, so `mm` and the
+nodes may run different releases as long as they share one (see
+[compatibility between releases](reference/compatibility.md)). Keep the nodes
+on one release: `mm doctor` warns with `MM_NODE_VERSION_SKEW` until they are.
+When `mm` and a node share no protocol, the error says which side to upgrade:
+`mm` on your machine (`mm update`), or the host (run
 `mm target setup plan --upgrade` and apply that plan with `--upgrade`).
 
 ### When mmd stops answering
@@ -3067,10 +3070,12 @@ not touched:
 - Setup keeps `/var/lib/mm`, so the daemon identity stays the same and
   nothing needs to be recorded again.
 
-A client and a host on different protocol versions refuse to work together,
-and the error says which side to upgrade. Between releases of one protocol,
-`mm doctor` warns with `MM_HOST_RELEASE_OLDER` or `MM_HOST_RELEASE_NEWER` and
-names the hosts. To keep a team on one release, pin it per environment with
+A client and a host on different releases use the newest remote protocol both
+speak, and refuse each other only when they share none; the error then says
+which side to upgrade (see
+[compatibility between releases](reference/compatibility.md)). While the
+releases differ, `mm doctor` warns with `MM_HOST_RELEASE_OLDER` or
+`MM_HOST_RELEASE_NEWER` and names the hosts. To keep a team on one release, pin it per environment with
 [`deploy.mm-version`](reference/configuration.md#bindings-environments-and-secrets):
 plans from another mm, and for hosts that run another `mmd`, are refused.
 

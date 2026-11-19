@@ -1,0 +1,43 @@
+{
+  "request_id": "00000000-0000-4000-8000-000000000001",
+  "result": {
+    "result": "deployment_applied",
+    "value": {
+      "applied_stacks": [
+        "web"
+      ],
+      "environment": "web",
+      "jobs": [
+        {
+          "exit_code": 1,
+          "job": "web",
+          "node": "web",
+          "problem": "web",
+          "run": "before-deploy",
+          "run_id": "00000000-0000-4000-8000-000000000001",
+          "state": "queued"
+        }
+      ],
+      "moved_away": [
+        {
+          "compose_project_name": "web",
+          "moves_to": [
+            "web"
+          ],
+          "service": "web",
+          "stack": "web"
+        }
+      ],
+      "plan_hash": "web",
+      "removed_stacks": [
+        "web"
+      ],
+      "route_count": 1,
+      "route_generation": 1,
+      "target_id": "00000000-0000-4000-8000-000000000001",
+      "target_name": "web"
+    }
+  },
+  "type": "result",
+  "version": 1
+}

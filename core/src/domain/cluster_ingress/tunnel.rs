@@ -106,7 +106,7 @@ pub struct TableTunnel {
 
 /// What an ingress node says about the connector of an environment.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct TunnelStatus {
     /// The secret that holds the tunnel's token.
     pub token: String,

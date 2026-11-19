@@ -567,14 +567,16 @@ impl Host {
     fn hello(&self, client_nonce: uuid::Uuid) -> ClientFrame {
         ClientFrame::Hello {
             version: PROTOCOL_VERSION,
+            minimum: PROTOCOL_VERSION,
             hello: ClientHello {
                 client_nonce,
                 expected_daemon_fingerprint: self.daemon.identity().fingerprint.clone(),
+                client_version: String::new(),
             },
         }
     }
 
-    fn request(method: RemoteMethod, deadline: Duration) -> TestResult<ClientFrame> {
+    pub fn request(method: RemoteMethod, deadline: Duration) -> TestResult<ClientFrame> {
         Ok(ClientFrame::Request {
             version: PROTOCOL_VERSION,
             request_id: uuid::Uuid::new_v4(),
@@ -584,6 +586,13 @@ impl Host {
             scope: scope(),
             method: Box::new(method),
         })
+    }
+
+    /// A relay session of `key` with nothing else sent on it.
+    pub async fn session(&self, key: &str) -> TestResult<Client> {
+        let mut client = self.connection()?;
+        client.send(&Self::relay_session(key)).await?;
+        Ok(client)
     }
 
     /// A relay session of `key`, past the hello.
@@ -795,6 +804,31 @@ impl Client {
     pub async fn send(&mut self, frame: &ClientFrame) -> TestResult {
         write_raw_frame(&mut self.stream, &encode_frame(frame)?).await?;
         Ok(())
+    }
+
+    /// Sends `frame` as written, such as one from a newer client.
+    pub async fn send_json(&mut self, frame: &serde_json::Value) -> TestResult {
+        write_raw_frame(&mut self.stream, &serde_json::to_vec(frame)?).await?;
+        Ok(())
+    }
+
+    /// The daemon's next frame as written.
+    pub async fn next_json(&mut self, patience: Duration) -> TestResult<serde_json::Value> {
+        use tokio::io::AsyncReadExt;
+
+        let ahead = std::mem::take(&mut self.ahead);
+        let mut reader = ahead.as_slice().chain(&mut self.stream);
+        let bytes = tokio::time::timeout(patience, read_raw_frame(&mut reader))
+            .await
+            .map_err(|_| "the daemon sent nothing")??
+            .ok_or("the daemon closed the session without an answer")?;
+        Ok(serde_json::from_slice(&bytes)?)
+    }
+
+    /// Whether the daemon ended the session.
+    pub async fn ended(self) -> TestResult<Result<(), MmError>> {
+        drop(self.stream);
+        Ok(tokio::time::timeout(PROMPT, self.served).await??)
     }
 
     /// The daemon's next frame, which has to arrive within `patience`.

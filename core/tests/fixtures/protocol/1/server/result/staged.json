@@ -1,0 +1,22 @@
+{
+  "request_id": "00000000-0000-4000-8000-000000000001",
+  "result": {
+    "result": "staged",
+    "value": {
+      "changes": [
+        {
+          "action": {
+            "action": "set",
+            "revision": "web"
+          },
+          "key": "web",
+          "kind": "secret"
+        }
+      ],
+      "stage": "00000000-0000-4000-8000-000000000001",
+      "state": "prepared"
+    }
+  },
+  "type": "result",
+  "version": 1
+}

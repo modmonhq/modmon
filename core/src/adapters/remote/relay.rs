@@ -10,7 +10,7 @@ use tokio::sync::{mpsc, watch};
 
 use crate::adapters::remote::codec::{decode_frame, read_raw_frame, write_frame, write_raw_frame};
 use crate::domain::error::MmError;
-use crate::domain::remote::{ClientFrame, PROTOCOL_VERSION, ServerFrame};
+use crate::domain::remote::{ClientFrame, FrameHead, PROTOCOL_VERSION};
 
 pub async fn serve_stdio_relay(
     socket_path: &Path,
@@ -118,11 +118,9 @@ where
             })?;
             return Ok(());
         };
-        // A client of another protocol version is passed through: the daemon
-        // answers its hello with which side to upgrade, then closes.
-        let frame: ClientFrame = decode_frame(&bytes)?;
+        let frame: FrameHead = decode_frame(&bytes)?;
         write_raw_frame(writer, &bytes).await?;
-        if matches!(frame, ClientFrame::Request { .. }) {
+        if frame.kind == "request" {
             requested.mark();
         }
     }
@@ -138,6 +136,7 @@ where
     R: AsyncRead + Unpin + ?Sized,
     W: AsyncWrite + Unpin + ?Sized,
 {
+    let mut session = None;
     loop {
         let frame = requested
             .read_frame(reader, idle_timeout, "restricted relay daemon idle timeout")
@@ -149,10 +148,10 @@ where
             })?;
             return Ok(());
         };
-        let frame: ServerFrame = decode_frame(&bytes)?;
-        if frame.version() != PROTOCOL_VERSION {
+        let frame: FrameHead = decode_frame(&bytes)?;
+        if *session.get_or_insert(frame.version) != frame.version {
             return Err(protocol(
-                "restricted relay rejected a daemon protocol version",
+                "restricted relay rejected a daemon protocol version other than the session's",
             ));
         }
         write_raw_frame(writer, &bytes).await?;

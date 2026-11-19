@@ -70,7 +70,7 @@ impl RemoteDaemon {
                 });
             }
         };
-        send_result(writer, context.request_id, result).await
+        send_result(writer, context, result).await
     }
 
     /// After a deployment succeeded here: the staged changes its plan

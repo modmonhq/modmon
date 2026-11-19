@@ -2,6 +2,7 @@ use std::os::unix::fs::symlink;
 
 use super::*;
 use crate::adapters::remote::codec::{read_frame, write_frame};
+use crate::domain::remote::ServerFrame;
 
 #[test]
 fn openssh_fingerprints_accept_explicit_and_encoded_keys() -> Result<(), Box<dyn std::error::Error>>
@@ -119,16 +120,22 @@ async fn relay_rejects_wrong_versions_malformed_frames_and_idle_peers()
         Some(other_version)
     );
 
-    // A daemon frame of another version is a broken host and is not relayed.
-    let wrong = ServerFrame::End {
-        version: PROTOCOL_VERSION + 1,
-        request_id: uuid::Uuid::nil(),
-        frames: 0,
-        bytes: 0,
-    };
+    // A daemon frame of another protocol than the session's is a broken
+    // host and is not relayed.
     let (mut input, mut reader) = tokio::io::duplex(4096);
     let (mut writer, _output) = tokio::io::duplex(4096);
-    write_frame(&mut input, &wrong).await?;
+    for version in [PROTOCOL_VERSION, PROTOCOL_VERSION + 1] {
+        write_frame(
+            &mut input,
+            &ServerFrame::End {
+                version,
+                request_id: uuid::Uuid::nil(),
+                frames: 0,
+                bytes: 0,
+            },
+        )
+        .await?;
+    }
     assert!(
         relay_server_frames(
             &mut reader,

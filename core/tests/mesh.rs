@@ -779,7 +779,8 @@ fn setup_refuses_to_downgrade_a_node_and_says_what_it_replaces() -> TestResult {
     let this = release("0.2.0", 16);
     assert!(release("0.2.0", 17).is_newer_than(&this));
     assert!(release("0.3.0", 16).is_newer_than(&this));
-    assert!(!release("0.9.0", 15).is_newer_than(&this));
+    assert!(release("0.9.0", 15).is_newer_than(&this));
+    assert!(!release("0.1.0", 19).is_newer_than(&this));
     assert!(!this.is_newer_than(&this));
 
     let mesh = default_mesh();

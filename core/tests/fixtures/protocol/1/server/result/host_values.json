@@ -1,0 +1,35 @@
+{
+  "request_id": "00000000-0000-4000-8000-000000000001",
+  "result": {
+    "result": "host_values",
+    "value": {
+      "commit": "web",
+      "node": "web",
+      "values": [
+        {
+          "active": {
+            "changed_at_unix_ms": 1,
+            "changed_by": "web",
+            "revision": "web"
+          },
+          "key": "web",
+          "kind": "secret",
+          "origin": "staged",
+          "provider": "web",
+          "required": true,
+          "services": [
+            "web"
+          ],
+          "staged": {
+            "removal": true,
+            "revision": "web",
+            "staged_at_unix_ms": 1,
+            "staged_by": "web"
+          }
+        }
+      ]
+    }
+  },
+  "type": "result",
+  "version": 1
+}

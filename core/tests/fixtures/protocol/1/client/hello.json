@@ -1,0 +1,10 @@
+{
+  "hello": {
+    "client_nonce": "00000000-0000-4000-8000-000000000001",
+    "client_version": "0.1.1",
+    "expected_daemon_fingerprint": "web"
+  },
+  "minimum": 1,
+  "type": "hello",
+  "version": 1
+}

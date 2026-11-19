@@ -16,7 +16,6 @@ pub const MESH_HANDSHAKE_STALE_SECONDS: u64 = 180;
 
 /// One peer as a node's interface reports it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct MeshPeerStatus {
     /// The peer's node name; `None` for a peer that is on the interface but
     /// not in the state `mmd` applied.
@@ -53,7 +52,6 @@ impl MeshPeerStatus {
 
 /// One node's WireGuard interface, as its `mmd` reads it.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct MeshNodeStatus {
     /// The node's own name from `/etc/mm/node.env`.
     #[serde(default, skip_serializing_if = "Option::is_none")]

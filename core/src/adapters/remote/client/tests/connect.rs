@@ -2,8 +2,10 @@
 //! connection tells the user.
 
 use super::{
-    ClientAccess, ClientKey, ConnectionReuse, ManagedKeys, SshRemoteTransport, connect_failure,
+    ClientAccess, ClientKey, ConnectionReuse, HandshakeRefusal, ManagedKeys, SshRemoteTransport,
+    agreed, connect_failure,
 };
+use crate::domain::remote::{PROTOCOL_VERSION, RemoteError, ServerFrame, UPGRADE_REQUIRED_CODE};
 use crate::domain::runtime::RuntimeKind;
 use crate::domain::target::{NamedTarget, TargetDefinition, TargetId, TargetTransport};
 
@@ -240,8 +242,13 @@ fn a_failed_connection_says_what_happened_and_what_to_run() {
         ),
         (
             "error[MM_RUNTIME_RESPONSE]: restricted relay rejected a client protocol version\n",
-            "speaks an older remote protocol than this mm",
-            "mm target setup plan",
+            "cannot read the hello of this mm",
+            "mm target setup plan --upgrade",
+        ),
+        (
+            "error[MM_RUNTIME_RESPONSE]: runtime response was invalid: remote protocol frame is malformed or unsupported: unknown field `minimum`, expected `version` or `hello` at line 1 column 31\n",
+            "runs an mm from before 0.1.1",
+            "mm target setup plan --upgrade",
         ),
         (
             "",
@@ -272,4 +279,74 @@ fn a_failed_connection_says_what_happened_and_what_to_run() {
         problem.ends_with("(ssh: connect to host h port 22: No route to host)"),
         "{problem}"
     );
+}
+
+#[test]
+fn a_newer_daemon_agrees_on_the_protocol_this_mm_speaks() -> Result<(), Box<dyn std::error::Error>>
+{
+    let nonce = uuid::Uuid::from_u128(9);
+    let fingerprint = "a".repeat(64);
+    let answer = |version: u16| -> Result<ServerFrame, Box<dyn std::error::Error>> {
+        let frame = serde_json::json!({
+            "type": "hello",
+            "version": version,
+            "added_by_a_newer_mmd": 1,
+            "hello": {
+                "client_nonce": nonce,
+                "server_nonce": uuid::Uuid::from_u128(10),
+                "daemon_version": "9.9.9",
+                "daemon_fingerprint": fingerprint,
+                "instance_id": uuid::Uuid::from_u128(11),
+                "added_by_a_newer_mmd": [1],
+            },
+        });
+        Ok(crate::adapters::remote::codec::decode_frame(
+            &serde_json::to_vec(&frame)?,
+        )?)
+    };
+    assert_eq!(
+        agreed(answer(PROTOCOL_VERSION)?, nonce, &fingerprint).ok(),
+        Some((PROTOCOL_VERSION, "9.9.9".to_owned()))
+    );
+    assert!(matches!(
+        agreed(answer(PROTOCOL_VERSION + 1)?, nonce, &fingerprint),
+        Err(Some(HandshakeRefusal::Mismatch))
+    ));
+    assert!(matches!(
+        agreed(
+            answer(PROTOCOL_VERSION)?,
+            uuid::Uuid::from_u128(12),
+            &fingerprint
+        ),
+        Err(Some(HandshakeRefusal::Mismatch))
+    ));
+
+    let client_key = ClientKey::Default(None);
+    let reuse = ConnectionReuse::off();
+    let keys = ManagedKeys::none();
+    let transport = SshRemoteTransport::for_target(
+        &ssh_target(),
+        ClientAccess {
+            key: &client_key,
+            reuse: &reuse,
+            keys: &keys,
+        },
+    )?;
+    let said = "This mm 0.1.1 speaks remote protocol 1, and the host's mmd 0.3.0 speaks 2 to 3. Update mm on this machine to 0.3.0 or newer: run `mm update`";
+    let refused = transport
+        .endpoint
+        .refused(HandshakeRefusal::Daemon(RemoteError {
+            code: UPGRADE_REQUIRED_CODE.to_owned(),
+            message: said.to_owned(),
+            retryable: false,
+            mutation_state: crate::domain::remote::MutationState::NotStarted,
+        }));
+    assert_eq!(refused.code(), "MM_UNREACHABLE");
+    assert_eq!(
+        refused.to_string(),
+        format!(
+            "target 'remote' (example.test:2222) has no remote protocol in common with this mm. {said}"
+        )
+    );
+    Ok(())
 }

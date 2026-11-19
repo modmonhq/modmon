@@ -1,0 +1,21 @@
+{
+  "item": {
+    "item": "exec",
+    "value": {
+      "container_id": "web",
+      "identity": {
+        "environment": "web",
+        "module": "web",
+        "project_id": "00000000-0000-4000-8000-000000000001",
+        "service": "web",
+        "stack": "web"
+      },
+      "runtime": "podman-compose",
+      "type": "selected"
+    }
+  },
+  "request_id": "00000000-0000-4000-8000-000000000001",
+  "sequence": 1,
+  "type": "stream",
+  "version": 1
+}

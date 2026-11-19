@@ -16,8 +16,9 @@ use crate::domain::observability::{
 };
 use crate::domain::remote::{
     ClientFrame, ClientHello, DEFAULT_REQUEST_TIMEOUT_MS, MAX_REQUEST_TIMEOUT_MS, MAX_STREAM_BYTES,
-    MAX_STREAM_FRAMES, MutationState, PROTOCOL_VERSION, RemoteAccessPlan, RemoteDeploymentPlan,
-    RemoteIdentity, RemoteMethod, RemoteResult, RemoteScope, RemoteStreamItem, ServerFrame,
+    MAX_STREAM_FRAMES, MINIMUM_PROTOCOL_VERSION, MutationState, PROTOCOL_VERSION, ProtocolRange,
+    RemoteAccessPlan, RemoteDeploymentPlan, RemoteIdentity, RemoteMethod, RemoteResult,
+    RemoteScope, RemoteStreamItem, ServerFrame,
 };
 use crate::domain::scheduler::{JobRun, JobRunRequest, JobRunsRequest};
 use crate::domain::users::AccessChange;
@@ -186,7 +187,8 @@ impl SshRemoteTransport {
     /// the daemon's hello proved its identity. A request that changes the
     /// host is sent once the daemon has answered the hello: connecting is
     /// tried again when a kept connection turns out dead, and what changes
-    /// a host must never be sent twice.
+    /// a host must never be sent twice. So is a read that not every daemon
+    /// this mm speaks to can read, once the hello said this one can.
     async fn open(
         &self,
         scope: RemoteScope,
@@ -194,13 +196,11 @@ impl SshRemoteTransport {
         timeout: Duration,
         disconnect_state: MutationState,
     ) -> Result<(Connection, uuid::Uuid), MmError> {
-        if method.is_mutation() {
+        if method.is_mutation() || method.protocol() > MINIMUM_PROTOCOL_VERSION {
             let mut connection = self.connection().await?;
-            let request_id = uuid::Uuid::new_v4();
-            connection
-                .send_request(request_id, scope, method, timeout)
-                .await
-                .map_err(|_| disconnect(&connection.subject, disconnect_state))?;
+            let request_id = connection
+                .ask(scope, method, timeout, disconnect_state)
+                .await?;
             return Ok((connection, request_id));
         }
         let read = ReadRequest {
@@ -229,6 +229,7 @@ impl ReadRequest {
     fn frame(&self) -> Result<(uuid::Uuid, ClientFrame), MmError> {
         let request_id = uuid::Uuid::new_v4();
         let frame = request_frame(
+            PROTOCOL_VERSION,
             request_id,
             self.scope.clone(),
             self.method.clone(),
@@ -463,17 +464,20 @@ impl SshRemoteTransport {
         if let Err(error) = connection.stdin.shutdown().await {
             tracing::debug!(%request_id, %error, "remote unary stdin shutdown failed");
         }
+        let agreed = connection.protocol;
         match frame {
             ServerFrame::Result {
-                version: PROTOCOL_VERSION,
+                version,
                 request_id: received,
                 result,
-            } if received == request_id => Ok(*result),
+            } if version == agreed && received == request_id => Ok(*result),
             ServerFrame::Error {
-                version: PROTOCOL_VERSION,
+                version,
                 request_id: received,
                 error,
-            } if received.is_none() || received == Some(request_id) => Err(server_error(error)),
+            } if version == agreed && (received.is_none() || received == Some(request_id)) => {
+                Err(server_error(error))
+            }
             _ => Err(protocol("remote response did not match the request")),
         }
     }
@@ -502,17 +506,20 @@ impl SshRemoteTransport {
             .await
             .map_err(|_| late(&connection.subject, asked, timeout, disconnect_state))??
             .ok_or_else(|| disconnect(&connection.subject, disconnect_state))?;
+        let agreed = connection.protocol;
         match start {
             ServerFrame::Result {
-                version: PROTOCOL_VERSION,
+                version,
                 request_id: received,
                 result,
-            } if received == request_id && *result == RemoteResult::StreamStarted => {}
+            } if version == agreed
+                && received == request_id
+                && *result == RemoteResult::StreamStarted => {}
             ServerFrame::Error {
-                version: PROTOCOL_VERSION,
+                version,
                 request_id: received,
                 error,
-            } if received.is_none() || received == Some(request_id) => {
+            } if version == agreed && (received.is_none() || received == Some(request_id)) => {
                 return Err(server_error(error));
             }
             _ => return Err(protocol("remote stream start response is invalid")),
@@ -551,6 +558,11 @@ pub use reuse::{ConnectionReuse, SSH_REUSE_ENVIRONMENT};
 struct Connection {
     /// How messages name the host: `node 'app-2' (host:22)`.
     subject: String,
+    /// The protocol the daemon's hello agreed on, which every later frame
+    /// of the session has.
+    protocol: u16,
+    /// The release of the host's `mmd`, as its hello said.
+    daemon_version: String,
     child: Child,
     stdin: ChildStdin,
     /// Frames are read in loops that also wake for other things; the
@@ -597,9 +609,11 @@ impl Connection {
         let nonce = uuid::Uuid::new_v4();
         let hello = ClientFrame::Hello {
             version: PROTOCOL_VERSION,
+            minimum: MINIMUM_PROTOCOL_VERSION,
             hello: ClientHello {
                 client_nonce: nonce,
                 expected_daemon_fingerprint: daemon_fingerprint.to_owned(),
+                client_version: env!("CARGO_PKG_VERSION").to_owned(),
             },
         };
         // Both frames in one write: they travel together.
@@ -622,16 +636,37 @@ impl Connection {
             .map_err(|_| None)?
             .map_err(|_| None)?
             .ok_or(None)?;
-        match frame {
-            ServerFrame::Hello {
-                version: PROTOCOL_VERSION,
-                hello,
-            } if hello.client_nonce == nonce && hello.daemon_fingerprint == daemon_fingerprint => {
-                Ok(())
-            }
-            ServerFrame::Error { error, .. } => Err(Some(HandshakeRefusal::Daemon(error))),
-            _ => Err(Some(HandshakeRefusal::Mismatch)),
-        }
+        (self.protocol, self.daemon_version) = agreed(frame, nonce, daemon_fingerprint)?;
+        Ok(())
+    }
+
+    /// Fails before sending what needs protocol `needed` when the host's
+    /// daemon agreed on an older one.
+    fn require(&self, needed: u16, what: &str) -> Result<(), MmError> {
+        crate::domain::remote::require_protocol(
+            self.protocol,
+            needed,
+            (&self.subject, &self.daemon_version),
+            what,
+        )
+    }
+
+    /// Sends `method` once the host's daemon is known to read it, and
+    /// returns its request's id. A connection lost while sending is
+    /// reported with `lost`.
+    async fn ask(
+        &mut self,
+        scope: RemoteScope,
+        method: RemoteMethod,
+        timeout: Duration,
+        lost: MutationState,
+    ) -> Result<uuid::Uuid, MmError> {
+        self.require(method.protocol(), &format!("`{}`", method.name()))?;
+        let request_id = uuid::Uuid::new_v4();
+        self.send_request(request_id, scope, method, timeout)
+            .await
+            .map_err(|_| disconnect(&self.subject, lost))?;
+        Ok(request_id)
     }
 
     async fn send_request(
@@ -641,17 +676,15 @@ impl Connection {
         method: RemoteMethod,
         timeout: Duration,
     ) -> Result<(), MmError> {
-        write_frame(
-            &mut self.stdin,
-            &request_frame(request_id, scope, method, timeout)?,
-        )
-        .await
-        .map(|_| ())
+        let frame = request_frame(self.protocol, request_id, scope, method, timeout)?;
+        write_frame(&mut self.stdin, &frame).await.map(|_| ())
     }
 }
 
-/// One request's frame: its deadline is `timeout` from now.
+/// One request's frame, of protocol `version`: its deadline is `timeout`
+/// from now.
 fn request_frame(
+    version: u16,
     request_id: uuid::Uuid,
     scope: RemoteScope,
     method: RemoteMethod,
@@ -660,7 +693,7 @@ fn request_frame(
     let timeout_ms =
         i64::try_from(timeout.as_millis()).map_err(|_| protocol("timeout overflow"))?;
     Ok(ClientFrame::Request {
-        version: PROTOCOL_VERSION,
+        version,
         request_id,
         operation_nonce: uuid::Uuid::new_v4(),
         deadline_unix_ms: now_unix_ms()?.saturating_add(timeout_ms),

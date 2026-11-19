@@ -328,7 +328,7 @@ impl RemoteDaemon {
     ) -> Result<(), MmError>
     where W: AsyncWrite + Unpin + ?Sized {
         let status = timed(timeout, self.use_cases.runtimes(context)).await?;
-        send_result(writer, context.request_id, RemoteResult::Runtimes(Box::new(status))).await
+        send_result(writer, context, RemoteResult::Runtimes(Box::new(status))).await
     }
 
     /// Has an ingress node of the cluster plan `hash` serve its routes, and
@@ -397,7 +397,7 @@ impl RemoteDaemon {
                 });
             }
         };
-        send_result(writer, context.request_id, result).await
+        send_result(writer, context, result).await
     }
 
     /// Checks that the cluster hash covers the plan this node stored for the
@@ -456,7 +456,7 @@ impl RemoteDaemon {
             "cluster_plan_hash": seal.cluster_plan_hash, "result": "sealed",
             "daemon_version": env!("CARGO_PKG_VERSION"),
         }))?;
-        send_result(writer, context.request_id, RemoteResult::Sealed(Box::new(seal))).await
+        send_result(writer, context, RemoteResult::Sealed(Box::new(seal))).await
     }
 
     /// The seal kept for `hash`, while this node's section can still be
@@ -484,7 +484,7 @@ impl RemoteDaemon {
         let seal = self.journal.read_seal(hash)?.ok_or_else(|| MmError::State {
             message: "the cluster plan seal disappeared while it was read".to_owned(),
         })?;
-        send_result(writer, context.request_id, RemoteResult::Sealed(Box::new(seal))).await
+        send_result(writer, context, RemoteResult::Sealed(Box::new(seal))).await
     }
 
     /// This host's node name, version, and last applied deployment.
@@ -522,7 +522,7 @@ impl RemoteDaemon {
             daemon: Some(self.daemon_health()?),
             secret_store: self.use_cases.secret_store(scope).await,
         };
-        send_result(writer, context.request_id, RemoteResult::Node(Box::new(facts))).await
+        send_result(writer, context, RemoteResult::Node(Box::new(facts))).await
     }
 
     /// How this daemon fares: when it started, what of it does not answer,

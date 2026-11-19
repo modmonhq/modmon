@@ -4,12 +4,12 @@ description: Upgrade mm on your machine and mm and mmd on your hosts, which upgr
 ---
 
 An upgrade has two halves: `mm` on every machine that deploys, and `mm` (the
-relay) and `mmd` on every host. Each release's notes start with the remote
-protocol it speaks, such as `Remote protocol: 19`. A client and a host on
-different remote protocols refuse to work together, so when the protocol
-changes, upgrade the hosts and every machine that deploys to them. When it does
-not change, they keep working together and `mm doctor` warns until they run the
-same release.
+relay) and `mmd` on every host. Each release's notes start with the newest
+remote protocol it speaks, such as `Remote protocol: 1`. From 0.1.1 on, a
+client and a host use the newest protocol both speak, so you can upgrade the
+hosts and the machines that deploy to them in either order, and `mm doctor`
+warns until they run the same release. See
+[compatibility between releases](../reference/compatibility.md).
 
 ## Before you start
 
@@ -39,7 +39,7 @@ mm target nodes
 The plan has a line for each node that says what setup replaces, such as:
 
 ```text
-app-1: replaces mm and mmd 0.1.0 (remote protocol 18, build 3f9a1c2e7b4d) with 0.1.1 (remote protocol 19, build 7d0e5a91c2f3)
+app-1: replaces mm and mmd 0.1.0 (remote protocol 18, build 3f9a1c2e7b4d) with 0.1.1 (remote protocol 1, build 7d0e5a91c2f3)
 ```
 
 Expected result: `apply` finishes after its `verify` step, and `mm target
@@ -67,7 +67,7 @@ account, and treats it as cluster setup treats a node (see below). Its remote
 access section says what setup replaces, named after the target:
 
 ```text
-    release:         production: replaces mm and mmd 0.1.0 (remote protocol 18, build 3f9a1c2e7b4d) with 0.1.1 (remote protocol 19, build 7d0e5a91c2f3)
+    release:         production: replaces mm and mmd 0.1.0 (remote protocol 18, build 3f9a1c2e7b4d) with 0.1.1 (remote protocol 1, build 7d0e5a91c2f3)
 ```
 
 Expected result: `apply` finishes, and `mm doctor` reports the host's `mmd` on
@@ -77,17 +77,18 @@ the new release.
 
 Before it plans, setup reads the release each node's `mmd` reports: its
 version, its remote protocol, and a digest of the `mmd` file, which tells two
-builds of one release apart. One release is newer than another when its remote
-protocol is later, or the protocol is the same and its version is later. Every
-build before 0.1.1 reports version 0.1.0; the plan tells them apart by protocol
-and build.
+builds of one release apart. One release is newer than another when its
+version is later, or the version is the same and its remote protocol is later.
+Every build before 0.1.1 reports version 0.1.0 and a remote protocol from 16 to
+19; 0.1.1 starts the protocol again at 1, so those builds are older, and the
+plan tells them apart by protocol and build.
 
 | The node runs | The plan says | What to pass |
 | ------------- | ------------- | ------------ |
 | No `mmd` yet | `app-1: installs mm and mmd 0.1.1 (…), in place of the earlier release the node may run` | Nothing |
 | An `mmd` that does not report its release: every build before remote protocol 16, including builds without the mesh commands | The same line as above | Nothing |
-| An older release, or an older build of remote protocol 16 or later | `app-1: replaces mm and mmd 0.1.0 (remote protocol 18, build …) with 0.1.1 (…)` | `--upgrade`, or a `deploy.mm-version` pin that this release matches |
-| Another build of the same release, such as a teammate's own build | `app-1: replaces mm and mmd 0.1.1 (remote protocol 19, build …) with 0.1.1 (remote protocol 19, build …)` | `--upgrade`, or the pin |
+| An older release, such as a build from before 0.1.1 that reports its release (remote protocol 16 to 19) | `app-1: replaces mm and mmd 0.1.0 (remote protocol 18, build …) with 0.1.1 (…)` | `--upgrade`, or a `deploy.mm-version` pin that this release matches |
+| Another build of the same release, such as a teammate's own build | `app-1: replaces mm and mmd 0.1.1 (remote protocol 1, build …) with 0.1.1 (remote protocol 1, build …)` | `--upgrade`, or the pin |
 | This build | `app-1 runs this release of mm, 0.1.1 (…); setup installs its host binaries again` | Nothing |
 | A newer release | Refused, see below | `--downgrade` to install the older release anyway |
 
@@ -95,13 +96,13 @@ Without `--upgrade` (or the pin), a plan that would replace an older release or
 another build is refused and names the nodes:
 
 ```text
-app-1 runs mm 0.1.0 (remote protocol 18, build 3f9a1c2e7b4d), and this mm is 0.1.1 (remote protocol 19, build 7d0e5a91c2f3): setup would replace the mm and mmd the hosts run with this build. Run setup with the mm the hosts run to keep them; pass --upgrade, or pin this release with deploy.mm-version, to install 0.1.1 (remote protocol 19, build 7d0e5a91c2f3)
+app-1 runs mm 0.1.0 (remote protocol 18, build 3f9a1c2e7b4d), and this mm is 0.1.1 (remote protocol 1, build 7d0e5a91c2f3): setup would replace the mm and mmd the hosts run with this build. Run setup with the mm the hosts run to keep them; pass --upgrade, or pin this release with deploy.mm-version, to install 0.1.1 (remote protocol 1, build 7d0e5a91c2f3)
 ```
 
 A plan that would replace a newer release is refused even with `--upgrade`:
 
 ```text
-app-1 runs mm 0.1.2 (remote protocol 19, build …), newer than this mm 0.1.1 (remote protocol 19, build …): setup would install this older mm and mmd there and cut off every client that is up to date. Install mm 0.1.2 or later on this machine and run setup again, or pass --downgrade to install 0.1.1 (remote protocol 19, build …) anyway
+app-1 runs mm 0.1.2 (remote protocol 1, build …), newer than this mm 0.1.1 (remote protocol 1, build …): setup would install this older mm and mmd there and cut off every client that is up to date. Install mm 0.1.2 or later on this machine and run setup again, or pass --downgrade to install 0.1.1 (remote protocol 1, build …) anyway
 ```
 
 Setup cannot read the release, and installs this one without a flag and
@@ -152,15 +153,29 @@ others are not contacted and keep their release.
 
 ## Clients and hosts on different releases
 
-When the remote protocols differ, the error says which side to upgrade:
+From 0.1.1 on, `mm` and a host's `mmd` each say the oldest and the newest
+remote protocol they speak, and use the newest one both have. A newer `mm`
+works with hosts on 0.1.1 or later, and a host upgraded first keeps serving
+older clients as long as it still speaks their protocol. On a cluster, each
+node agrees on its protocol by itself. The protocol number changes only when a
+release changes the wire in a way an older peer cannot read; new features keep
+it.
+
+Builds from before 0.1.1 do not work with 0.1.1 or later: install `mm` again
+with the installer, and set their hosts up again with
+`mm target setup plan --upgrade`. The errors say so:
 
 ```text
-this mm speaks remote protocol 18, and the host's mmd 0.1.1 speaks 19. Upgrade mm on this machine to 0.1.1 or newer
-this mm speaks remote protocol 19, and the host's mmd 0.1.0 speaks only 18. Upgrade the host: run `mm target setup plan --upgrade` and apply that plan with --upgrade
+This mm is from before 0.1.1, and the host's mmd 0.1.1 speaks remote protocol 1. Update mm on this machine to 0.1.1 or newer with the installer, https://modmon.dev/install.sh
+target 'production' (203.0.113.10:22) runs an mm from before 0.1.1, which cannot read the hello of this mm 0.1.1 (remote protocol 1). Upgrade the host: run `mm target setup plan --upgrade` and apply that plan with --upgrade
 ```
 
-When only the versions differ, `mm doctor` warns with
-`MM_HOST_RELEASE_OLDER` or `MM_HOST_RELEASE_NEWER` and names the hosts.
+A host whose `mmd` cannot read a request from a newer `mm` refuses it with
+`MM_REMOTE_UPGRADE_REQUIRED`, changes nothing, and names the upgrade to run.
+
+While the releases differ, `mm doctor` warns with `MM_HOST_RELEASE_OLDER`
+(upgrade the hosts with `mm target setup plan --upgrade`) or
+`MM_HOST_RELEASE_NEWER` (run `mm update` on this machine) and names the hosts.
 
 ## Upgrades that need more than setup
 
@@ -178,10 +193,14 @@ When only the versions differ, `mm doctor` warns with
 | Statement | Backed by |
 | --------- | --------- |
 | What the plan says for each kind of node, and what it refuses | `core/tests/upgrade_paths.rs`; `core/tests/mesh.rs`: `setup_refuses_to_downgrade_a_node_and_says_what_it_replaces`, `setup_refuses_another_build_of_the_same_release_unless_asked` |
+| A host from before 0.1.1 is older than 0.1.1, whatever protocol it reports | `core/tests/upgrade_paths.rs`: `a_host_from_before_0_1_1_is_older_whatever_protocol_it_reports` |
 | A single host is held to the same rules | `core/tests/upgrade_paths.rs`: `a_target_without_nodes_reads_its_host_release_as_a_cluster_reads_each_node` |
-| Which side to upgrade when the protocols differ | `core/tests/upgrade_paths.rs`: `a_client_and_a_host_on_different_protocols_are_told_which_side_to_upgrade` |
+| Which side to upgrade when the protocols differ | `core/tests/upgrade_paths.rs`: `a_client_and_a_host_on_different_protocols_are_told_which_side_to_upgrade`; `core/tests/protocol_compatibility.rs`: `a_daemon_refuses_a_client_it_has_no_protocol_in_common_with` |
+| A client and a host on different releases agree on a protocol | `core/tests/protocol_compatibility.rs`: `client_and_daemon_speak_the_newest_protocol_both_have`, `a_daemon_answers_a_newer_client_in_the_protocol_both_speak` |
 | No container restarts and no lookup or request fails while `mmd` is replaced | `scripts/live-cluster.sh`, stage "an mmd upgrade, one node at a time, under traffic" |
 
 The live stage replaces `mmd` with another copy of the same build. No test in
-the repository upgrades real hosts from one release to another yet: try an
-upgrade on a staging cluster before production.
+the repository upgrades real hosts from one release to another yet, or runs
+two releases against each other: the protocol tests play the other side with
+the frames it would send. Try an upgrade on a staging cluster before
+production.

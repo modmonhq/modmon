@@ -133,7 +133,7 @@ pub fn release_diagnostics(
                     older.join(", ")
                 ),
             )
-            .with_help("run `mm target setup plan` and apply it: setup installs this release on one node at a time, and running containers keep running"),
+            .with_help("run `mm target setup plan --upgrade` and apply it with --upgrade: setup installs this release on one node at a time, and running containers keep running"),
         );
     }
     let newer_hosts = differing(std::cmp::Ordering::Greater);
@@ -146,7 +146,7 @@ pub fn release_diagnostics(
                     newer_hosts.join(", ")
                 ),
             )
-            .with_help("install the hosts' release on this machine with the installer, https://modmon.dev/install.sh, before you plan or set up again"),
+            .with_help("run `mm update` on this machine before you set the hosts up again"),
         );
     }
     diagnostics

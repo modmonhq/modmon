@@ -490,7 +490,6 @@ impl<T> ClusterApplyReport<T> {
 
 /// The last deployment a node applied.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct NodeDeployment {
     pub commit: String,
     pub deployed_at_unix_ms: i64,
@@ -501,7 +500,6 @@ pub struct NodeDeployment {
 
 /// What a node's `mmd` says about itself.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct NodeFacts {
     /// The node's own name from `/etc/mm/node.env`; `None` on a host that
     /// was not set up as a cluster node.

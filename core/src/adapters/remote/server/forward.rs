@@ -30,7 +30,7 @@ impl RemoteDaemon {
                 context: format!("connecting to service '{service}' port {port}"),
                 source,
             })?;
-        send_result(writer, context.request_id, RemoteResult::StreamStarted).await?;
+        send_result(writer, context, RemoteResult::StreamStarted).await?;
         let (mut tcp_read, mut tcp_write) = tcp.into_split();
         let request_id = context.request_id;
         let mut sequence = 0_u64;
@@ -55,7 +55,7 @@ impl RemoteDaemon {
                     write_frame(
                         writer,
                         &ServerFrame::Stream {
-                            version: PROTOCOL_VERSION,
+                            version: context.protocol,
                             request_id,
                             sequence,
                             item: Box::new(RemoteStreamItem::Data(engine.encode(&buffer[..count]))),
@@ -93,7 +93,7 @@ impl RemoteDaemon {
         }
         self.audit_forward(context, (service, port), (to_client, to_service), outcome.is_ok())?;
         outcome?;
-        send_end(writer, request_id, sequence, to_client).await
+        send_end(writer, context, sequence, to_client).await
     }
 
     fn audit_forward(

@@ -16,20 +16,19 @@ impl SshRemoteTransport {
             .validate()
             .map_err(|message| MmError::Security { message })?;
         let mut connection = self.connection().await?;
-        let request_id = uuid::Uuid::new_v4();
-        connection
-            .send_request(
-                request_id,
+        let request_id = connection
+            .ask(
                 scope,
                 RemoteMethod::Forward { service, port },
                 Duration::from_millis(MAX_REQUEST_TIMEOUT_MS),
+                MutationState::NotStarted,
             )
-            .await
-            .map_err(|_| disconnect(&connection.subject, MutationState::NotStarted))?;
+            .await?;
         await_forward_start(&mut connection, request_id).await?;
         let engine = base64::engine::general_purpose::STANDARD;
         let (mut local_read, mut local_write) = local.into_split();
         let mut totals = crate::domain::forward::ForwardTotals::default();
+        let version = connection.protocol;
         let Connection { stdin, stdout, .. } = &mut connection;
         let outcome = {
             let upstream = async {
@@ -43,7 +42,7 @@ impl SshRemoteTransport {
                         write_frame(
                             stdin,
                             &ClientFrame::Cancel {
-                                version: PROTOCOL_VERSION,
+                                version,
                                 request_id,
                             },
                         )
@@ -54,7 +53,7 @@ impl SshRemoteTransport {
                     write_frame(
                         stdin,
                         &ClientFrame::Data {
-                            version: PROTOCOL_VERSION,
+                            version,
                             request_id,
                             bytes: engine.encode(&buffer[..count]),
                         },
@@ -113,17 +112,20 @@ async fn await_forward_start(connection: &mut Connection, request_id: uuid::Uuid
         .await
         .map_err(|_| late(&connection.subject, "forward", Duration::from_secs(60), MutationState::NotStarted))??
         .ok_or_else(|| disconnect(&connection.subject, MutationState::NotStarted))?;
+        let agreed = connection.protocol;
         match start {
             ServerFrame::Result {
-                version: PROTOCOL_VERSION,
+                version,
                 request_id: received,
                 result,
-            } if received == request_id && *result == RemoteResult::StreamStarted => {}
+            } if version == agreed
+                && received == request_id
+                && *result == RemoteResult::StreamStarted => {}
             ServerFrame::Error {
-                version: PROTOCOL_VERSION,
+                version,
                 request_id: received,
                 error,
-            } if received.is_none() || received == Some(request_id) => {
+            } if version == agreed && (received.is_none() || received == Some(request_id)) => {
                 return Err(server_error(error));
             }
             _ => return Err(protocol("remote forward start response is invalid")),

@@ -108,7 +108,7 @@ impl RemoteDaemon {
         };
         self.journal.save_plan(&stored)?;
         self.audit_planned(context, &stored, details)?;
-        send_result(writer, context.request_id, result).await
+        send_result(writer, context, result).await
     }
 
     /// Binds a plan to this daemon, the request's scope, principal, and
@@ -122,7 +122,7 @@ impl RemoteDaemon {
     ) -> Result<RemotePlanBinding, MmError> {
         let scope = &context.scope;
         let mut binding = RemotePlanBinding {
-            protocol_version: PROTOCOL_VERSION,
+            protocol_version: context.protocol,
             daemon_version: env!("CARGO_PKG_VERSION").to_owned(),
             daemon_fingerprint: self.identity.fingerprint.clone(),
             target_fingerprint: scope.target_fingerprint.clone(),
@@ -308,7 +308,7 @@ impl RemoteDaemon {
         };
         let Some(deployment) = deployment else {
             self.change_access(context, pass, &access).await?;
-            return send_result(writer, context.request_id, RemoteResult::AccessApplied(Box::new(access))).await;
+            return send_result(writer, context, RemoteResult::AccessApplied(Box::new(access))).await;
         };
         // The deployment is on record from here on, whatever becomes of
         // it or of its client: `mm deploy status` shows it running,
@@ -321,9 +321,9 @@ impl RemoteDaemon {
         self.end_one_call(context, remote_plan_hash, (applied.as_ref().err(), cancelled))?;
         match applied? {
             Some(result) => {
-                send_result(writer, context.request_id, RemoteResult::DeploymentApplied(Box::new(result))).await
+                send_result(writer, context, RemoteResult::DeploymentApplied(Box::new(result))).await
             }
-            None => send_result(writer, context.request_id, RemoteResult::NothingPlaced).await,
+            None => send_result(writer, context, RemoteResult::NothingPlaced).await,
         }
     }
 
@@ -608,7 +608,7 @@ impl RemoteDaemon {
                 .deployed(scope.project_id, &scope.environment)?
                 .map(|deployed| deployed.commit),
         };
-        send_result(writer, context.request_id, RemoteResult::Identity(Box::new(identity))).await
+        send_result(writer, context, RemoteResult::Identity(Box::new(identity))).await
     }
 }
 

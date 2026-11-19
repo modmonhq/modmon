@@ -8,6 +8,56 @@ struct AuthenticatedSession {
     session_id: uuid::Uuid,
 }
 
+/// What the client's hello and this daemon agreed on.
+struct Agreed {
+    /// The protocol of every later frame.
+    protocol: u16,
+    /// The newest protocol the client offered, which a request it sent with
+    /// its hello, before it read the answer, has.
+    offered: u16,
+    client_release: String,
+}
+
+/// A client's hello, from whatever release: what this daemon does not know
+/// of it is left out.
+fn read_hello(bytes: &[u8]) -> Result<HelloOffer, MmError> {
+    if decode_frame::<FrameHead>(bytes)?.kind != "hello" {
+        return Err(protocol("relay session must be followed by a client hello"));
+    }
+    decode_frame(bytes)
+}
+
+/// Answers a request this daemon cannot read whole and acts on none of it:
+/// a client of a later protocol or release is told to upgrade the host, any
+/// other is told what is wrong with it.
+async fn refuse_unread<W: AsyncWrite + Unpin + ?Sized>(
+    writer: &mut W,
+    agreed: &Agreed,
+    bytes: &[u8],
+    unread: MmError,
+) -> Result<(), MmError> {
+    let head = match decode_frame::<FrameHead>(bytes) {
+        Ok(head) if head.kind == "request" => decode_frame::<RequestHead>(bytes),
+        Ok(_) => return Err(protocol("hello must be followed by one request")),
+        Err(error) => Err(error),
+    };
+    let Ok(head) = head else {
+        return Err(unread);
+    };
+    if !client_is_newer(agreed.offered, &agreed.client_release, env!("CARGO_PKG_VERSION")) {
+        send_operation_error(writer, (agreed.protocol, head.request_id), &unread, MutationState::NotStarted).await?;
+        return Err(unread);
+    }
+    tracing::warn!(method = ?head.method.method, client = %agreed.client_release, "a newer mm sent a request this daemon cannot read");
+    let refusal = request_not_understood(&head.method.method, env!("CARGO_PKG_VERSION"), &agreed.client_release);
+    send_error(
+        writer,
+        (agreed.protocol, Some(head.request_id)),
+        remote_error(UPGRADE_REQUIRED_CODE, &refusal, false, MutationState::NotStarted),
+    )
+    .await
+}
+
 /// The daemon's request socket: the one the previous daemon left with the
 /// service manager when its file is still in place (requests sent during
 /// the restart wait in it), else a new one, which the service manager
@@ -297,12 +347,15 @@ fn add_stream_bytes(current: u64, frame: usize, count: u64) -> Result<u64, MmErr
     Ok(bytes)
 }
 
-fn is_cancel(frame: Option<ClientFrame>, request_id: uuid::Uuid) -> Result<bool, MmError> {
+fn is_cancel(
+    frame: Option<ClientFrame>,
+    (agreed, request_id): (u16, uuid::Uuid),
+) -> Result<bool, MmError> {
     match frame {
         Some(ClientFrame::Cancel {
-            version: PROTOCOL_VERSION,
+            version,
             request_id: cancelled,
-        }) if cancelled == request_id => Ok(true),
+        }) if version == agreed && cancelled == request_id => Ok(true),
         None => Ok(true),
         _ => Err(protocol(
             "only a matching cancellation frame is valid during a stream",
@@ -312,14 +365,14 @@ fn is_cancel(frame: Option<ClientFrame>, request_id: uuid::Uuid) -> Result<bool,
 
 async fn send_result<W: AsyncWrite + Unpin + ?Sized>(
     writer: &mut W,
-    request_id: uuid::Uuid,
+    context: &RemoteRequestContext,
     result: RemoteResult,
 ) -> Result<(), MmError> {
     write_frame(
         writer,
         &ServerFrame::Result {
-            version: PROTOCOL_VERSION,
-            request_id,
+            version: context.protocol,
+            request_id: context.request_id,
             result: Box::new(result),
         },
     )
@@ -329,15 +382,15 @@ async fn send_result<W: AsyncWrite + Unpin + ?Sized>(
 
 async fn send_end<W: AsyncWrite + Unpin + ?Sized>(
     writer: &mut W,
-    request_id: uuid::Uuid,
+    context: &RemoteRequestContext,
     frames: u64,
     bytes: u64,
 ) -> Result<(), MmError> {
     write_frame(
         writer,
         &ServerFrame::End {
-            version: PROTOCOL_VERSION,
-            request_id,
+            version: context.protocol,
+            request_id: context.request_id,
             frames,
             bytes,
         },
@@ -348,13 +401,13 @@ async fn send_end<W: AsyncWrite + Unpin + ?Sized>(
 
 async fn send_operation_error<W: AsyncWrite + Unpin + ?Sized>(
     writer: &mut W,
-    request_id: uuid::Uuid,
+    (version, request_id): (u16, uuid::Uuid),
     error: &MmError,
     mutation_state: MutationState,
 ) -> Result<(), MmError> {
     send_error(
         writer,
-        Some(request_id),
+        (version, Some(request_id)),
         remote_error(
             error.code(),
             &redacted_error_message(error),
@@ -367,33 +420,19 @@ async fn send_operation_error<W: AsyncWrite + Unpin + ?Sized>(
 
 async fn send_error<W: AsyncWrite + Unpin + ?Sized>(
     writer: &mut W,
-    request_id: Option<uuid::Uuid>,
+    (version, request_id): (u16, Option<uuid::Uuid>),
     error: RemoteError,
 ) -> Result<(), MmError> {
     write_frame(
         writer,
         &ServerFrame::Error {
-            version: PROTOCOL_VERSION,
+            version,
             request_id,
             error,
         },
     )
     .await
     .map(|_| ())
-}
-
-/// Tells a client of another protocol version which side is behind.
-fn upgrade_error(client_version: u16) -> RemoteError {
-    remote_error(
-        "MM_REMOTE_UPGRADE_REQUIRED",
-        &crate::domain::remote::protocol_mismatch(
-            client_version,
-            PROTOCOL_VERSION,
-            env!("CARGO_PKG_VERSION"),
-        ),
-        false,
-        MutationState::NotStarted,
-    )
 }
 
 fn remote_error(

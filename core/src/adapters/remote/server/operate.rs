@@ -53,7 +53,7 @@ impl RemoteDaemon {
                 });
             }
         };
-        send_result(writer, context.request_id, result).await
+        send_result(writer, context, result).await
     }
 
     /// One audit record of what an operation did, beside the request's own.

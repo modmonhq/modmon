@@ -9,7 +9,7 @@ use tokio::net::{UnixListener, UnixStream};
 
 use crate::adapters::remote::access::{AccessGuard, DeployedState, HostAccessStore};
 use crate::adapters::remote::git::ProjectRepositories;
-use crate::adapters::remote::codec::{FrameReader, encode_frame, write_frame, write_raw_frame};
+use crate::adapters::remote::codec::{FrameReader, decode_frame, encode_frame, write_frame, write_raw_frame};
 use crate::adapters::remote::config::DaemonConfig;
 use crate::adapters::remote::journal::RemoteJournal;
 use crate::app::ports::{ExecStream, LogStream, RemoteRequestContext, RemoteUseCases};
@@ -20,10 +20,11 @@ use crate::domain::build::BuildReceipt;
 use crate::domain::error::MmError;
 use crate::domain::observability::OperationCancellation;
 use crate::domain::remote::{
-    check_receipt_scope, ClientFrame, MAX_REQUEST_TIMEOUT_MS, MAX_STREAM_BYTES, MAX_STREAM_FRAMES, MutationState,
-    PLAN_TTL_MS, PROTOCOL_VERSION, RemoteAccessPlan, RemoteDeploymentPlan, RemoteError,
-    RemoteMethod, RemotePlanBinding, RemotePlanKind, RemoteResult, RemoteStreamItem,
-    ServerFrame, ServerHello, StoredRemotePlan,
+    check_receipt_scope, ClientFrame, FrameHead, HelloOffer, MAX_REQUEST_TIMEOUT_MS, MAX_STREAM_BYTES,
+    MAX_STREAM_FRAMES, MutationState, PLAN_TTL_MS, PROTOCOL_VERSION, ProtocolRange, RemoteAccessPlan,
+    RemoteDeploymentPlan, RemoteError, RemoteMethod, RemotePlanBinding, RemotePlanKind, RemoteResult,
+    RemoteStreamItem, RequestHead, ServerFrame, ServerHello, StoredRemotePlan, UPGRADE_REQUIRED_CODE,
+    client_is_newer, negotiate, protocol_refusal, request_not_understood,
 };
 use crate::domain::users::AccessChange;
 

@@ -21,7 +21,8 @@
         OperationCancellation, ServiceSelector,
     };
     use crate::domain::remote::{
-        ClientFrame, ClientHello, MutationState, PROTOCOL_VERSION, RemoteMethod, RemoteResult,
+        ClientFrame, ClientHello, MINIMUM_PROTOCOL_VERSION, MutationState, PROTOCOL_VERSION,
+        RemoteMethod, RemoteResult,
         RemoteScope, RemoteStreamItem, ServerFrame,
     };
     use crate::domain::runtime::{RuntimeKind, ServiceIdentity};
@@ -403,11 +404,9 @@
             config(temporary.path(), &root, uid, gid)?,
             handler,
         )?);
-        // The answer says which side is behind: a newer client is told to
-        // upgrade the host, an older one to upgrade itself.
         for (version, expected) in [
             (PROTOCOL_VERSION + 1, "Upgrade the host: run `mm target setup plan --upgrade`"),
-            (PROTOCOL_VERSION - 1, "Upgrade mm on this machine"),
+            (MINIMUM_PROTOCOL_VERSION - 1, "Update mm on this machine"),
         ] {
             let (server, mut client) = unix_pair()?;
             let task = tokio::spawn({
@@ -419,9 +418,11 @@
                 &mut client,
                 &ClientFrame::Hello {
                     version,
+                    minimum: version,
                     hello: ClientHello {
                         client_nonce: uuid::Uuid::from_u128(20),
                         expected_daemon_fingerprint: daemon.identity().fingerprint.clone(),
+                        client_version: String::new(),
                     },
                 },
             )
@@ -466,9 +467,11 @@
             &mut client,
             &ClientFrame::Hello {
                 version: PROTOCOL_VERSION,
+                minimum: PROTOCOL_VERSION,
                 hello: ClientHello {
                     client_nonce: hello_nonce,
                     expected_daemon_fingerprint: fingerprint,
+                    client_version: String::new(),
                 },
             },
         )
@@ -725,9 +728,11 @@
             &mut client,
             &ClientFrame::Hello {
                 version: PROTOCOL_VERSION,
+                minimum: PROTOCOL_VERSION,
                 hello: ClientHello {
                     client_nonce: hello_nonce,
                     expected_daemon_fingerprint: fingerprint,
+                    client_version: String::new(),
                 },
             },
         )
@@ -839,9 +844,11 @@
         };
         let hello = |expected: String| ClientFrame::Hello {
             version: PROTOCOL_VERSION,
+            minimum: PROTOCOL_VERSION,
             hello: ClientHello {
                 client_nonce: uuid::Uuid::new_v4(),
                 expected_daemon_fingerprint: expected,
+                client_version: String::new(),
             },
         };
         assert!(serve_frames(&daemon, vec![session(), ClientFrame::Cancel {
@@ -997,13 +1004,14 @@
         assert!(add_stream_bytes(u64::MAX, 1, 1).is_err());
         assert!(add_stream_bytes(0, 0, crate::domain::remote::MAX_STREAM_FRAMES + 1).is_err());
         let request_id = uuid::Uuid::from_u128(601);
-        assert!(is_cancel(None, request_id)?);
+        let session = (PROTOCOL_VERSION, request_id);
+        assert!(is_cancel(None, session)?);
         assert!(is_cancel(
             Some(ClientFrame::Cancel {
                 version: PROTOCOL_VERSION,
                 request_id,
             }),
-            request_id,
+            session,
         )?);
         assert!(
             is_cancel(
@@ -1011,7 +1019,7 @@
                     version: PROTOCOL_VERSION,
                     request_id: uuid::Uuid::from_u128(602),
                 }),
-                request_id,
+                session,
             )
             .is_err()
         );
@@ -1059,9 +1067,20 @@
                     .authenticate_relay(reader, &mut writer)
                     .await
                     .map(|_| ()),
-                1 => timeout_daemon.handshake(reader, &mut writer).await,
+                1 => timeout_daemon
+                    .handshake(reader, &mut writer)
+                    .await
+                    .map(|_| ()),
                 _ => timeout_daemon
-                    .receive_request(reader, &mut writer)
+                    .receive_request(
+                        reader,
+                        &mut writer,
+                        &super::Agreed {
+                            protocol: PROTOCOL_VERSION,
+                            offered: PROTOCOL_VERSION,
+                            client_release: String::new(),
+                        },
+                    )
                     .await
                     .map(|_| ()),
             };
@@ -1224,9 +1243,11 @@
             &mut client,
             &ClientFrame::Hello {
                 version: PROTOCOL_VERSION,
+                minimum: PROTOCOL_VERSION,
                 hello: ClientHello {
                     client_nonce,
                     expected_daemon_fingerprint: fingerprint,
+                    client_version: String::new(),
                 },
             },
         )

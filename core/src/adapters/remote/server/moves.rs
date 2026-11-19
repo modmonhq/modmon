@@ -83,6 +83,6 @@ impl RemoteDaemon {
             "stopped": stopped.iter().map(|service| format!("{}/{}", service.stack, service.service)).collect::<Vec<_>>(),
             "daemon_version": env!("CARGO_PKG_VERSION"),
         }))?;
-        send_result(writer, context.request_id, RemoteResult::MovesFinished(stopped)).await
+        send_result(writer, context, RemoteResult::MovesFinished(stopped)).await
     }
 }

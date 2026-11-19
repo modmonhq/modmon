@@ -1,0 +1,14 @@
+{
+  "request_id": "00000000-0000-4000-8000-000000000001",
+  "result": {
+    "result": "moves_finished",
+    "value": [
+      {
+        "service": "web",
+        "stack": "web"
+      }
+    ]
+  },
+  "type": "result",
+  "version": 1
+}

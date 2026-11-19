@@ -21,7 +21,6 @@ pub const PODMAN_MINIMUM: (u32, u32) = (5, 0);
 
 /// A host's engine as its `mmd` probed it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct EngineFacts {
     pub runtime: RuntimeKind,
     /// As the engine names itself: `podman version 5.4.2`.

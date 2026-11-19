@@ -138,9 +138,11 @@ fn protocol_method_and_frame_discriminants_are_stable() {
         },
         ClientFrame::Hello {
             version: 2,
+            minimum: 2,
             hello: ClientHello {
                 client_nonce: request_id,
                 expected_daemon_fingerprint: "a".repeat(64),
+                client_version: String::new(),
             },
         },
         ClientFrame::Request {

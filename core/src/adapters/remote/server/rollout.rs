@@ -162,7 +162,7 @@ impl RemoteDaemon {
                 "daemon_version": env!("CARGO_PKG_VERSION"),
             }))?;
         }
-        send_result(writer, context.request_id, RemoteResult::Rollout(Box::new(answer))).await
+        send_result(writer, context, RemoteResult::Rollout(Box::new(answer))).await
     }
 
     /// Takes the environment's deployment lock for plan `hash`, or renews
@@ -747,7 +747,7 @@ impl RemoteDaemon {
                     release: None,
                 });
         }
-        send_result(writer, context.request_id, RemoteResult::DeploymentStatus(Box::new(status))).await
+        send_result(writer, context, RemoteResult::DeploymentStatus(Box::new(status))).await
     }
 }
 

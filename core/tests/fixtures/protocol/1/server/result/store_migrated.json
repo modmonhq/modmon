@@ -1,0 +1,20 @@
+{
+  "request_id": "00000000-0000-4000-8000-000000000001",
+  "result": {
+    "result": "store_migrated",
+    "value": {
+      "node": "web",
+      "provider": "web",
+      "secrets": [
+        {
+          "key": "web",
+          "location": "web",
+          "revision": "web",
+          "written": true
+        }
+      ]
+    }
+  },
+  "type": "result",
+  "version": 1
+}
