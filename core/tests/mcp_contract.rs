@@ -1485,6 +1485,8 @@ fn setup_project(secrets: bool) -> Result<Project, Box<dyn std::error::Error>> {
             "database.password: {storage: {provider: age, location: local/database-password}, generate: {preset: password, length: 40}}",
         )
         .unwrap_or_default();
+        config["bindings"]["DATABASE.PASSWORD"] =
+            serde_yaml_ng::from_str("{secret: database.password}").unwrap_or_default();
         if secrets {
             config["agents"]["local"]["secrets"] = true.into();
         }

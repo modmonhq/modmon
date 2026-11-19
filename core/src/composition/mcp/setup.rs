@@ -59,12 +59,15 @@ impl McpApplicationAdapter {
                     .generate(
                         &context.project_root,
                         Some(&context.scope.environment),
-                        name.as_deref(),
-                        name.is_none(),
+                        &name.clone().map_or(
+                            crate::domain::secret::SecretGenerationSelection::Missing,
+                            crate::domain::secret::SecretGenerationSelection::Named,
+                        ),
                     )
                     .await?;
                 json_value(serde_json::json!({
                     "project_name": report.project_name,
+                    "environment": report.environment,
                     "generated": report.secrets,
                 }))
             }
