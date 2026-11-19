@@ -57,7 +57,7 @@ pub(super) async fn fix(
             Ok(())
         }
         SetupIssue::MissingImages { .. } => {
-            super::build::run(None, true, false, invocation).await?;
+            super::build::run(None, crate::app::BuildRequest::from(true), false, invocation).await?;
             Ok(())
         }
         SetupIssue::LegacyState { .. } => {

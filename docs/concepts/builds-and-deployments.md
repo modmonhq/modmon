@@ -24,6 +24,22 @@ Replace any `ghcr.io/example/...` image names with repositories you own.
 
 ## Build and publish
 
+### What a build covers
+
+`mm build` builds the modules the selected environment runs: every module
+with a service in that environment, and the modules whose images those build
+`FROM`, through `build.depends-on` or a `FROM` line that names another
+module's `build.image`. So `mm --environment production build --publish`
+never builds a module that only runs in development. A module the
+environment does not run cannot stop its build either.
+
+To build every module that has a build, whatever the environment runs, add
+`--all`:
+
+```sh
+mm build --all plan
+```
+
 ### Local build platforms
 
 To build natively on Apple Silicon while retaining the project's shared platforms,
@@ -180,9 +196,11 @@ mm --environment production deploy apply --plan PLAN_HASH --yes
 ```
 
 mm plans the target environment's build of the receipt's commit and accepts
-the receipt only when it builds exactly the same units: the same modules,
-platforms, image repositories, selected variants, build paths, arguments,
-extra inputs, dependencies, and file contents. Otherwise it refuses and names
+the receipt only when it holds every module that environment builds, each
+built exactly the same way: the same platforms, image repositories, selected
+variants, build paths, arguments, extra inputs, dependencies, and file
+contents. Modules in the receipt that the target environment does not run are
+left out of the promoted build. Otherwise it refuses and names
 the first module that differs and what differs, such as `build argument
 FEATURE`, with the command that builds for the target environment. A module
 with build secrets is promoted only when every secret is listed under

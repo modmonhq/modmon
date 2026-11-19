@@ -95,6 +95,10 @@ pub enum Command {
         /// Push a multi-platform image index and reviewed tags to the registry.
         #[arg(long, global = true)]
         publish: bool,
+        /// Build every module that has a build, not only the ones the
+        /// selected environment runs and the bases they build FROM.
+        #[arg(long, global = true)]
+        all: bool,
         /// Skip the build confirmation prompt.
         #[arg(long, global = true)]
         yes: bool,

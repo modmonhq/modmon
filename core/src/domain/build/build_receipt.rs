@@ -106,17 +106,51 @@ impl BuildReceipt {
     }
 
     /// The same build bound to another environment. `current` is the plan
-    /// that environment's configuration makes for the receipt's commit; it
-    /// must build exactly the receipt's units from the same inputs, and no
-    /// unit may mount a build secret whose value can differ between
-    /// environments.
+    /// that environment's configuration makes for the receipt's commit; the
+    /// receipt must build each of its units from the same inputs, and no
+    /// such unit may mount a build secret whose value can differ between
+    /// environments. Units the environment does not build are left out.
     pub fn promote(&self, current: &ImageBuildPlan) -> Result<PromotedReceipt, String> {
         self.validate()?;
         self.check_promotion(current)?;
         Ok(PromotedReceipt {
-            receipt: self.rebind(&current.environment, &current.config_hash)?,
+            receipt: self
+                .narrowed_to(current)?
+                .rebind(&current.environment, &current.config_hash)?,
             origin: self.origin(),
         })
+    }
+
+    /// The same build with only the modules `current` builds.
+    fn narrowed_to(&self, current: &ImageBuildPlan) -> Result<Self, String> {
+        let keep = |module: &str| current.units.iter().any(|unit| unit.module == module);
+        if self.plan.units.iter().all(|unit| keep(&unit.module)) {
+            return Ok(self.clone());
+        }
+        let plan = ImageBuildPlan::new(
+            ImageBuildScope {
+                project_id: self.plan.project_id,
+                config_hash: self.plan.config_hash.clone(),
+                environment: self.plan.environment.clone(),
+            },
+            self.plan.source.clone(),
+            self.plan.publish,
+            self.plan.tag_strategy,
+            self.plan.platforms.clone(),
+            self.plan
+                .units
+                .iter()
+                .filter(|unit| keep(&unit.module))
+                .cloned()
+                .collect(),
+        )?;
+        let mut result = self.result.clone();
+        result.plan_hash.clone_from(&plan.plan_hash);
+        result.images.retain(|image| keep(&image.module));
+        result
+            .dependencies
+            .retain(|dependency| keep(&dependency.edge.dependent_module));
+        Self::new(plan, result)
     }
 
     /// Why the receipt cannot stand in for `current`, naming the first module
@@ -172,16 +206,6 @@ impl BuildReceipt {
                     ),
                 );
             }
-        }
-        if let Some(extra) = built
-            .units
-            .iter()
-            .find(|built| !current.units.iter().any(|unit| unit.module == built.module))
-        {
-            return refuse(
-                &extra.module,
-                format!("is in the build receipt, but environment '{target}' does not build it"),
-            );
         }
         Ok(())
     }

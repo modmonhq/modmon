@@ -5,7 +5,7 @@ use crate::app::ports::{
     BuildOperationLock, BuildVariantRequest, Clock, ImageBuilder, ProjectDocumentStore,
     SecretMaterialResolver, SecretMetadataInspector, StateStore, UpstreamBuildContext,
 };
-use crate::app::{BuildManager, WorkspaceSelection};
+use crate::app::{BuildManager, BuildRequest, WorkspaceSelection};
 use crate::domain::build::{
     BuildDependencyReference, BuildReusePolicy, BuiltImage, ImageBuildPlan, ImageBuildResult,
     ImageBuildUnitPlan, ImageBuildVariantPlan, ResolvedBuildDependency, ReusableImageRecord,
@@ -61,9 +61,9 @@ impl BuildService {
     pub async fn plan(
         &self,
         selection: &WorkspaceSelection,
-        publish: bool,
+        request: impl Into<BuildRequest>,
     ) -> Result<ImageBuildPlan, MmError> {
-        self.planner.plan(selection, publish).await
+        self.planner.plan(selection, request).await
     }
 
     /// The latest published build of this checkout and environment, as a
@@ -97,13 +97,14 @@ impl BuildService {
     pub async fn apply_reviewed(
         &self,
         selection: &WorkspaceSelection,
-        publish: bool,
+        request: impl Into<BuildRequest>,
         expected_plan_hash: &str,
     ) -> Result<ImageBuildResult, MmError> {
-        let preview = self.planner.plan(selection, publish).await?;
+        let request = request.into();
+        let preview = self.planner.plan(selection, request).await?;
         require_plan_hash(&preview, expected_plan_hash)?;
         let _guard = self.ports.locks.acquire(preview.project_id)?;
-        let plan = self.planner.plan(selection, publish).await?;
+        let plan = self.planner.plan(selection, request).await?;
         require_plan_hash(&plan, expected_plan_hash)?;
         plan.validate()
             .map_err(|message| MmError::Security { message })?;

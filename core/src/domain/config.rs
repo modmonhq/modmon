@@ -151,6 +151,19 @@ impl MmConfig {
             .flat_map(|module| &module.services)
             .filter(move |(_, service)| service.is_active(environment))
     }
+
+    /// Modules with a service active in `environment`.
+    pub fn active_modules<'a>(
+        &'a self,
+        environment: &'a str,
+    ) -> impl Iterator<Item = (&'a String, &'a ModuleConfig)> {
+        self.modules.iter().filter(move |(_, module)| {
+            module
+                .services
+                .values()
+                .any(|service| service.is_active(environment))
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

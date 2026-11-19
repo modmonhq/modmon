@@ -32,6 +32,9 @@ const DOCKERIGNORE: &str = ".dockerignore";
 
 mod graph;
 use graph::*;
+mod scope;
+pub use scope::BuildRequest;
+use scope::modules_in_scope;
 mod source;
 #[cfg(test)]
 pub(crate) use source::hash_context;
@@ -64,8 +67,9 @@ impl BuildManager {
     pub async fn plan(
         &self,
         selection: &WorkspaceSelection,
-        publish: bool,
+        request: impl Into<BuildRequest>,
     ) -> Result<ImageBuildPlan, MmError> {
+        let request = request.into();
         let document = self.documents.load_from(&selection.start)?;
         let environment = resolve_environment(&document, selection.environment.as_deref())?;
         let validation = validate(&document, &environment);
@@ -79,7 +83,7 @@ impl BuildManager {
         }
 
         let source = self.source.inspect(&document.root).await?;
-        plan_from_source(document, environment, source, publish, &[])
+        plan_from_source(document, environment, source, request, &[])
     }
 
     /// Checks a published build receipt against this checkout for the
@@ -138,7 +142,7 @@ impl BuildManager {
             document,
             environment,
             receipt.plan.source.clone(),
-            true,
+            BuildRequest::from(true),
             added,
         )?;
         receipt
@@ -162,9 +166,10 @@ fn plan_from_source(
     document: ConfigDocument,
     environment: String,
     source: crate::domain::build::BuildSource,
-    publish: bool,
+    request: BuildRequest,
     excluded: &[PathBuf],
 ) -> Result<ImageBuildPlan, MmError> {
+    let publish = request.publish;
     if publish && source.dirty {
         return Err(MmError::Build {
             message: "publishing from a dirty worktree is forbidden".to_owned(),
@@ -185,8 +190,15 @@ fn plan_from_source(
         .environments
         .get(&environment)
         .and_then(|config| config.build_variant.as_deref());
+    let scope = (!request.all).then(|| modules_in_scope(&document, &environment));
     let mut units = Vec::new();
     for (module_name, module) in &document.config.modules {
+        if scope
+            .as_ref()
+            .is_some_and(|scope| !scope.contains(module_name))
+        {
+            continue;
+        }
         if let Some(unit) = plan_module(
             &document,
             (module_name, module),
@@ -200,9 +212,14 @@ fn plan_from_source(
     }
     if units.is_empty() {
         return Err(MmError::Build {
-            message:
+            message: if request.all {
                 "no buildable modules were found; add a module Dockerfile or build configuration"
-                    .to_owned(),
+                    .to_owned()
+            } else {
+                format!(
+                    "environment '{environment}' runs no module that mm builds; add a Dockerfile or build configuration to one of its modules, or build every module with `mm -e {environment} build --all`"
+                )
+            },
         });
     }
     infer_first_party_bases(&document.root, &mut units)?;

@@ -61,7 +61,7 @@ mod workspaces;
 pub use application::{
     Application, ApplicationDependencies, DocumentScope, StatusRead, WorkspaceSelection,
 };
-pub use build::{BuildManager, ReceiptCheckout};
+pub use build::{BuildManager, BuildRequest, ReceiptCheckout};
 pub use build_apply::{BuildExecutionPorts, BuildService};
 pub use ca::LocalCaManager;
 pub use cluster_setup::{

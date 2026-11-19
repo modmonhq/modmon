@@ -359,6 +359,10 @@ installations `mm target setup` upgrades in place and what it refuses.
   with a `generate:` block, as `--missing` did before. A secret whose provider
   has no connection from this machine is listed as skipped with the reason,
   in the JSON output too, and the others are still created.
+- `mm build` builds only the modules the selected environment runs, and the
+  first-party images they build FROM; `mm build --all` builds every module,
+  as before. A build receipt promotes to an environment that runs fewer
+  modules than the one it was built for.
 
 ### Added
 

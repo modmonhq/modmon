@@ -43,7 +43,7 @@ pub enum BuildCommand {
 
 pub(super) struct BuildCommandRequest<'a> {
     pub(super) command: Option<BuildCommand>,
-    pub(super) publish: bool,
+    pub(super) request: crate::app::BuildRequest,
     pub(super) yes: bool,
     pub(super) selection: &'a WorkspaceSelection,
     pub(super) explicit_home: Option<&'a std::path::Path>,
@@ -53,13 +53,13 @@ pub(super) struct BuildCommandRequest<'a> {
 
 pub(super) async fn run(
     command: Option<BuildCommand>,
-    publish: bool,
+    request: crate::app::BuildRequest,
     yes: bool,
     invocation: &super::dispatch::Invocation,
 ) -> Result<u8, MmError> {
     run_build_command(BuildCommandRequest {
         command,
-        publish,
+        request,
         yes,
         selection: &invocation.selection,
         explicit_home: invocation.home(),
@@ -72,7 +72,7 @@ pub(super) async fn run(
 pub(super) async fn run_build_command(request: BuildCommandRequest<'_>) -> Result<u8, MmError> {
     let BuildCommandRequest {
         command,
-        publish,
+        request,
         yes,
         selection,
         explicit_home,
@@ -119,7 +119,7 @@ pub(super) async fn run_build_command(request: BuildCommandRequest<'_>) -> Resul
     let preview = inline::step(
         &progress,
         ("plan", "Planning the image builds"),
-        planner.plan(selection, publish),
+        planner.plan(selection, request),
         |_| Some("Planned the image builds".to_owned()),
     )
     .await?;
@@ -163,14 +163,14 @@ pub(super) async fn run_build_command(request: BuildCommandRequest<'_>) -> Resul
         return Ok(0);
     }
     let build = runtime.build_service(planner, selection, explicit_home)?;
-    apply_build(&build, selection, (publish, &expected_plan_hash), format).await
+    apply_build(&build, selection, (request, &expected_plan_hash), format).await
 }
 
-/// Builds, and publishes with `publish`, the reviewed plan.
+/// Builds, and publishes with `--publish`, the reviewed plan.
 async fn apply_build(
     build: &crate::app::BuildService,
     selection: &WorkspaceSelection,
-    (publish, expected_plan_hash): (bool, &str),
+    (request, expected_plan_hash): (crate::app::BuildRequest, &str),
     format: OutputFormat,
 ) -> Result<u8, MmError> {
     let progress = inline::Progress::new(format);
@@ -178,13 +178,13 @@ async fn apply_build(
         &progress,
         (
             "build",
-            if publish {
+            if request.publish {
                 "Building and publishing the images"
             } else {
                 "Building the images"
             },
         ),
-        build.apply_reviewed(selection, publish, expected_plan_hash),
+        build.apply_reviewed(selection, request, expected_plan_hash),
         |_| Some("Built the images".to_owned()),
     )
     .await?;

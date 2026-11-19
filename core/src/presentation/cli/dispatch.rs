@@ -135,9 +135,18 @@ async fn route(
         Some(Command::Access { command }) => access::run(command, invocation).await,
         Some(Command::Build {
             publish,
+            all,
             yes,
             command,
-        }) => build::run(command, publish, yes, invocation).await,
+        }) => {
+            build::run(
+                command,
+                crate::app::BuildRequest::new(publish, all),
+                yes,
+                invocation,
+            )
+            .await
+        }
         Some(Command::Deploy {
             yes,
             nodes,
