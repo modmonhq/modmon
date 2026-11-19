@@ -59,6 +59,9 @@ mod temp_dirs;
 #[allow(clippy::duplicate_mod)]
 mod support;
 
+#[path = "deployment/route_adoption.rs"]
+mod route_adoption;
+
 const PROJECT_ID: &str = "019c527b-6242-7b43-bfd4-bd60e27c1de3";
 const TARGET_ID: &str = "319c527b-6242-7b43-bfd4-bd60e27c1de3";
 const BUILD_COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
