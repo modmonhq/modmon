@@ -292,8 +292,10 @@ async fn volume_files_are_staged_started_and_cleaned_up() -> Result<(), Box<dyn 
     let owned = inspected(ResourceKind::Volume, "data", "volume")?;
     let process = QueueProcess::with(vec![
         ok(&owned),
+        ok("0:0\n"),
         ok(""),
         ok(&owned),
+        ok("0:0\n"),
         ok("abcdef1234\n"),
         ok(""),
         ok(""),
@@ -301,6 +303,7 @@ async fn volume_files_are_staged_started_and_cleaned_up() -> Result<(), Box<dyn 
         ok(&owned),
         ok(""),
         ok(&owned),
+        ok("0:0\n"),
         ok(""),
     ]);
     let runtime = DockerComposeRuntime::new(process.clone());
@@ -325,7 +328,8 @@ async fn volume_files_are_staged_started_and_cleaned_up() -> Result<(), Box<dyn 
         .await?;
 
     let commands = process.commands()?;
-    assert!(commands.iter().any(|command| command == "docker cp" || command.starts_with("docker cp ")));
+    assert!(commands.iter().any(|command| command == "docker cp - abcdef1234:/volume"));
+    assert_eq!(commands.iter().filter(|command| command.contains(" --user 0:0 ")).count(), 3);
     assert!(commands.iter().any(|command| command == "docker start --attach abcdef1234"));
     assert!(commands.iter().any(|command| command == "docker rm --force abcdef1234"));
     Ok(())
@@ -338,7 +342,7 @@ async fn malformed_helper_ids_and_cleanup_failures_are_reported() -> Result<(), 
     std::fs::write(&source, "secret")?;
     let owned = inspected(ResourceKind::Volume, "data", "volume")?;
 
-    let invalid = QueueProcess::with(vec![ok(&owned), ok("not-an-id")]);
+    let invalid = QueueProcess::with(vec![ok(&owned), ok("0:0"), ok("not-an-id")]);
     let runtime = DockerComposeRuntime::new(invalid);
     assert!(matches!(
         runtime.replace_volume_file(&local_target(), "data", "volume", "secret", &source, 0o600).await,
@@ -347,6 +351,7 @@ async fn malformed_helper_ids_and_cleanup_failures_are_reported() -> Result<(), 
 
     let cleanup = QueueProcess::with(vec![
         ok(&owned),
+        ok("0:0"),
         ok("abcdef"),
         Ok(output(1, "", "copy failed")),
         Ok(output(1, "", "cleanup failed")),

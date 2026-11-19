@@ -97,6 +97,17 @@ MM_TEST_RUNTIME=docker-compose cargo test --features unstable --locked \
 Repeat with `MM_TEST_RUNTIME=podman-compose`.
 The test uses uniquely named, resource-limited workloads and removes them afterward.
 
+Changes to how mm writes files into volumes have a live check of their own. It
+gives a new volume a root that uid 100 owns with mode 0700, writes, replaces,
+creates and removes files in it, and removes the volume afterward:
+
+```sh
+MM_TEST_RUNTIME=docker-compose cargo test --features unstable --locked \
+  --test live_volume_files -- --ignored
+```
+
+Repeat with `MM_TEST_RUNTIME=podman-compose`.
+
 Changes to cluster setup (`mm target setup` on a target with `nodes:`) need a
 run against real hosts. Set up a disposable cluster with `mm target setup
 apply`, then check every node, the mesh between them, and the storage export:

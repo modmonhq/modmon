@@ -50,11 +50,12 @@ async fn run_to_end(
 ) -> Result<CommandOutput, MmError> {
     let redaction = output_redaction(&specification);
     let sensitive_stdin = specification.take_sensitive_stdin();
+    let stdin = child_stdin(&mut specification, sensitive_stdin.is_some());
     let failed_to_start = |source| MmError::ProcessSpawn {
         program: specification.program().to_owned(),
         source,
     };
-    let mut child = start(&specification, sensitive_stdin.is_some()).map_err(failed_to_start)?;
+    let mut child = start(&specification, stdin).map_err(failed_to_start)?;
     // On the list of children until it is gone: one that is still there
     // after its deadline is what `mm doctor` reports.
     let _listed = super::supervisor::Listed::child(
@@ -138,17 +139,19 @@ async fn run_to_end(
     }
 }
 
+fn child_stdin(specification: &mut CommandSpec, piped: bool) -> Stdio {
+    match specification.take_stdin_file() {
+        Some(file) => Stdio::from(file),
+        None if piped => Stdio::piped(),
+        None if specification.should_inherit_stdin() => Stdio::inherit(),
+        None => Stdio::null(),
+    }
+}
+
 /// Starts the child of `specification` as the leader of a process group
 /// of its own, so the whole group can be ended.
-fn start(specification: &CommandSpec, pipes_stdin: bool) -> std::io::Result<Box<dyn ChildWrapper>> {
+fn start(specification: &CommandSpec, stdin: Stdio) -> std::io::Result<Box<dyn ChildWrapper>> {
     let mut command = Command::new(specification.program());
-    let stdin = if pipes_stdin {
-        Stdio::piped()
-    } else if specification.should_inherit_stdin() {
-        Stdio::inherit()
-    } else {
-        Stdio::null()
-    };
     command
         .args(specification.arguments())
         .env_clear()

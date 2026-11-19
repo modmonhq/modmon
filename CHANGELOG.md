@@ -1320,6 +1320,15 @@ installations `mm target setup` upgrades in place and what it refuses.
 - Under `mmd.service`, access changes reach sshd. The unit's read-only system
   sandbox stopped `mmd` from rewriting `/etc/ssh/mm_authorized_keys`, and its
   `UMask=0077` would have made the file unreadable to the relay account.
+- On Docker, mm writes files into a volume whose root another user owns with
+  mode 0700, such as the volumes of a managed OpenBao or Vault provider or a
+  volume Docker fills from an image directory. Installing a managed provider
+  failed with `Permission denied`. The helper container now runs as the owner
+  of the volume's root with no capabilities, and Docker writes each file with
+  its owner and mode.
+- A managed OpenBao or Vault provider starts on Docker Compose: its Compose
+  file gave the options of its `/tmp` mount as separate `tmpfs` entries,
+  which the engine refused.
 
 ### Security
 

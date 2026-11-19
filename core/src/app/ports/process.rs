@@ -24,6 +24,7 @@ pub struct CommandSpec {
     environment: BTreeMap<String, CommandValue>,
     redactions: Vec<Zeroizing<String>>,
     sensitive_stdin: Option<Zeroizing<String>>,
+    stdin_file: Option<std::fs::File>,
     inherit_stdin: bool,
     timeout: Duration,
     max_output_bytes: usize,
@@ -40,6 +41,7 @@ impl CommandSpec {
             environment: BTreeMap::new(),
             redactions: Vec::new(),
             sensitive_stdin: None,
+            stdin_file: None,
             inherit_stdin: false,
             timeout: Duration::from_secs(30),
             max_output_bytes: 4 * 1024 * 1024,
@@ -148,6 +150,17 @@ impl CommandSpec {
     #[must_use]
     pub fn sensitive_stdin(mut self, value: Zeroizing<String>) -> Self {
         self.sensitive_stdin = Some(value);
+        self.stdin_file = None;
+        self.inherit_stdin = false;
+        self
+    }
+
+    /// Gives the child `file` as its standard input, read from the file's
+    /// current offset.
+    #[must_use]
+    pub fn stdin_file(mut self, file: std::fs::File) -> Self {
+        self.stdin_file = Some(file);
+        self.sensitive_stdin = None;
         self.inherit_stdin = false;
         self
     }
@@ -249,6 +262,12 @@ impl CommandSpec {
     pub(crate) fn take_sensitive_stdin(&mut self) -> Option<Zeroizing<String>> {
         self.sensitive_stdin.take()
     }
+
+    /// The file given with [`CommandSpec::stdin_file`], for the runner to
+    /// hand to the child.
+    pub fn take_stdin_file(&mut self) -> Option<std::fs::File> {
+        self.stdin_file.take()
+    }
 }
 
 impl std::fmt::Debug for CommandSpec {
@@ -267,6 +286,7 @@ impl std::fmt::Debug for CommandSpec {
                 "sensitive_stdin",
                 &self.sensitive_stdin.as_ref().map(|_| "[REDACTED]"),
             )
+            .field("stdin_file", &self.stdin_file.is_some())
             .field("timeout", &self.timeout)
             .field("max_output_bytes", &self.max_output_bytes)
             .finish()

@@ -359,6 +359,11 @@ async fn fake_compose_ports_characterize_apply_observe_and_purge_lifecycle()
         let compose = std::fs::read_to_string(&plan.compose_path)?;
         assert!(compose.contains("cpus: 2.0"));
         assert!(compose.contains("mem_limit: 4g"));
+        let rendered: serde_yaml_ng::Value = serde_yaml_ng::from_str(&compose)?;
+        assert_eq!(
+            rendered["services"][plan.identity.component.as_str()]["tmpfs"],
+            serde_yaml_ng::to_value(["/tmp:rw,noexec,nosuid,nodev,size=64m"])?
+        );
         assert!(!compose.contains("docker.sock"));
         assert!(!compose.contains("podman.sock"));
         assert!(!compose.contains(SENTINEL));
