@@ -408,9 +408,10 @@ impl DockerComposeRuntime {
 
 fn numeric_owner(stdout: &str) -> Option<String> {
     let (uid, gid) = stdout.trim().split_once(':')?;
-    let uid = uid.parse::<u32>().ok()?;
-    let gid = gid.parse::<u32>().ok()?;
-    Some(format!("{uid}:{gid}"))
+    match (uid.parse::<u32>(), gid.parse::<u32>()) {
+        (Ok(uid), Ok(gid)) => Some(format!("{uid}:{gid}")),
+        _ => None,
+    }
 }
 
 fn helper_container_id(stdout: &str, volume_name: &str) -> Result<String, MmError> {
@@ -454,19 +455,19 @@ fn volume_file_archive(
     let metadata = contents
         .metadata()
         .map_err(failed("reading volume file source"))?;
+    let modified = metadata
+        .modified()
+        .map_err(failed("reading volume file source"))?;
     let mut header = tar::Header::new_gnu();
     header.set_entry_type(tar::EntryType::Regular);
     header.set_size(metadata.len());
     header.set_mode(file.ownership.mode);
     header.set_uid(u64::from(file.ownership.uid));
     header.set_gid(u64::from(file.ownership.gid));
-    header.set_mtime(
-        metadata
-            .modified()
-            .ok()
-            .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
-            .map_or(0, |since| since.as_secs()),
-    );
+    header.set_mtime(match modified.duration_since(std::time::UNIX_EPOCH) {
+        Ok(since) => since.as_secs(),
+        Err(_before_the_epoch) => 0,
+    });
     let staged = tempfile::tempfile().map_err(failed("staging volume file source"))?;
     let mut archive = tar::Builder::new(staged);
     archive
