@@ -371,6 +371,11 @@ environments in which the file is mounted, with the same meaning as on a
 service. Elsewhere the file is not mounted, its secret is not required, and
 the plan does not list it.
 
+A `secret-files` entry's `mode` applies on every runtime. Its `uid` and `gid`
+apply on remote hosts and with Podman; on Docker on your own machine the file
+belongs to you, and the plan says so where that can matter. See
+[file delivery](../secret-delivery.md#file-delivery).
+
 `placement` says which nodes of a [cluster target](#cluster-targets) run a
 service: a node name (`app-1`), a group from the target's `cluster.groups`
 (`web`), the word `all`, or a list of those. The service runs one container on

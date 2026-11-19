@@ -147,6 +147,12 @@ file or secret file outside the service's ids 0 to 65535. A plan on such a
 host fails with it when the host has no `mm-services` range in `/etc/subuid`
 (run `mm target setup`), when the range is full, and when a service on a
 shared volume cannot have the ids every other node gives it.
+`MM_SECRET_FILE_OWNER` is the warning for a `secret-files` entry in an
+environment that runs on Docker on this machine, where mm runs as you and the
+file belongs to you: the entry names other ids than yours, and they can
+matter, either because they are not root's or because the `mode` lets no
+other user read the file. The default mode `0444` lets every user in the
+container read it. See [file delivery](../secret-delivery.md#file-delivery).
 `MM_UPDATE_ORDER` is the finding for a service's `update:` that cannot work:
 `order: start-first` on a service that publishes a fixed host port, sets
 `container_name`, runs more than one container, or on Podman sets its own

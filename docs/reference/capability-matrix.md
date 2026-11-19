@@ -92,16 +92,17 @@ revealing provider credentials.
 
 Environment drivers accept text up to 1 MiB and names up to 255 bytes. Runtime
 secret drivers use a conservative 500 KiB limit and accept text or binary.
-Podman supports numeric UID, GID, and mode. Compose file secrets support
-only UID 0, GID 0, mode `0444` on Docker Engine; other requests fail before a
-file is written. On a remote host that runs rootful Podman, where every
+Podman supports numeric UID, GID, and mode. On Docker Engine,
+`compose-file-secret` gives each file the mode its entry asks for, and on a
+remote host, where `mmd` runs as root, its UID and GID too; on your own
+machine the file belongs to you, and the plan names the files whose UID or GID
+that leaves out. On a remote host that runs rootful Podman, where every
 service has user ids of its own, `compose-file-secret` is the file driver and
 gives each consumer's copy the UID, GID, and mode it asks for.
 
-Compose has no native persistent secret store. mm creates a private `0600`
-operation file and removes its path after Compose runs; the mounted inode remains
-available to the created container, but recreation requires another operation.
-Rotation is rejected if rollback material cannot be reconstructed.
+Compose has no native persistent secret store. mm keeps one file per version
+of a secret in a directory only the user mm runs as reaches, and removes it
+after a deployment that no longer uses it has succeeded.
 
 One-shots reuse a configured Compose service contract, including its selected
 environment and runtime secret mounts. BuildKit secret inputs are a separate,
