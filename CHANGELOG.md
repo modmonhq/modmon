@@ -1044,6 +1044,9 @@ installations `mm target setup` upgrades in place and what it refuses.
 
 ### Fixed
 
+- `mm doctor`'s `MM_HOST_RELEASE_OLDER` said to run `mm target setup plan`
+  without `--upgrade`, which setup refuses for hosts on an older release;
+  `MM_HOST_RELEASE_NEWER` now says `mm update`.
 - Job output, `mm service logs` and MCP `mm_logs` are redacted against the
   secrets the environment hands out (its services' variables and secret
   files, registry logins, tunnel token and certificate) and the other
