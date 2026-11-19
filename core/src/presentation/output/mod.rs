@@ -58,6 +58,8 @@ mod development;
 pub(crate) use development::*;
 mod environment;
 pub(crate) use environment::*;
+mod image_build;
+pub(crate) use image_build::*;
 mod job;
 pub(crate) use job::*;
 mod logs;

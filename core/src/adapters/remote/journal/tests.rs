@@ -222,6 +222,7 @@ fn remote_plan(
         ingress: Vec::new(),
         route_state_changed: false,
         build_receipt: None,
+        local_build: None,
         registries: Default::default(),
         node: None,
         rollout: Default::default(),

@@ -9,6 +9,32 @@ impl DeploymentService {
         self
     }
 
+    /// Deploys the environment's current local build, built first when the
+    /// plan says it is stale (`mm dev up`).
+    #[must_use]
+    pub fn with_local_build(mut self, build: crate::app::LocalBuild) -> Self {
+        self.planner = self.planner.with_local_build(build);
+        self
+    }
+
+    /// Runs the local build the reviewed plan `expected_plan_hash` starts
+    /// with; nothing when it has none or this machine already ran it.
+    pub async fn build_reviewed(
+        &self,
+        selection: &WorkspaceSelection,
+        expected_plan_hash: &str,
+    ) -> Result<Option<crate::domain::build::ImageBuildResult>, MmError> {
+        let Some(build) = self.planner.local_build() else {
+            return Ok(None);
+        };
+        if build.review().is_none() {
+            return Ok(None);
+        }
+        let preview = self.plan(selection).await?;
+        require_plan_hash(&preview, expected_plan_hash)?;
+        build.run(selection).await
+    }
+
     /// Records the receipt's build as this workspace's latest published
     /// build, so status, logs, and later plans of the same checkout resolve
     /// the digests this deployment runs. A receipt already recorded is kept.

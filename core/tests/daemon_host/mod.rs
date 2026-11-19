@@ -1058,6 +1058,7 @@ fn deployment_plan(context: &RemoteRequestContext) -> Result<DeploymentPlan, MmE
         ingress: Vec::new(),
         route_state_changed: false,
         build_receipt: None,
+        local_build: None,
         registries: Default::default(),
         node: None,
         rollout: Default::default(),

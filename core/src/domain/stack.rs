@@ -257,6 +257,9 @@ impl StackArtifactManifest {
 }
 
 fn validate_digest_image(image: &str) -> Result<(), String> {
+    if crate::domain::build::is_local_image_pin(image) {
+        return Ok(());
+    }
     let Some((repository, digest)) = image.rsplit_once('@') else {
         return Err("deployment image is not pinned by a sha256 digest".to_owned());
     };

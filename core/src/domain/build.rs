@@ -21,6 +21,16 @@ pub use build_receipt::{BuildReceipt, BuildReceiptOrigin, PromotedReceipt, RECEI
 pub use context_ignore::{ContextIgnore, IgnoreVerdict, InvalidIgnoreLine};
 mod fingerprint;
 use fingerprint::*;
+mod rebuild;
+pub use rebuild::{
+    LocalBuildReview, LocalRebuild, LocalRebuildReason, held_images, stale_local_modules,
+};
+mod local;
+pub use local::{
+    ImageBuildFilter, LOCAL_IMAGE_REGISTRY, LocalImageEngine, is_local_image_pin,
+    is_local_image_reference, local_image_repository, local_image_tag, local_platform,
+    upstream_reference,
+};
 mod variants;
 pub use fingerprint::{build_node_key, unit_execution_fingerprint, unit_input_fingerprint};
 pub use fingerprint::{is_image_repository, is_sha256_digest};
@@ -60,6 +70,10 @@ pub struct ImageBuildPlan {
     pub environment: String,
     pub source: BuildSource,
     pub publish: bool,
+    /// The engine on this machine the images are loaded into, for a
+    /// deployment here; absent for a published build or an OCI archive.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engine: Option<LocalImageEngine>,
     pub tag_strategy: BuildTagStrategy,
     pub platforms: Vec<String>,
     pub units: Vec<ImageBuildUnitPlan>,
@@ -267,6 +281,8 @@ struct CanonicalBuildPlan<'a> {
     environment: &'a str,
     source: &'a BuildSource,
     publish: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    engine: Option<LocalImageEngine>,
     tag_strategy: BuildTagStrategy,
     platforms: &'a [String],
     units: &'a [ImageBuildUnitPlan],
@@ -277,6 +293,43 @@ impl ImageBuildPlan {
         scope: ImageBuildScope,
         source: BuildSource,
         publish: bool,
+        tag_strategy: BuildTagStrategy,
+        platforms: Vec<String>,
+        units: Vec<ImageBuildUnitPlan>,
+    ) -> Result<Self, String> {
+        Self::assemble(
+            scope,
+            source,
+            (publish, None),
+            tag_strategy,
+            platforms,
+            units,
+        )
+    }
+
+    /// A build loaded into `engine` on this machine, for one platform.
+    pub fn new_local(
+        scope: ImageBuildScope,
+        source: BuildSource,
+        engine: LocalImageEngine,
+        tag_strategy: BuildTagStrategy,
+        platform: String,
+        units: Vec<ImageBuildUnitPlan>,
+    ) -> Result<Self, String> {
+        Self::assemble(
+            scope,
+            source,
+            (false, Some(engine)),
+            tag_strategy,
+            vec![platform],
+            units,
+        )
+    }
+
+    fn assemble(
+        scope: ImageBuildScope,
+        source: BuildSource,
+        (publish, engine): (bool, Option<LocalImageEngine>),
         tag_strategy: BuildTagStrategy,
         platforms: Vec<String>,
         units: Vec<ImageBuildUnitPlan>,
@@ -293,6 +346,7 @@ impl ImageBuildPlan {
             environment,
             source,
             publish,
+            engine,
             tag_strategy,
             platforms,
             units,
@@ -352,6 +406,7 @@ impl ImageBuildPlan {
                 ));
             }
         }
+        self.validate_destination()?;
 
         let base_tags = automatic_tags(&self.source, self.tag_strategy)?;
         let version = build_version(&self.source)?;
@@ -362,7 +417,11 @@ impl ImageBuildPlan {
             validate_build_unit_identity(unit, &mut modules, &version)?;
             self.validate_build_dependencies(unit, unit_index)?;
             self.validate_build_inputs(unit)?;
-            validate_build_variants(unit, &base_tags, &mut image_tags)?;
+            validate_build_variants(
+                unit,
+                &|variant| self.expected_tags(unit, variant, &base_tags),
+                &mut image_tags,
+            )?;
         }
         Ok(())
     }
@@ -474,6 +533,7 @@ impl ImageBuildPlan {
             environment: &self.environment,
             source: &self.source,
             publish: self.publish,
+            engine: self.engine,
             tag_strategy: self.tag_strategy,
             platforms: &self.platforms,
             units: &self.units,
@@ -615,7 +675,7 @@ impl ImageBuildResult {
                     "image build result contains invalid secret revision evidence".to_owned(),
                 );
             }
-            if plan.publish == image.archive.is_some() {
+            if plan.writes_archive() != image.archive.is_some() {
                 return Err("image build result output does not match its publish mode".to_owned());
             }
             if image
@@ -640,19 +700,19 @@ impl ImageBuildResult {
         }
         let mut observed_dependencies = BTreeSet::new();
         for dependency in &self.dependencies {
+            let expected_reference = if plan.engine.is_some() {
+                self.upstream_image(dependency)
+                    .map(|upstream| upstream_reference(plan, upstream))
+            } else {
+                plan.units
+                    .iter()
+                    .find(|unit| unit.module == dependency.edge.producer_module)
+                    .map(|unit| format!("{}@{}", unit.image, dependency.digest))
+            };
             if !is_identifier(&dependency.edge.producer_module)
                 || !is_identifier(&dependency.edge.dependent_module)
                 || !is_sha256_digest(&dependency.digest)
-                || dependency.immutable_reference
-                    != format!(
-                        "{}@{}",
-                        plan.units
-                            .iter()
-                            .find(|unit| unit.module == dependency.edge.producer_module)
-                            .map(|unit| unit.image.as_str())
-                            .unwrap_or(""),
-                        dependency.digest
-                    )
+                || expected_reference.as_deref() != Some(dependency.immutable_reference.as_str())
             {
                 return Err("image build result contains an invalid dependency digest".to_owned());
             }
@@ -661,20 +721,10 @@ impl ImageBuildResult {
             {
                 return Err("image build result contains a duplicate dependency".to_owned());
             }
-            let upstreams = self
-                .images
-                .iter()
-                .filter(|image| image.module == dependency.edge.producer_module)
-                .collect::<Vec<_>>();
-            let upstream = match upstreams.as_slice() {
-                [image] => Some(*image),
-                many => many
-                    .iter()
-                    .copied()
-                    .find(|image| image.target == dependency.dependent_target)
-                    .or_else(|| many.iter().copied().find(|image| image.target.is_none())),
-            };
-            if upstream.is_none_or(|image| image.digest != dependency.digest) {
+            if self
+                .upstream_image(dependency)
+                .is_none_or(|image| image.digest != dependency.digest)
+            {
                 return Err(
                     "image build result dependency digest does not match an upstream image"
                         .to_owned(),

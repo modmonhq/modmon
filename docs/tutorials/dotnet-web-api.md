@@ -8,9 +8,9 @@ description: Run ASP.NET Core with an SDK live mount, PostgreSQL, HTTPS, and Mai
 ## Before you start
 
 Complete [workstation setup](./first-local-app.md#set-up-the-workstation) on a
-Linux systemd host with HAProxy. You need Docker Buildx, Docker Compose or
-Podman Compose, and a registry you can push to. Replace the example image
-repository, commit the change, and use a full checkout with tags.
+Linux systemd host with HAProxy. You need Docker Compose with Docker Buildx,
+or Podman Compose. mm builds the API image on this machine; no registry is
+involved.
 
 ## Prepare the project
 
@@ -34,14 +34,13 @@ environment values, and managed network settings.
 
 ## Build and deploy
 
-After [workstation setup](./first-local-app.md#set-up-the-workstation), replace
-the illustrative registry repository and publish from a clean full clone:
+After [workstation setup](./first-local-app.md#set-up-the-workstation),
+`mm dev up` builds the API's `development` target into the local engine and
+starts the stack in one reviewed plan:
 
 ```sh
-mm build --publish plan
-mm build --publish apply --plan BUILD_PLAN_HASH --yes
-mm deploy plan
-mm deploy apply --plan DEPLOY_PLAN_HASH --yes
+mm dev up
+mm dev up --plan DEPLOY_PLAN_HASH --yes
 mm service status
 ```
 

@@ -245,6 +245,145 @@ fn published_images(plan: &ImageBuildPlan) -> Result<Vec<BuiltImage>, Box<dyn st
         .collect::<Result<Vec<_>, std::io::Error>>()?)
 }
 
+/// A container engine that keeps what a local build loads into it.
+#[derive(Default)]
+struct LocalEngine {
+    images: Mutex<BTreeMap<String, String>>,
+    builds: AtomicUsize,
+}
+
+#[async_trait]
+impl mm::app::ports::ImageBuilder for LocalEngine {
+    async fn build_variant(
+        &self,
+        request: mm::app::ports::BuildVariantRequest<'_>,
+    ) -> Result<BuiltImage, MmError> {
+        assert!(!request.publish && request.engine.is_some());
+        let build = self.builds.fetch_add(1, Ordering::SeqCst);
+        let digest = format!(
+            "sha256:{}",
+            blake3::hash(format!("{}-{build}", request.unit.module).as_bytes()).to_hex()
+        );
+        let tags = request
+            .variant
+            .tags
+            .iter()
+            .map(|tag| format!("{}:{tag}", request.unit.image))
+            .collect::<Vec<_>>();
+        if let Ok(mut images) = self.images.lock() {
+            for tag in &tags {
+                images.insert(tag.clone(), digest.clone());
+            }
+        }
+        Ok(BuiltImage {
+            module: request.unit.module.clone(),
+            target: request.variant.target.clone(),
+            repository: request.unit.image.clone(),
+            tags,
+            digest,
+            execution_fingerprint: String::new(),
+            secret_revisions: BTreeMap::new(),
+            archive: None,
+            reused: false,
+        })
+    }
+
+    async fn retag_variant(
+        &self,
+        _source_repository: &str,
+        _digest: &str,
+        _destination_repository: &str,
+        _tags: &[String],
+    ) -> Result<String, MmError> {
+        Err(MmError::Build {
+            message: "a local build never talks to a registry".to_owned(),
+        })
+    }
+
+    async fn local_image_id(
+        &self,
+        _engine: mm::domain::build::LocalImageEngine,
+        reference: &str,
+    ) -> Result<Option<String>, MmError> {
+        Ok(self
+            .images
+            .lock()
+            .ok()
+            .and_then(|images| images.get(reference).cloned()))
+    }
+}
+
+#[tokio::test]
+async fn dev_up_builds_stale_local_images_first_and_runs_them_from_the_engine()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = Fixture::new(false)?;
+    make_buildable(&fixture)?;
+    let engine = Arc::new(LocalEngine::default());
+    let registry = support::secret_registry(fixture.age.clone())?;
+    let state: Arc<dyn StateStore> = fixture.state.clone();
+    let builds = mm::app::BuildService::new(
+        BuildManager::new(Arc::new(ConfigLoader), Arc::new(StaticBuildSource))
+            .with_local_engine(Some(mm::domain::build::LocalImageEngine::Podman)),
+        mm::app::BuildExecutionPorts {
+            documents: Arc::new(ConfigLoader),
+            state,
+            builder: engine.clone(),
+            secret_inspector: registry.clone(),
+            secret_resolver: registry,
+            locks: Arc::new(FilesystemTargetOperationLock::new(
+                fixture.state_path.with_file_name("build-locks"),
+            )),
+            clock: Arc::new(FixedClock { unix_ms: 1_000 }),
+        },
+    );
+    let local = builds
+        .local_build(&fixture.selection)
+        .await?
+        .ok_or("the environment has no local build")?;
+    let service = fixture.service.clone().with_local_build(local);
+    let plan = service.plan(&fixture.selection).await?;
+    let review = plan
+        .local_build
+        .as_ref()
+        .ok_or("the plan builds nothing first")?;
+    assert_eq!(review.engine, mm::domain::build::LocalImageEngine::Podman);
+    assert_eq!(review.modules.len(), 1);
+    assert_eq!(review.modules[0].module, "app");
+    let image = plan.stacks[0].artifact.manifest.services[0]
+        .image
+        .clone()
+        .ok_or("the service has no image")?;
+    assert!(
+        image.starts_with("mm.invalid/deployment-test/app:local-"),
+        "{image}"
+    );
+    let overlay = fs::read_to_string(&plan.stacks[0].artifact.generated_overlay_path)?;
+    assert!(overlay.contains(&format!("image: {image}")), "{overlay}");
+    assert!(overlay.contains("pull_policy: never"), "{overlay}");
+    assert!(plan.registries.is_empty());
+
+    service
+        .apply_reviewed(&fixture.selection, &plan.plan_hash)
+        .await?;
+    assert_eq!(engine.builds.load(Ordering::SeqCst), 1);
+    assert!(fixture.runtime.calls()?.contains(&"apply:app".to_owned()));
+    let workspace = fixture.workspace()?;
+    assert!(
+        fixture
+            .state
+            .latest_successful_image_build(workspace.project_id, &workspace.root, "local")?
+            .is_none(),
+        "a local build is never a published one"
+    );
+
+    let current = builds
+        .local_build(&fixture.selection)
+        .await?
+        .ok_or("the environment has no local build")?;
+    assert!(current.review().is_none(), "{:?}", current.review());
+    Ok(())
+}
+
 #[tokio::test]
 async fn a_build_receipt_deploys_its_digests_and_becomes_the_checkouts_build()
 -> Result<(), Box<dyn std::error::Error>> {

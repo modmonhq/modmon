@@ -72,19 +72,19 @@ Replace `database.password` with the name reported by `mm secret status`.
 
 ## Build and run
 
-For projects with their own images, publish a matching build before deploying:
+`mm dev up` reviews one plan that builds the project's own images into the
+local engine, when they are missing or their sources changed, and then starts
+the environment:
 
 ```sh
-mm build --publish plan
-mm build --publish apply --plan BUILD_PLAN_HASH --yes
-mm deploy plan
-mm deploy apply --plan DEPLOY_PLAN_HASH --yes
+mm dev up
+mm dev up --plan DEPLOY_PLAN_HASH --yes
 mm service status
 ```
 
-Use each plan's printed hash. Builds require Docker Buildx, registry access,
-and a clean full Git checkout. Skip the build commands for projects using only
-third-party images. See [build and deploy](./concepts/builds-and-deployments.md).
+Use the printed hash. A local build needs Docker with Buildx, or Podman, and no
+registry; uncommitted changes are fine. See
+[build and deploy](./concepts/builds-and-deployments.md).
 
 The project-setup command can also apply a reviewed setup and deployment together:
 
@@ -93,8 +93,8 @@ mm dev setup project --plan WORKFLOW_HASH --deploy-plan DEPLOY_HASH --yes
 ```
 
 Use the setup hash from `mm dev setup project` and the deployment hash from
-`mm deploy plan`. This does not build missing images. Regenerate both reviews
-if either becomes stale.
+`mm deploy plan`. This does not build missing images: run `mm build` first, or
+use `mm dev up`. Regenerate both reviews if either becomes stale.
 
 ## Run part of a large project
 

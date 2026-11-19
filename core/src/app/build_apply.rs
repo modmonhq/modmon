@@ -5,7 +5,7 @@ use crate::app::ports::{
     BuildOperationLock, BuildVariantRequest, Clock, ImageBuilder, ProjectDocumentStore,
     SecretMaterialResolver, SecretMetadataInspector, StateStore, UpstreamBuildContext,
 };
-use crate::app::{BuildManager, WorkspaceSelection};
+use crate::app::{BuildManager, BuildRequest, WorkspaceSelection};
 use crate::domain::build::{
     BuildDependencyReference, BuildReusePolicy, BuiltImage, ImageBuildPlan, ImageBuildResult,
     ImageBuildUnitPlan, ImageBuildVariantPlan, ResolvedBuildDependency, ReusableImageRecord,
@@ -61,9 +61,9 @@ impl BuildService {
     pub async fn plan(
         &self,
         selection: &WorkspaceSelection,
-        publish: bool,
+        request: impl Into<BuildRequest>,
     ) -> Result<ImageBuildPlan, MmError> {
-        self.planner.plan(selection, publish).await
+        self.planner.plan(selection, request).await
     }
 
     /// The latest published build of this checkout and environment, as a
@@ -97,13 +97,14 @@ impl BuildService {
     pub async fn apply_reviewed(
         &self,
         selection: &WorkspaceSelection,
-        publish: bool,
+        request: impl Into<BuildRequest>,
         expected_plan_hash: &str,
     ) -> Result<ImageBuildResult, MmError> {
-        let preview = self.planner.plan(selection, publish).await?;
+        let request = request.into();
+        let preview = self.planner.plan(selection, request).await?;
         require_plan_hash(&preview, expected_plan_hash)?;
         let _guard = self.ports.locks.acquire(preview.project_id)?;
-        let plan = self.planner.plan(selection, publish).await?;
+        let plan = self.planner.plan(selection, request).await?;
         require_plan_hash(&plan, expected_plan_hash)?;
         plan.validate()
             .map_err(|message| MmError::Security { message })?;
@@ -224,9 +225,8 @@ impl BuildService {
     ) -> Result<ExecutedBuild, MmError> {
         self.record_phase(operation_id, OperationPhase::Build)?;
         let operation_guard = self.ports.builder.begin_operation(operation_id)?;
-        let mut images = Vec::new();
-        let mut dependencies = Vec::new();
-        let mut built_by_fingerprint = BTreeMap::<String, usize>::new();
+        let earlier = self.earlier_local_build(project_root, plan)?;
+        let mut built = BuiltSoFar::default();
         for unit in &plan.units {
             let secrets = self
                 .resolve_unit_secrets(unit, config, &plan.environment)
@@ -235,84 +235,132 @@ impl BuildService {
                 .secret_revisions_for_reuse(unit, config, &plan.environment)
                 .await?;
             for variant in &unit.variants {
-                let prepared = inject_upstream_digests(plan, unit, variant, &images)?;
-                let executable = prepared.executable;
-                let upstream_digests = prepared.upstream_digests;
-                let variant_dependencies = prepared.dependencies;
-                let upstream_contexts = prepared.upstream_contexts;
-                let fingerprint = unit_execution_fingerprint(
-                    &unit.input_fingerprint,
-                    &plan.environment,
-                    Some(variant),
-                    &upstream_digests,
-                    &secret_revisions,
-                )
-                .map_err(|message| MmError::Build { message })?;
-                let previous = (unit.reuse_policy != BuildReusePolicy::Forbidden)
-                    .then(|| {
-                        built_by_fingerprint
-                            .get(&fingerprint)
-                            .and_then(|index| images.get(*index))
-                    })
-                    .flatten();
-                let image = if let Some(previous) = previous {
-                    self.reuse_current_execution(
-                        previous,
-                        unit,
-                        variant,
-                        &fingerprint,
-                        plan.publish,
-                    )
-                    .await?
-                } else if let Some(reused) = self
-                    .try_reuse(operation_id, plan, unit, variant, &fingerprint)
-                    .await?
-                {
-                    reused
-                } else {
-                    let built = self
-                        .ports
-                        .builder
-                        .build_variant(BuildVariantRequest {
-                            operation_id,
-                            project_root,
-                            plan_hash: &plan.plan_hash,
-                            platforms: &plan.platforms,
-                            publish: plan.publish,
-                            unit: &executable,
-                            variant,
-                            secrets: &secrets,
-                            dependencies: &variant_dependencies,
-                            upstream_contexts: &upstream_contexts,
-                        })
-                        .await?;
-                    if plan.publish && unit.reuse_policy != BuildReusePolicy::Forbidden {
-                        self.ports
-                            .state
-                            .record_reusable_image(ReusableImageRecord {
-                                project_id: plan.project_id,
-                                environment: &plan.environment,
-                                fingerprint: &fingerprint,
-                                module: &unit.module,
-                                variant: variant.target.as_deref(),
-                                repository: &built.repository,
-                                digest: &built.digest,
-                                operation_id,
-                            })?;
-                    }
-                    let mut built = built;
-                    built.execution_fingerprint = fingerprint.clone();
-                    built
+                let run = VariantRun {
+                    operation_id,
+                    project_root,
+                    plan,
+                    unit,
+                    variant,
+                    secrets: &secrets,
+                    secret_revisions: &secret_revisions,
+                    earlier: earlier.as_ref(),
                 };
-                let mut image = image;
-                image.secret_revisions = secret_revisions.clone();
-                built_by_fingerprint.insert(fingerprint, images.len());
-                images.push(image);
-                dependencies.extend(variant_dependencies);
+                self.execute_variant(&run, &mut built).await?;
             }
         }
         self.record_phase(operation_id, OperationPhase::Verify)?;
-        validated_build_result(operation_id, plan, images, dependencies, operation_guard)
+        validated_build_result(
+            operation_id,
+            plan,
+            built.images,
+            built.dependencies,
+            operation_guard,
+        )
+    }
+
+    async fn execute_variant(
+        &self,
+        run: &VariantRun<'_>,
+        built: &mut BuiltSoFar,
+    ) -> Result<(), MmError> {
+        let VariantRun {
+            operation_id,
+            plan,
+            unit,
+            variant,
+            secret_revisions,
+            earlier,
+            ..
+        } = *run;
+        let prepared = inject_upstream_digests(plan, unit, variant, &built.images)?;
+        let fingerprint = unit_execution_fingerprint(
+            &unit.input_fingerprint,
+            &plan.environment,
+            Some(variant),
+            &prepared.upstream_digests,
+            secret_revisions,
+        )
+        .map_err(|message| MmError::Build { message })?;
+        let previous = (unit.reuse_policy != BuildReusePolicy::Forbidden && plan.engine.is_none())
+            .then(|| {
+                built
+                    .by_fingerprint
+                    .get(&fingerprint)
+                    .and_then(|index| built.images.get(*index))
+            })
+            .flatten();
+        let image = if let Some(previous) = previous {
+            self.reuse_current_execution(previous, unit, variant, &fingerprint, plan.publish)
+                .await?
+        } else if let Some(reused) = self
+            .try_reuse(operation_id, plan, unit, variant, &fingerprint)
+            .await?
+        {
+            reused
+        } else if let Some(reused) = self
+            .reuse_local(plan, unit, variant, &fingerprint, earlier)
+            .await?
+        {
+            reused
+        } else {
+            self.build_new(run, &prepared, &fingerprint).await?
+        };
+        let mut image = image;
+        image.secret_revisions = secret_revisions.clone();
+        built.by_fingerprint.insert(fingerprint, built.images.len());
+        built.images.push(image);
+        built.dependencies.extend(prepared.dependencies);
+        Ok(())
+    }
+
+    async fn build_new(
+        &self,
+        run: &VariantRun<'_>,
+        prepared: &PreparedDependentBuild,
+        fingerprint: &str,
+    ) -> Result<BuiltImage, MmError> {
+        let VariantRun {
+            operation_id,
+            project_root,
+            plan,
+            unit,
+            variant,
+            secrets,
+            ..
+        } = *run;
+        let mut built = self
+            .ports
+            .builder
+            .build_variant(BuildVariantRequest {
+                operation_id,
+                project_root,
+                plan_hash: &plan.plan_hash,
+                platforms: &plan.platforms,
+                publish: plan.publish,
+                engine: plan.engine,
+                unit: &prepared.executable,
+                variant,
+                secrets,
+                dependencies: &prepared.dependencies,
+                upstream_contexts: &prepared.upstream_contexts,
+            })
+            .await?;
+        if plan.publish && unit.reuse_policy != BuildReusePolicy::Forbidden {
+            self.ports
+                .state
+                .record_reusable_image(ReusableImageRecord {
+                    project_id: plan.project_id,
+                    environment: &plan.environment,
+                    fingerprint,
+                    module: &unit.module,
+                    variant: variant.target.as_deref(),
+                    repository: &built.repository,
+                    digest: &built.digest,
+                    operation_id,
+                })?;
+        }
+        fingerprint.clone_into(&mut built.execution_fingerprint);
+        Ok(built)
     }
 
     async fn reuse_current_execution(
@@ -563,6 +611,24 @@ impl BuildService {
     }
 }
 
+#[derive(Default)]
+struct BuiltSoFar {
+    images: Vec<BuiltImage>,
+    dependencies: Vec<ResolvedBuildDependency>,
+    by_fingerprint: BTreeMap<String, usize>,
+}
+
+struct VariantRun<'a> {
+    operation_id: OperationId,
+    project_root: &'a std::path::Path,
+    plan: &'a ImageBuildPlan,
+    unit: &'a ImageBuildUnitPlan,
+    variant: &'a ImageBuildVariantPlan,
+    secrets: &'a BTreeMap<String, SecretMaterial>,
+    secret_revisions: &'a BTreeMap<String, String>,
+    earlier: Option<&'a ImageBuildResult>,
+}
+
 struct ExecutedBuild {
     result: ImageBuildResult,
     operation_guard: Box<dyn crate::app::ports::BuildOperationGuard>,
@@ -613,8 +679,7 @@ fn inject_upstream_digests(
     let mut dependencies = Vec::new();
     let mut upstream_contexts = Vec::new();
     for dependency in &unit.dependencies {
-        let upstream = plan
-            .units
+        plan.units
             .iter()
             .find(|candidate| candidate.module == dependency.producer_module)
             .ok_or_else(|| MmError::Build {
@@ -628,7 +693,7 @@ fn inject_upstream_digests(
             &dependency.producer_module,
             variant.target.as_deref(),
         )?;
-        let reference = format!("{}@{}", upstream.image, image.digest);
+        let reference = crate::domain::build::upstream_reference(plan, image);
         if let BuildDependencyReference::BuildArgument { arg, .. } = &dependency.reference {
             executable.args.insert(arg.clone(), reference.clone());
         }
@@ -639,9 +704,10 @@ fn inject_upstream_digests(
             digest: image.digest.clone(),
             immutable_reference: reference.clone(),
         });
-        if !upstream_contexts
-            .iter()
-            .any(|context: &UpstreamBuildContext| context.immutable_reference == reference)
+        if plan.engine.is_none()
+            && !upstream_contexts
+                .iter()
+                .any(|context: &UpstreamBuildContext| context.immutable_reference == reference)
         {
             upstream_contexts.push(UpstreamBuildContext {
                 immutable_reference: reference,
@@ -700,6 +766,8 @@ fn require_plan_hash(plan: &ImageBuildPlan, expected: &str) -> Result<(), MmErro
 }
 
 mod import;
+mod local;
+pub use local::LocalBuild;
 
 #[cfg(test)]
 mod tests;

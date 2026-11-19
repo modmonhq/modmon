@@ -1,13 +1,77 @@
 ---
 title: Build and deploy
-description: Publish your application images and deploy the matching build.
+description: Build your application images on this machine or publish them, and deploy the matching build.
 ---
 
 Builds create container images. Deployments run those images with the selected
 environment's configuration. If your project only uses third-party images,
 skip the build step.
 
-## Before building
+Where a build puts its images depends on where the environment runs:
+
+- An environment whose target is this machine, such as the development
+  environment, runs images built into this machine's container engine.
+  Nothing is pushed and no registry is involved.
+- An environment on remote hosts runs published images: `mm build --publish`
+  pushes them to your registry, and the hosts pull them.
+
+## What a build covers
+
+`mm build` builds the modules the selected environment runs: every module
+with a service in that environment, and the modules whose images those build
+`FROM`, through `build.depends-on` or a `FROM` line that names another
+module's `build.image`. So `mm --environment production build --publish`
+never builds a module that only runs in development. A module the
+environment does not run cannot stop its build either.
+
+To build every module that has a build, whatever the environment runs, add
+`--all`:
+
+```sh
+mm build --all plan
+```
+
+## Build on this machine
+
+For an environment on this machine you need Docker with its Buildx component
+(Docker Desktop includes it), or Podman: the one the environment's runtime
+uses. You need no registry and no registry login, and uncommitted changes are
+fine.
+
+`mm dev up` builds what it needs before it starts anything: the first time,
+every image of the environment, and later each image whose build inputs
+changed since its last local build, or that is no longer in the engine. Its
+review says which modules it builds and why:
+
+```text
+builds  into Docker first: web (its build context changed)
+```
+
+To build without deploying, run:
+
+```sh
+mm build plan
+mm build apply --plan BUILD_PLAN_HASH --yes
+```
+
+The images are loaded into the engine as
+`mm.invalid/PROJECT/MODULE:ENVIRONMENT-HASH`, where the hash covers the
+module's build inputs, so unchanged inputs keep their tag and an image that
+is already there is not built again. `.invalid` is a name that never
+resolves, so these images can never be pulled from or pushed to a registry by
+accident. A deployment on this machine renders them with `pull_policy: never`:
+if an image is missing, Compose stops with an error instead of pulling, and
+`mm dev up` builds it again. `mm deploy` runs the newest build of the
+environment, local or published, and never builds.
+
+A local build builds one platform: this machine's, `linux/amd64` or
+`linux/arm64`, when `build.platforms` lists it, otherwise the first one listed.
+On Docker it runs on the builder of the current Docker context, so the images
+land in the engine Compose uses and a module that builds `FROM` another
+module's image finds it there. Old local images stay in the engine until you
+remove them; `docker image ls --filter 'reference=mm.invalid/*/*'` lists them.
+
+## Build and publish
 
 You need Docker Buildx, a builder that supports your configured platforms, and
 push access to every configured image repository. Publication also requires a
@@ -22,12 +86,20 @@ Commit your changes. For a shallow clone, fetch the missing history with
 `git fetch --unshallow --tags`; otherwise use `git fetch --tags`.
 Replace any `ghcr.io/example/...` image names with repositories you own.
 
-## Build and publish
+The default Buildx builder of Docker Engine uses the `docker` driver, which
+cannot build several platforms at once or attach the provenance and SBOM
+attestations a published build carries. `mm build --publish` then stops and
+names the builder; create one that can and make it the default with:
 
-### Local build platforms
+```sh
+docker buildx create --use
+```
 
-To build natively on Apple Silicon while retaining the project's shared platforms,
-create `.config/mm.overrides.yaml`:
+### Platforms on one machine
+
+A local build already builds only this machine's platform. To publish only
+`linux/arm64` from Apple Silicon while retaining the project's shared
+platforms, create `.config/mm.overrides.yaml`:
 
 ```yaml
 build:
@@ -63,8 +135,9 @@ mm build --publish apply --plan BUILD_PLAN_HASH --yes
 ```
 
 Replace `BUILD_PLAN_HASH` with the hash printed by the plan command. With
-`--publish`, Buildx pushes the images to your registry. Without it, the build
-produces a local OCI image archive, which mm cannot use for deployment.
+`--publish`, Buildx pushes the images to your registry. Without it, an
+environment on remote hosts gets an OCI image archive under `~/.mm/builds`,
+which no deployment runs.
 
 ### Choose the files a build sends
 
@@ -131,13 +204,15 @@ mm deploy apply --plan DEPLOY_PLAN_HASH --yes
 mm service status
 ```
 
-Use the hash from the deployment plan. mm selects the latest successful published
-build for the project, checkout location, and environment. Each module must have
+Use the hash from the deployment plan. mm selects the latest successful build
+for the project, checkout location, and environment: a published build, or, for
+an environment on this machine, one loaded into the engine of its runtime. A
+remote host runs published builds only. Each module must have
 a result compatible with its image repository, build paths, arguments, secret
 IDs, extra-input paths, dependency definitions, platforms, and selected variant.
 A changed base-image definition also requires new images for its dependents.
-mm pins the deployment to each image's digest, so a later tag change cannot
-silently replace the image.
+mm pins the deployment to each published image's digest, so a later tag change
+cannot silently replace the image.
 
 For a named environment, use `--environment production` on both the build and
 deployment commands. If a plan changes, generate a fresh one.
@@ -180,9 +255,11 @@ mm --environment production deploy apply --plan PLAN_HASH --yes
 ```
 
 mm plans the target environment's build of the receipt's commit and accepts
-the receipt only when it builds exactly the same units: the same modules,
-platforms, image repositories, selected variants, build paths, arguments,
-extra inputs, dependencies, and file contents. Otherwise it refuses and names
+the receipt only when it holds every module that environment builds, each
+built exactly the same way: the same platforms, image repositories, selected
+variants, build paths, arguments, extra inputs, dependencies, and file
+contents. Modules in the receipt that the target environment does not run are
+left out of the promoted build. Otherwise it refuses and names
 the first module that differs and what differs, such as `build argument
 FEATURE`, with the command that builds for the target environment. A module
 with build secrets is promoted only when every secret is listed under

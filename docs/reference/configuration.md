@@ -56,7 +56,7 @@ over an edited shared setting.
 
 `mm init` includes `/.config/mm.overrides.yaml` in the project `.gitignore` as
 part of its reviewed setup. Existing projects should add and commit this rule
-once. Keep the override untracked. See [local build platforms](../concepts/builds-and-deployments.md#local-build-platforms).
+once. Keep the override untracked. See [platforms on one machine](../concepts/builds-and-deployments.md#platforms-on-one-machine).
 
 ## Split a large configuration
 
@@ -325,6 +325,11 @@ A build sends `context` without what the Dockerfile's own ignore file
 (`<dockerfile>.dockerignore`) or, without one, the context's `.dockerignore`
 excludes; see
 [Choose the files a build sends](../concepts/builds-and-deployments.md#choose-the-files-a-build-sends).
+
+`build.image` is the repository a published build pushes to. A build for an
+environment on this machine leaves it alone and loads the image into the local
+engine as `mm.invalid/PROJECT/MODULE:TAG` instead; see
+[build on this machine](../concepts/builds-and-deployments.md#build-on-this-machine).
 
 Each entry of `build.targets` is a build variant that an environment's
 `build-variant` selects (else `default-variant`, else the only target). The
@@ -769,8 +774,9 @@ deploy no release, so there these keys have no value yet: an env template
 uses its default, and a config-file template renders them empty. When a
 deployment is planned, a key whose fact the release does not have fails the
 plan with `MM_RELEASE_INPUT`. `MM.IMAGE.<module>` comes from the build
-receipt given with `--receipt` or, on your own machine, from the last
-published build.
+receipt given with `--receipt` or, on your own machine, from the environment's
+last build there: a published image, or the local tag of an image built into
+the engine.
 
 Environment bindings override project bindings. `direct` passes
 operation-scoped interpolation values to the runtime; `env-file` uses a private,

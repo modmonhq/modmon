@@ -539,30 +539,27 @@ fn unit_identity_input_and_variant_validation_cover_each_rejected_class() -> Res
     assert!(plan.validate_build_inputs(&bad_input).is_err());
 
     let base_tags = automatic_tags(&plan.source, plan.tag_strategy)?;
+    let expected = |variant: &ImageBuildVariantPlan| suffixed_tags(&base_tags, &variant.tag_suffix);
+    let duplicated = |variant: &ImageBuildVariantPlan| {
+        suffixed_tags(&["edge".to_owned(), "edge".to_owned()], &variant.tag_suffix)
+    };
     let mut bad_variant = baseline.clone();
     bad_variant.variants[0].target = Some("bad target".to_owned());
-    assert!(validate_build_variants(&bad_variant, &base_tags, &mut BTreeSet::new()).is_err());
+    assert!(validate_build_variants(&bad_variant, &expected, &mut BTreeSet::new()).is_err());
     bad_variant = baseline.clone();
     bad_variant.variants.push(bad_variant.variants[0].clone());
-    assert!(validate_build_variants(&bad_variant, &base_tags, &mut BTreeSet::new()).is_err());
+    assert!(validate_build_variants(&bad_variant, &expected, &mut BTreeSet::new()).is_err());
     bad_variant = baseline.clone();
     bad_variant.variants[0].tags.clear();
-    assert!(validate_build_variants(&bad_variant, &base_tags, &mut BTreeSet::new()).is_err());
+    assert!(validate_build_variants(&bad_variant, &expected, &mut BTreeSet::new()).is_err());
     bad_variant = baseline.clone();
     bad_variant.variants[0].tags = vec!["other".to_owned()];
-    assert!(validate_build_variants(&bad_variant, &base_tags, &mut BTreeSet::new()).is_err());
+    assert!(validate_build_variants(&bad_variant, &expected, &mut BTreeSet::new()).is_err());
     bad_variant = baseline.clone();
     bad_variant.variants[0].tags = vec!["edge".to_owned(), "edge".to_owned()];
-    assert!(
-        validate_build_variants(
-            &bad_variant,
-            &["edge".to_owned(), "edge".to_owned()],
-            &mut BTreeSet::new()
-        )
-        .is_err()
-    );
+    assert!(validate_build_variants(&bad_variant, &duplicated, &mut BTreeSet::new()).is_err());
     let mut assigned = BTreeSet::from([(baseline.image.clone(), "edge".to_owned())]);
-    assert!(validate_build_variants(&baseline, &base_tags, &mut assigned).is_err());
+    assert!(validate_build_variants(&baseline, &expected, &mut assigned).is_err());
     Ok(())
 }
 

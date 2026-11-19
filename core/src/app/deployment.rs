@@ -29,6 +29,7 @@ pub struct DeploymentManager {
     local_ca: Arc<dyn LocalCaStore>,
     prerequisites: Vec<Arc<dyn crate::app::ports::ReadinessProbe>>,
     receipt: Option<crate::domain::build::PromotedReceipt>,
+    local_build: Option<crate::app::LocalBuild>,
     /// On a cluster node: the addresses the node holds for the cluster's
     /// networks.
     cluster_networks: Option<Arc<dyn crate::app::ports::ClusterNetworkHost>>,
@@ -82,6 +83,7 @@ impl DeploymentManager {
             local_ca: dependencies.local_ca,
             prerequisites: Vec::new(),
             receipt: None,
+            local_build: None,
             cluster_networks: None,
             names: None,
             leaving: None,
@@ -170,6 +172,24 @@ impl DeploymentManager {
 
     pub(crate) fn receipt(&self) -> Option<&crate::domain::build::PromotedReceipt> {
         self.receipt.as_ref()
+    }
+
+    /// Deploys the images of the environment's current local build, which
+    /// the reviewed plan builds first when it is stale.
+    #[must_use]
+    pub fn with_local_build(mut self, build: crate::app::LocalBuild) -> Self {
+        self.local_build = Some(build);
+        self
+    }
+
+    pub(crate) fn local_build(&self) -> Option<&crate::app::LocalBuild> {
+        self.local_build.as_ref()
+    }
+
+    fn local_build_review(&self) -> Option<crate::domain::build::LocalBuildReview> {
+        self.local_build
+            .as_ref()
+            .and_then(crate::app::LocalBuild::review)
     }
 
     #[must_use]

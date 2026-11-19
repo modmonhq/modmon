@@ -29,6 +29,25 @@ struct DeploymentRemovals {
 }
 
 impl DeploymentManager {
+    /// The stacks with the images of the local build, the receipt, or this
+    /// machine's builds, in that order.
+    fn compile(
+        &self,
+        selection: &WorkspaceSelection,
+    ) -> Result<crate::app::stacks::DeploymentStackCompilation, MmError> {
+        match &self.local_build {
+            Some(build) => {
+                self.stacks
+                    .compile_for_local_build(selection, self.state.as_ref(), build.plan())
+            }
+            None => self.stacks.compile_for_deployment(
+                selection,
+                self.state.as_ref(),
+                self.receipt.as_ref().map(|promoted| &promoted.receipt),
+            ),
+        }
+    }
+
     pub async fn plan(&self, selection: &WorkspaceSelection) -> Result<DeploymentPlan, MmError> {
         let mut preparation = self.prepare_deployment(selection).await?;
         let routes = self
@@ -84,11 +103,7 @@ impl DeploymentManager {
         &self,
         selection: &WorkspaceSelection,
     ) -> Result<DeploymentPreparation, MmError> {
-        let compiled = self.stacks.compile_for_deployment(
-            selection,
-            self.state.as_ref(),
-            self.receipt.as_ref().map(|promoted| &promoted.receipt),
-        )?;
+        let compiled = self.compile(selection)?;
         let environment_review = self
             .environments
             .review_for_deployment(
@@ -359,6 +374,7 @@ impl DeploymentManager {
             ingress: compiled.ingress,
             route_state_changed,
             build_receipt: self.receipt.as_ref().map(|receipt| receipt.origin.clone()),
+            local_build: self.local_build_review(),
             registries: BTreeMap::new(),
             node: None,
             rollout: compiled.rollout,

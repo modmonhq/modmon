@@ -229,7 +229,8 @@ impl StackManager {
         &self,
         selection: &WorkspaceSelection,
     ) -> Result<StackCompilationReport, MmError> {
-        let compiled = self.compile_selection(selection, true, self.state.as_deref(), None)?;
+        let compiled =
+            self.compile_selection(selection, true, self.state.as_deref(), ImageSource::Builds)?;
         Ok(StackCompilationReport {
             project_name: compiled.project_name,
             target: compiled.target.name,
@@ -249,7 +250,18 @@ impl StackManager {
         state: &dyn StateStore,
         receipt: Option<&crate::domain::build::BuildReceipt>,
     ) -> Result<DeploymentStackCompilation, MmError> {
-        self.compile_selection(selection, false, Some(state), receipt)
+        let images = receipt.map_or(ImageSource::Builds, ImageSource::Receipt);
+        self.compile_selection(selection, false, Some(state), images)
+    }
+
+    /// Compiles with the images a reviewed local build makes.
+    pub(crate) fn compile_for_local_build(
+        &self,
+        selection: &WorkspaceSelection,
+        state: &dyn StateStore,
+        plan: &ImageBuildPlan,
+    ) -> Result<DeploymentStackCompilation, MmError> {
+        self.compile_selection(selection, false, Some(state), ImageSource::LocalBuild(plan))
     }
 
     fn compile_selection(
@@ -257,7 +269,7 @@ impl StackManager {
         selection: &WorkspaceSelection,
         check_route_registry: bool,
         state: Option<&dyn StateStore>,
-        receipt: Option<&crate::domain::build::BuildReceipt>,
+        images: ImageSource<'_>,
     ) -> Result<DeploymentStackCompilation, MmError> {
         let mut document = self.documents.load_from(&selection.start)?;
         let environment = resolve_environment(&document, selection.environment.as_deref())?;
@@ -281,10 +293,20 @@ impl StackManager {
         if errors > 0 {
             return Err(MmError::Validation { errors });
         }
-        let images = match (receipt, state) {
-            (Some(receipt), _) => deployment_images_from_receipt(&document, &environment, receipt)?,
-            (None, Some(state)) => resolve_deployment_images(&document, &environment, Some(state))?,
-            (None, None) => BTreeMap::new(),
+        let images = match (images, state) {
+            (ImageSource::Receipt(receipt), _) => {
+                deployment_images_from_receipt(&document, &environment, receipt)?
+            }
+            (ImageSource::LocalBuild(plan), _) => {
+                deployment_images_from_local_plan(&document, &environment, plan)?
+            }
+            (ImageSource::Builds, Some(state)) => resolve_deployment_images_from(
+                &document,
+                &environment,
+                Some(state),
+                deployable_builds(selection, &target, resolved.runtime),
+            )?,
+            (ImageSource::Builds, None) => BTreeMap::new(),
         };
         document.config.release = planned_release(selection, &document, &images)?;
         let network_membership = active_network_membership(&document, &environment)?;

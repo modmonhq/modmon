@@ -43,28 +43,30 @@ pub enum BuildCommand {
 
 pub(super) struct BuildCommandRequest<'a> {
     pub(super) command: Option<BuildCommand>,
-    pub(super) publish: bool,
+    pub(super) request: crate::app::BuildRequest,
     pub(super) yes: bool,
     pub(super) selection: &'a WorkspaceSelection,
     pub(super) explicit_home: Option<&'a std::path::Path>,
     pub(super) format: OutputFormat,
     pub(super) runtime: &'a RuntimeComposition,
+    pub(super) runtime_kind: crate::domain::runtime::RuntimeKind,
 }
 
 pub(super) async fn run(
     command: Option<BuildCommand>,
-    publish: bool,
+    request: crate::app::BuildRequest,
     yes: bool,
     invocation: &super::dispatch::Invocation,
 ) -> Result<u8, MmError> {
     run_build_command(BuildCommandRequest {
         command,
-        publish,
+        request,
         yes,
         selection: &invocation.selection,
         explicit_home: invocation.home(),
         format: invocation.format,
         runtime: &invocation.services,
+        runtime_kind: invocation.runtime_kind,
     })
     .await
 }
@@ -72,27 +74,16 @@ pub(super) async fn run(
 pub(super) async fn run_build_command(request: BuildCommandRequest<'_>) -> Result<u8, MmError> {
     let BuildCommandRequest {
         command,
-        publish,
+        request,
         yes,
         selection,
         explicit_home,
         format,
         runtime,
+        runtime_kind,
     } = request;
     if let Some(BuildCommand::Receipt { path }) = &command {
-        let receipt = runtime
-            .build_service(runtime.build_manager(), selection, explicit_home)?
-            .receipt(selection)?;
-        let mut bytes = serde_json::to_vec_pretty(&receipt).map_err(|error| MmError::Build {
-            message: format!("could not serialize the build receipt: {error}"),
-        })?;
-        bytes.push(b'\n');
-        std::fs::write(path, bytes).map_err(|source| MmError::Io {
-            context: format!("write build receipt {}", path.display()),
-            source,
-        })?;
-        output::write_build_receipt_written(path, &receipt, format)?;
-        return Ok(0);
+        return write_receipt(path, selection, explicit_home, format, runtime);
     }
     if let Some(BuildCommand::Import {
         path,
@@ -114,12 +105,13 @@ pub(super) async fn run_build_command(request: BuildCommandRequest<'_>) -> Resul
         )
         .await;
     }
-    let planner = runtime.build_manager();
+    let planner =
+        runtime.build_manager_for(selection, explicit_home, (runtime_kind, request.publish))?;
     let progress = inline::Progress::new(format);
     let preview = inline::step(
         &progress,
         ("plan", "Planning the image builds"),
-        planner.plan(selection, publish),
+        planner.plan(selection, request),
         |_| Some("Planned the image builds".to_owned()),
     )
     .await?;
@@ -162,30 +154,62 @@ pub(super) async fn run_build_command(request: BuildCommandRequest<'_>) -> Resul
     {
         return Ok(0);
     }
+    let engine = planner.local_engine();
     let build = runtime.build_service(planner, selection, explicit_home)?;
-    apply_build(&build, selection, (publish, &expected_plan_hash), format).await
+    apply_build(
+        &build,
+        selection,
+        (request, engine, &expected_plan_hash),
+        format,
+    )
+    .await
 }
 
-/// Builds, and publishes with `publish`, the reviewed plan.
+/// `mm build receipt FILE`.
+fn write_receipt(
+    path: &std::path::Path,
+    selection: &WorkspaceSelection,
+    explicit_home: Option<&std::path::Path>,
+    format: OutputFormat,
+    runtime: &RuntimeComposition,
+) -> Result<u8, MmError> {
+    let receipt = runtime
+        .build_service(runtime.build_manager(), selection, explicit_home)?
+        .receipt(selection)?;
+    let mut bytes = serde_json::to_vec_pretty(&receipt).map_err(|error| MmError::Build {
+        message: format!("could not serialize the build receipt: {error}"),
+    })?;
+    bytes.push(b'\n');
+    std::fs::write(path, bytes).map_err(|source| MmError::Io {
+        context: format!("write build receipt {}", path.display()),
+        source,
+    })?;
+    output::write_build_receipt_written(path, &receipt, format)?;
+    Ok(0)
+}
+
+/// Builds, and publishes with `--publish`, the reviewed plan.
 async fn apply_build(
     build: &crate::app::BuildService,
     selection: &WorkspaceSelection,
-    (publish, expected_plan_hash): (bool, &str),
+    (request, engine, expected_plan_hash): (
+        crate::app::BuildRequest,
+        Option<crate::domain::build::LocalImageEngine>,
+        &str,
+    ),
     format: OutputFormat,
 ) -> Result<u8, MmError> {
     let progress = inline::Progress::new(format);
+    let label = match (request.publish, engine) {
+        (true, _) => "Building and publishing the images".to_owned(),
+        (false, Some(engine)) => format!("Building the images into {}", engine.name()),
+        (false, None) => "Building the images".to_owned(),
+    };
     let result = inline::step(
         &progress,
-        (
-            "build",
-            if publish {
-                "Building and publishing the images"
-            } else {
-                "Building the images"
-            },
-        ),
-        build.apply_reviewed(selection, publish, expected_plan_hash),
-        |_| Some("Built the images".to_owned()),
+        ("build", &label),
+        build.apply_reviewed(selection, request, expected_plan_hash),
+        |result| Some(output::built_images_line(result)),
     )
     .await?;
     progress.finish();

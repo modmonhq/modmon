@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use tempfile::TempDir;
 
 use mm::app::ports::BuildSourceInspector;
-use mm::app::{BuildManager, WorkspaceSelection};
+use mm::app::{BuildManager, BuildRequest, WorkspaceSelection};
 use mm::domain::build::{BuildDependencyReference, BuildSource};
 use mm::domain::error::MmError;
 
@@ -158,7 +158,7 @@ environments:
     let plan = manager
         .plan(
             &WorkspaceSelection::new(project.path(), Some("uat".to_owned())),
-            true,
+            BuildRequest::new(true, true),
         )
         .await?;
     assert_eq!(plan.units.len(), 1);
@@ -437,7 +437,10 @@ environments:
     fs::write(project.path().join("shared/Dockerfile"), "FROM scratch\n")?;
     let manager = build_manager(source(false));
     let plan = manager
-        .plan(&WorkspaceSelection::new(project.path(), None), false)
+        .plan(
+            &WorkspaceSelection::new(project.path(), None),
+            BuildRequest::new(false, true),
+        )
         .await?;
     assert_eq!(plan.units.len(), 2);
     assert_eq!(
@@ -489,7 +492,10 @@ environments:
     )?;
     let manager = build_manager(source(false));
     let plan = manager
-        .plan(&WorkspaceSelection::new(project.path(), None), false)
+        .plan(
+            &WorkspaceSelection::new(project.path(), None),
+            BuildRequest::new(false, true),
+        )
         .await?;
     assert_eq!(
         plan.units
@@ -536,7 +542,10 @@ environments:
     )?;
     fs::write(project.path().join("php-b/Dockerfile"), "FROM scratch\n")?;
     let error = manager
-        .plan(&WorkspaceSelection::new(project.path(), None), false)
+        .plan(
+            &WorkspaceSelection::new(project.path(), None),
+            BuildRequest::new(false, true),
+        )
         .await
         .err()
         .ok_or("ambiguous first-party image")?;
@@ -582,7 +591,10 @@ environments:
     )?;
     assert!(matches!(
         manager
-            .plan(&WorkspaceSelection::new(project.path(), None), false)
+            .plan(
+                &WorkspaceSelection::new(project.path(), None),
+                BuildRequest::new(false, true)
+            )
             .await,
         Err(MmError::Validation { .. })
     ));
@@ -631,7 +643,10 @@ environments:
     )?;
     let manager = build_manager(source(false));
     let error = manager
-        .plan(&WorkspaceSelection::new(project.path(), None), false)
+        .plan(
+            &WorkspaceSelection::new(project.path(), None),
+            BuildRequest::new(false, true),
+        )
         .await
         .err()
         .ok_or("cycle")?;

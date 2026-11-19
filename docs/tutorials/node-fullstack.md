@@ -15,8 +15,8 @@ browser -> frontend -> backend -> MongoDB
 ## Before you start
 
 For initial setup, follow [First local app](./first-local-app.md). It covers
-workstation requirements, image repositories, secrets, and deployment. This
-page adds source mounts, email, and debugging commands.
+workstation requirements, secrets, and deployment. This page adds source
+mounts, email, and debugging commands.
 
 ## Inspect the project
 
@@ -35,16 +35,15 @@ and its encrypted local secret store.
 
 ## Build and deploy
 
-Complete [shared workstation setup](./first-local-app.md#set-up-the-workstation),
-replace both illustrative image repositories, and use a clean full Git clone.
+Complete [shared workstation setup](./first-local-app.md#set-up-the-workstation).
+`mm dev up` builds both images into the local engine and starts the stack in
+one reviewed plan:
 
 ```sh
 mm secret init age
 mm secret generate --missing
-mm build --publish plan
-mm build --publish apply --plan BUILD_PLAN_HASH --yes
-mm deploy plan
-mm deploy apply --plan DEPLOY_PLAN_HASH --yes
+mm dev up
+mm dev up --plan DEPLOY_PLAN_HASH --yes
 mm service status
 ```
 

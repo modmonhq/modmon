@@ -90,11 +90,17 @@ pub enum Command {
     },
 
     /// Plan and execute deterministic OCI image builds.
-    #[command(after_help = "Examples:\n  mm build plan\n  mm build apply --plan HASH --yes")]
+    #[command(
+        after_help = "Examples:\n  mm build plan\n  mm build apply --plan HASH --yes\n  mm -e production build --publish plan\n\nWithout --publish, an environment whose target is this machine gets its images loaded into the local container engine, where `mm deploy` and `mm dev up` run them, and nothing is pushed. Remote environments run published images."
+    )]
     Build {
         /// Push a multi-platform image index and reviewed tags to the registry.
         #[arg(long, global = true)]
         publish: bool,
+        /// Build every module that has a build, not only the ones the
+        /// selected environment runs and the bases they build FROM.
+        #[arg(long, global = true)]
+        all: bool,
         /// Skip the build confirmation prompt.
         #[arg(long, global = true)]
         yes: bool,

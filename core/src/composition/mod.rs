@@ -5,6 +5,7 @@ mod mcp_commands;
 
 mod agents;
 mod application;
+mod builds;
 mod cluster_networks;
 mod cluster_setup;
 mod command_history;
@@ -131,6 +132,7 @@ pub(crate) use agents::{
     AgentSetupScope, agent_status, apply_agent_setup, plan_agent_setup, trust_agents,
 };
 pub(crate) use application::*;
+pub(crate) use builds::local_build_engine;
 pub(crate) use cluster_setup::{
     ClusterSetupServices, cluster_environment, cluster_setup_services, cluster_setup_services_for,
     export_store_recovery, import_store_recovery, pushed_commit,

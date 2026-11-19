@@ -81,6 +81,7 @@ impl DeploymentService {
         selection: &WorkspaceSelection,
         expected_plan_hash: &str,
     ) -> Result<DeploymentResult, MmError> {
+        self.build_reviewed(selection, expected_plan_hash).await?;
         let ReviewedApply {
             plan,
             target,

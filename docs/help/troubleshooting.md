@@ -76,11 +76,13 @@ revision, registry input, or observed baseline changed. Re-run the exact plan
 command with the same flags and apply only its new hash:
 
 ```sh
-mm build --publish plan
-mm build --publish apply --plan NEW_HASH --yes
+mm build plan
+mm build apply --plan NEW_HASH --yes
 mm deploy plan
 mm deploy apply --plan NEW_HASH --yes
 ```
+
+Add `--publish` to both build commands when the build was a published one.
 
 Do not reuse the old hash after changing files or selection.
 
@@ -209,10 +211,16 @@ Stale project leaves require a reviewed deployment reconciliation; stale shared
 service leaves require an explicit-runtime `mm dev services plan --operation
 repair` and matching `mm dev services repair`.
 
-## Deployment has no matching published build
+## Deployment has no matching build
 
-Confirm the configured image repository is real, the worktree is clean, and
-the clone is not shallow:
+For an environment on this machine, run `mm dev up`, which builds the missing
+images into the local engine before it deploys, or `mm build` and then
+`mm deploy plan`. A build for another engine (Docker instead of Podman, or the
+other way round) does not qualify.
+
+An environment on remote hosts runs published builds only. Confirm the
+configured image repository is real, the worktree is clean, and the clone is
+not shallow:
 
 ```sh
 git status --short
@@ -223,6 +231,19 @@ git fetch --unshallow --tags  # when the preceding command prints true
 Then run a reviewed build with `--publish` and re-plan deployment. A build
 without `--publish`, a failed build, or one for different source/configuration
 does not qualify.
+
+## A build cannot run
+
+The message says why and the command that fixes it. When `mm build --publish`
+reports that the Buildx builder uses the `docker` driver, create a builder that
+can build several platforms and attach attestations, and build again:
+
+```sh
+docker buildx create --use
+mm build --publish plan
+```
+
+A local build runs on the engine's own builder and does not need this.
 
 ## Configuration schema is rejected
 

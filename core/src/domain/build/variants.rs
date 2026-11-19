@@ -36,7 +36,7 @@ impl ImageBuildUnitPlan {
 
 pub(super) fn validate_build_variants(
     unit: &ImageBuildUnitPlan,
-    base_tags: &[String],
+    expected_tags: &dyn Fn(&ImageBuildVariantPlan) -> Result<Vec<String>, String>,
     image_tags: &mut BTreeSet<(String, String)>,
 ) -> Result<(), String> {
     let mut targets = BTreeSet::new();
@@ -55,7 +55,7 @@ pub(super) fn validate_build_variants(
                 unit.module
             ));
         }
-        if variant.tags != suffixed_tags(base_tags, &variant.tag_suffix)? {
+        if variant.tags != expected_tags(variant)? {
             return Err(format!(
                 "module '{}' build tags do not match its source policy",
                 unit.module

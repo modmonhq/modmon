@@ -435,9 +435,14 @@ impl McpUseCases for McpApplicationAdapter {
         publish: bool,
     ) -> Result<crate::domain::build::ImageBuildPlan, MmError> {
         context.require(AgentAction::Plan, None)?;
+        let selection = self.selection(context);
         self.runtime()
-            .build_manager()
-            .plan(&self.selection(context), publish)
+            .build_manager_for(
+                &selection,
+                Some(&self.mm_home),
+                (context.scope.runtime, publish),
+            )?
+            .plan(&selection, publish)
             .await
     }
 
@@ -450,7 +455,11 @@ impl McpUseCases for McpApplicationAdapter {
         context.require(AgentAction::BuildApply, None)?;
         let runtime = self.runtime();
         let selection = self.selection(context);
-        let planner = runtime.build_manager();
+        let planner = runtime.build_manager_for(
+            &selection,
+            Some(&self.mm_home),
+            (context.scope.runtime, publish),
+        )?;
         runtime
             .build_service(planner, &selection, Some(&self.mm_home))?
             .apply_reviewed(&selection, publish, plan_hash)

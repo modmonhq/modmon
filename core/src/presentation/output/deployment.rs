@@ -33,6 +33,14 @@ pub(crate) fn deployment_plan_text(
     )
     .map_err(output_error)?;
     write_receipt_origin_line(writer, plan.build_receipt.as_ref())?;
+    if let Some(build) = &plan.local_build {
+        writeln!(
+            writer,
+            "  builds {}",
+            terminal_safe(&local_build_line(build))
+        )
+        .map_err(output_error)?;
+    }
     for line in super::release::release_lines(plan.release.as_ref()) {
         writeln!(writer, "{}", terminal_safe(&line)).map_err(output_error)?;
     }
@@ -565,150 +573,6 @@ pub(crate) fn write_development_mount_plan(
     }
     for warning in &plan.proposal.warnings {
         writeln!(writer, "  note: {}", terminal_safe(warning)).map_err(output_error)?;
-    }
-    Ok(())
-}
-
-pub(crate) fn write_image_build_plan(
-    plan: &ImageBuildPlan,
-    format: OutputFormat,
-) -> Result<(), MmError> {
-    if format == OutputFormat::Json {
-        return write_json(plan);
-    }
-    let stdout = crate::presentation::record::stdout();
-    let mut writer = stdout.lock();
-    writeln!(
-        writer,
-        "Image build plan {}",
-        terminal_safe(&plan.plan_hash)
-    )
-    .map_err(output_error)?;
-    writeln!(
-        writer,
-        "  source: {}{}",
-        terminal_safe(&plan.source.commit),
-        if plan.source.dirty { " (dirty)" } else { "" }
-    )
-    .map_err(output_error)?;
-    writeln!(writer, "  config: {}", terminal_safe(&plan.config_hash)).map_err(output_error)?;
-    writeln!(
-        writer,
-        "  mode: {} on {}",
-        if plan.publish {
-            "publish"
-        } else {
-            "OCI archive"
-        },
-        terminal_safe(&plan.platforms.join(", "))
-    )
-    .map_err(output_error)?;
-    for unit in &plan.units {
-        writeln!(
-            writer,
-            "  module: {} -> {} ({})",
-            terminal_safe(&unit.module),
-            terminal_safe(&unit.image),
-            terminal_safe(&unit.context_hash)
-        )
-        .map_err(output_error)?;
-        if !unit.dependencies.is_empty() {
-            let deps = unit
-                .dependencies
-                .iter()
-                .map(|dependency| {
-                    let via = match &dependency.reference {
-                        crate::domain::build::BuildDependencyReference::BuildArgument {
-                            arg,
-                            ..
-                        } => format!("ARG {arg}"),
-                        crate::domain::build::BuildDependencyReference::Dockerfile {
-                            instruction_index,
-                            source_line,
-                            ..
-                        } => format!("FROM #{instruction_index} line {source_line}"),
-                    };
-                    format!("{} via {via}", dependency.producer_module)
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-            writeln!(writer, "    depends-on: {}", terminal_safe(&deps)).map_err(output_error)?;
-        }
-        for variant in &unit.variants {
-            writeln!(
-                writer,
-                "    target: {}{} [{}]",
-                terminal_safe(variant.name()),
-                variant
-                    .stage
-                    .as_deref()
-                    .map_or_else(String::new, |stage| format!(
-                        " (Dockerfile target {})",
-                        terminal_safe(stage)
-                    )),
-                terminal_safe(&variant.tags.join(", "))
-            )
-            .map_err(output_error)?;
-            super::build_receipt::write_build_args(&mut writer, unit, variant, "      ")?;
-        }
-        if !unit.secret_ids.is_empty() {
-            writeln!(writer, "    build secrets: {}", unit.secret_ids.len())
-                .map_err(output_error)?;
-        }
-    }
-    Ok(())
-}
-
-pub(crate) fn write_image_build_result(
-    result: &ImageBuildResult,
-    format: OutputFormat,
-) -> Result<(), MmError> {
-    if format == OutputFormat::Json {
-        return write_json(result);
-    }
-    let stdout = crate::presentation::record::stdout();
-    let mut writer = stdout.lock();
-    writeln!(
-        writer,
-        "Completed image build {}",
-        terminal_safe(&result.plan_hash)
-    )
-    .map_err(output_error)?;
-    for image in &result.images {
-        writeln!(
-            writer,
-            "  {}:{} -> {}@{}",
-            terminal_safe(&image.module),
-            image
-                .target
-                .as_deref()
-                .map_or_else(|| "default".to_owned(), terminal_safe),
-            terminal_safe(&image.repository),
-            terminal_safe(&image.digest)
-        )
-        .map_err(output_error)?;
-        if let Some(archive) = &image.archive {
-            writeln!(
-                writer,
-                "    archive: {}",
-                terminal_safe(&archive.display().to_string())
-            )
-            .map_err(output_error)?;
-        }
-    }
-    for dependency in &result.dependencies {
-        writeln!(
-            writer,
-            "  dependency: {} -> {}:{} = {}",
-            terminal_safe(&dependency.edge.producer_module),
-            terminal_safe(&dependency.edge.dependent_module),
-            dependency
-                .dependent_target
-                .as_deref()
-                .map_or_else(|| "default".to_owned(), terminal_safe),
-            terminal_safe(&dependency.immutable_reference)
-        )
-        .map_err(output_error)?;
     }
     Ok(())
 }

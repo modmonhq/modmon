@@ -4455,7 +4455,7 @@ _mm() {
             return 0
             ;;
         mm__subcmd__build)
-            opts="-e -h -V --publish --yes --root --environment --runtime --target --mm-home --output --help --version plan apply receipt import help"
+            opts="-e -h -V --publish --all --yes --root --environment --runtime --target --mm-home --output --help --version plan apply receipt import help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -4497,7 +4497,7 @@ _mm() {
             return 0
             ;;
         mm__subcmd__build__subcmd__apply)
-            opts="-e -h -V --plan --publish --yes --root --environment --runtime --target --mm-home --output --help --version"
+            opts="-e -h -V --plan --publish --all --yes --root --environment --runtime --target --mm-home --output --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -4627,7 +4627,7 @@ _mm() {
             return 0
             ;;
         mm__subcmd__build__subcmd__import)
-            opts="-e -h -V --cache-only --plan --publish --yes --root --environment --runtime --target --mm-home --output --help --version"
+            opts="-e -h -V --cache-only --plan --publish --all --yes --root --environment --runtime --target --mm-home --output --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -4673,7 +4673,7 @@ _mm() {
             return 0
             ;;
         mm__subcmd__build__subcmd__plan)
-            opts="-e -h -V --publish --yes --root --environment --runtime --target --mm-home --output --help --version"
+            opts="-e -h -V --publish --all --yes --root --environment --runtime --target --mm-home --output --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -4715,7 +4715,7 @@ _mm() {
             return 0
             ;;
         mm__subcmd__build__subcmd__receipt)
-            opts="-e -h -V --publish --yes --root --environment --runtime --target --mm-home --output --help --version"
+            opts="-e -h -V --publish --all --yes --root --environment --runtime --target --mm-home --output --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

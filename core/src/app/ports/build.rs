@@ -4,7 +4,8 @@ use std::path::{Path, PathBuf};
 use async_trait::async_trait;
 
 use crate::domain::build::{
-    BuildSource, BuiltImage, ImageBuildUnitPlan, ImageBuildVariantPlan, ResolvedBuildDependency,
+    BuildSource, BuiltImage, ImageBuildUnitPlan, ImageBuildVariantPlan, LocalImageEngine,
+    ResolvedBuildDependency,
 };
 use crate::domain::error::MmError;
 use crate::domain::operation::OperationId;
@@ -20,6 +21,9 @@ pub struct BuildVariantRequest<'a> {
     pub plan_hash: &'a str,
     pub platforms: &'a [String],
     pub publish: bool,
+    /// The engine on this machine to load the image into, instead of
+    /// pushing it or writing an archive.
+    pub engine: Option<LocalImageEngine>,
     pub unit: &'a ImageBuildUnitPlan,
     pub variant: &'a ImageBuildVariantPlan,
     pub secrets: &'a BTreeMap<String, crate::domain::secret::SecretMaterial>,
@@ -66,6 +70,16 @@ pub trait ImageBuilder: Send + Sync {
         destination_repository: &str,
         tags: &[String],
     ) -> Result<String, MmError>;
+
+    /// The ID `engine` has for `reference`, or `None` when it has no such
+    /// image.
+    async fn local_image_id(
+        &self,
+        _engine: LocalImageEngine,
+        _reference: &str,
+    ) -> Result<Option<String>, MmError> {
+        Ok(None)
+    }
 }
 
 #[cfg(test)]

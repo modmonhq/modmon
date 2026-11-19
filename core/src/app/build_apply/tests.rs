@@ -247,6 +247,7 @@ fn plan(units: Vec<ImageBuildUnitPlan>) -> ImageBuildPlan {
             dirty: false,
         },
         publish: false,
+        engine: None,
         tag_strategy: BuildTagStrategy::Auto,
         platforms: vec!["linux/amd64".to_owned()],
         units,
@@ -414,6 +415,7 @@ async fn secret_gated_reuse_and_resolution_fail_closed_at_each_review_boundary()
                 secrets: &no_build_secrets,
                 dependencies: &[],
                 upstream_contexts: &[],
+                engine: None,
             })
             .await
             .is_err()

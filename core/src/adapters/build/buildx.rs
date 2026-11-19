@@ -16,12 +16,17 @@ use crate::app::ports::{
     BuildOperationGuard, BuildVariantRequest, CommandSpec, ImageBuilder, ProcessRunner,
     UpstreamBuildContext,
 };
-use crate::domain::build::{BuiltImage, ImageBuildUnitPlan, ImageBuildVariantPlan};
+use crate::domain::build::{
+    BuiltImage, ImageBuildUnitPlan, ImageBuildVariantPlan, LocalImageEngine,
+};
 use crate::domain::error::MmError;
 use crate::domain::runtime::DOCKER_INHERITED_ENVIRONMENT;
 use crate::domain::secret::SecretMaterial;
 
 const MAX_METADATA_BYTES: usize = 1024 * 1024;
+
+mod engine;
+mod failure;
 
 #[derive(Clone)]
 pub struct DockerBuildxBuilder {
@@ -86,23 +91,35 @@ impl ImageBuilder for DockerBuildxBuilder {
     }
 
     async fn build_variant(&self, request: BuildVariantRequest<'_>) -> Result<BuiltImage, MmError> {
+        if let Some(engine) = request.engine {
+            return engine::build_variant(self.process.as_ref(), &self.artifacts, engine, request)
+                .await;
+        }
         let staging = prepare_build_staging(&self.artifacts, &request)?;
         let command = build_command(&self.executable, &request, &staging)?;
         let BuildVariantRequest {
             operation_id,
             plan_hash: _,
+            platforms,
             publish,
             unit,
             variant,
             ..
         } = request;
-        let output = self.process.run(command).await?;
+        let output = self
+            .process
+            .run(command)
+            .await
+            .map_err(|error| failure::not_started(error, failure::Builder::Buildx))?;
         if !output.success() {
-            return Err(MmError::ProcessFailed {
-                program: self.executable.clone(),
-                code: output.code,
-                stderr: output.stderr.trim().to_owned(),
-            });
+            let asked = failure::Asked { platforms, publish };
+            return Err(failure::explain(
+                self.process.as_ref(),
+                failure::Builder::Buildx,
+                &output,
+                Some(asked),
+            )
+            .await);
         }
         let digest = read_digest(&staging.metadata_path)?;
         let archive = if publish {
@@ -182,6 +199,14 @@ impl ImageBuilder for DockerBuildxBuilder {
             }
         }
         Ok(digest.to_owned())
+    }
+
+    async fn local_image_id(
+        &self,
+        engine: LocalImageEngine,
+        reference: &str,
+    ) -> Result<Option<String>, MmError> {
+        engine::image_id(self.process.as_ref(), engine, reference).await
     }
 }
 

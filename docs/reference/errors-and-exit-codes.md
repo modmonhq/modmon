@@ -83,6 +83,14 @@ Human output prints the corresponding quoted command. Other errors may have
 through the MCP server. See
 [mm refuses to run for an agent](../mcp.md#mm-refuses-to-run-for-an-agent).
 
+`MM_BUILD` is also the code of a build that cannot run, with a message that
+says why and what to run: Docker, its Buildx component, or Podman is not
+installed; the engine is not running; or the Buildx builder uses the `docker`
+driver, which cannot build several platforms at once, attach the attestations
+of a published build, or write an OCI archive, so `docker buildx create --use`
+makes one that can. Any other failure of the builder keeps
+`MM_PROCESS_FAILED` and the builder's own output.
+
 Validation and status payloads also contain specific `MM_*` diagnostic codes.
 Those codes identify individual findings; process status is determined from
 their severity and category rather than from the presence of warnings.

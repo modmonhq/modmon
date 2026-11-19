@@ -70,6 +70,10 @@ pub enum DevCommand {
         yes: bool,
     },
     /// Review or apply the local development deployment.
+    ///
+    /// Images that have no local build yet, or whose build inputs changed
+    /// since their last local build, are built first, as part of the
+    /// reviewed plan.
     Up {
         /// Turn an optional module, service or job on for this run only;
         /// repeat for more.

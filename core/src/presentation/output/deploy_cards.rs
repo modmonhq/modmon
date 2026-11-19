@@ -221,6 +221,9 @@ pub fn local_plan_card(plan: &DeploymentPlan, with: &[String]) -> Card {
         ),
     );
     super::release::release_fields(&mut card, plan.release.as_ref());
+    if let Some(build) = &plan.local_build {
+        card.field("builds", super::local_build_line(build));
+    }
     card.table(
         &["stack", "services", "images"],
         plan.stacks

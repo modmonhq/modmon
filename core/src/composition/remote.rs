@@ -483,8 +483,9 @@ impl crate::app::ports::RemoteUseCases for DaemonUseCaseAdapter {
                 issue: crate::domain::readiness::SetupIssue::MissingImages { services },
             }) if receipt.is_none() => Err(MmError::Build {
                 message: format!(
-                    "{} need published images, and remote hosts never build. Publish them, write `mm build receipt FILE`, and plan with `mm deploy plan --receipt FILE`",
-                    services.join(", ")
+                    "{} need published images, and remote hosts never build. Publish them with `mm -e {environment} build --publish`, write `mm -e {environment} build receipt FILE`, and plan with `mm -e {environment} deploy plan --receipt FILE`",
+                    services.join(", "),
+                    environment = context.scope.environment,
                 ),
             }),
             Err(MmError::Validation { errors }) => Err(super::daemon_checkout::invalid_at_commit(

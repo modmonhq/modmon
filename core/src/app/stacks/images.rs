@@ -11,20 +11,20 @@ pub(super) fn compatible_build_modules(
     plan: &ImageBuildPlan,
 ) -> Result<BTreeSet<String>, MmError> {
     let mut compatible = BTreeSet::new();
-    if document
-        .config
-        .build
-        .platforms
-        .iter()
-        .collect::<BTreeSet<_>>()
-        != plan.platforms.iter().collect::<BTreeSet<_>>()
-    {
+    let configured = &document.config.build.platforms;
+    let platforms_match = if plan.engine.is_some() {
+        plan.platforms == [crate::domain::build::local_platform(configured)]
+    } else {
+        configured.iter().collect::<BTreeSet<_>>() == plan.platforms.iter().collect()
+    };
+    if !platforms_match {
         return Ok(compatible);
     }
     // Validated plans are topologically ordered, including base-image modules
     // with no services. A changed base definition also invalidates dependents.
     for unit in &plan.units {
         if let Some(module) = document.config.modules.get(&unit.module)
+            && repository_matches(document, plan, module, unit)?
             && matches_build_configuration(module, unit)?
             && unit
                 .dependencies
@@ -37,14 +37,36 @@ pub(super) fn compatible_build_modules(
     Ok(compatible)
 }
 
+/// A local build names its images after the project and module; a
+/// published one after `build.image`.
+fn repository_matches(
+    document: &ConfigDocument,
+    plan: &ImageBuildPlan,
+    module: &ModuleConfig,
+    unit: &ImageBuildUnitPlan,
+) -> Result<bool, MmError> {
+    if plan.engine.is_some() {
+        return Ok(crate::domain::build::local_image_repository(
+            &document.config.project.name,
+            &unit.module,
+        )
+        .is_ok_and(|repository| repository == unit.image));
+    }
+    let Some(image) = module
+        .build
+        .as_ref()
+        .and_then(|build| build.image.as_deref())
+    else {
+        return Ok(false);
+    };
+    Ok(crate::app::build::normalize_image_repository(image)? == unit.image)
+}
+
 fn matches_build_configuration(
     module: &ModuleConfig,
     unit: &ImageBuildUnitPlan,
 ) -> Result<bool, MmError> {
     let Some(build) = module.build.as_ref().filter(|build| build.enabled) else {
-        return Ok(false);
-    };
-    let Some(image) = &build.image else {
         return Ok(false);
     };
     let context = module
@@ -91,15 +113,12 @@ fn matches_build_configuration(
             })
         })
     });
-    Ok(
-        crate::app::build::normalize_image_repository(image)? == unit.image
-            && context == unit.context
-            && dockerfile == unit.dockerfile
-            && args == built_args
-            && build.secrets.keys().eq(unit.secret_ids.iter())
-            && build.extra_inputs.iter().collect::<BTreeSet<_>>()
-                == unit.extra_inputs.iter().map(|input| &input.path).collect()
-            && build.depends_on.iter().collect::<BTreeSet<_>>() == dependencies
-            && variants_match,
-    )
+    Ok(context == unit.context
+        && dockerfile == unit.dockerfile
+        && args == built_args
+        && build.secrets.keys().eq(unit.secret_ids.iter())
+        && build.extra_inputs.iter().collect::<BTreeSet<_>>()
+            == unit.extra_inputs.iter().map(|input| &input.path).collect()
+        && build.depends_on.iter().collect::<BTreeSet<_>>() == dependencies
+        && variants_match)
 }

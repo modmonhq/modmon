@@ -359,6 +359,7 @@ async fn snapshot_of(
             plan_hash: &plan.plan_hash,
             platforms: &plan.platforms,
             publish: true,
+            engine: None,
             unit,
             variant: unit.variants.first().ok_or("the unit has no variant")?,
             secrets: &BTreeMap::new(),

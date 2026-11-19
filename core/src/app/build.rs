@@ -11,8 +11,9 @@ use crate::app::ports::{BuildSourceInspector, ProjectDocumentStore};
 use crate::domain::build::{
     BuildDependencyReference, BuildReceipt, BuildReusePolicy, ContextIgnore, FirstPartyBuildEdge,
     IgnoreVerdict, ImageBuildPlan, ImageBuildScope, ImageBuildTrigger, ImageBuildUnitPlan,
-    ImageBuildVariantPlan, PromotedReceipt, automatic_tags, build_version, is_image_repository,
-    suffixed_tags, unit_input_fingerprint,
+    ImageBuildVariantPlan, LocalImageEngine, PromotedReceipt, automatic_tags, build_version,
+    is_image_repository, local_image_repository, local_image_tag, local_platform, suffixed_tags,
+    unit_input_fingerprint,
 };
 use crate::domain::config::{
     BuildTarget, BuildTargetSelection, ConfigDocument, ModuleBuildConfig, ModuleConfig,
@@ -32,6 +33,9 @@ const DOCKERIGNORE: &str = ".dockerignore";
 
 mod graph;
 use graph::*;
+mod scope;
+pub use scope::BuildRequest;
+use scope::modules_in_scope;
 mod source;
 #[cfg(test)]
 pub(crate) use source::hash_context;
@@ -42,6 +46,7 @@ pub(crate) use source::{normalize_image_repository, plan_variant, snapshot_build
 pub struct BuildManager {
     documents: Arc<dyn ProjectDocumentStore>,
     source: Arc<dyn BuildSourceInspector>,
+    engine: Option<LocalImageEngine>,
 }
 
 impl std::fmt::Debug for BuildManager {
@@ -58,14 +63,54 @@ impl BuildManager {
         documents: Arc<dyn ProjectDocumentStore>,
         source: Arc<dyn BuildSourceInspector>,
     ) -> Self {
-        Self { documents, source }
+        Self {
+            documents,
+            source,
+            engine: None,
+        }
+    }
+
+    /// Builds without `--publish` load into `engine`, for an environment
+    /// on this machine; without one they write an OCI archive.
+    #[must_use]
+    pub fn with_local_engine(mut self, engine: Option<LocalImageEngine>) -> Self {
+        self.engine = engine;
+        self
+    }
+
+    /// The engine a build without `--publish` loads into.
+    #[must_use]
+    pub fn local_engine(&self) -> Option<LocalImageEngine> {
+        self.engine
+    }
+
+    /// Whether the selected environment runs a module that mm builds.
+    pub fn builds_modules(&self, selection: &WorkspaceSelection) -> Result<bool, MmError> {
+        let document = self.documents.load_from(&selection.start)?;
+        let environment = resolve_environment(&document, selection.environment.as_deref())?;
+        Ok(modules_in_scope(&document, &environment)
+            .iter()
+            .filter_map(|name| document.config.modules.get(name))
+            .any(|module| {
+                module.build.as_ref().map_or_else(
+                    || {
+                        document
+                            .root
+                            .join(&module.path)
+                            .join("Dockerfile")
+                            .is_file()
+                    },
+                    |build| build.enabled,
+                )
+            }))
     }
 
     pub async fn plan(
         &self,
         selection: &WorkspaceSelection,
-        publish: bool,
+        request: impl Into<BuildRequest>,
     ) -> Result<ImageBuildPlan, MmError> {
+        let request = request.into();
         let document = self.documents.load_from(&selection.start)?;
         let environment = resolve_environment(&document, selection.environment.as_deref())?;
         let validation = validate(&document, &environment);
@@ -79,7 +124,8 @@ impl BuildManager {
         }
 
         let source = self.source.inspect(&document.root).await?;
-        plan_from_source(document, environment, source, publish, &[])
+        let engine = self.engine.filter(|_| !request.publish);
+        plan_from_source(document, environment, source, (request, engine), &[])
     }
 
     /// Checks a published build receipt against this checkout for the
@@ -138,7 +184,7 @@ impl BuildManager {
             document,
             environment,
             receipt.plan.source.clone(),
-            true,
+            (BuildRequest::from(true), None),
             added,
         )?;
         receipt
@@ -162,9 +208,10 @@ fn plan_from_source(
     document: ConfigDocument,
     environment: String,
     source: crate::domain::build::BuildSource,
-    publish: bool,
+    (request, engine): (BuildRequest, Option<LocalImageEngine>),
     excluded: &[PathBuf],
 ) -> Result<ImageBuildPlan, MmError> {
+    let publish = request.publish;
     if publish && source.dirty {
         return Err(MmError::Build {
             message: "publishing from a dirty worktree is forbidden".to_owned(),
@@ -185,8 +232,15 @@ fn plan_from_source(
         .environments
         .get(&environment)
         .and_then(|config| config.build_variant.as_deref());
+    let scope = (!request.all).then(|| modules_in_scope(&document, &environment));
     let mut units = Vec::new();
     for (module_name, module) in &document.config.modules {
+        if scope
+            .as_ref()
+            .is_some_and(|scope| !scope.contains(module_name))
+        {
+            continue;
+        }
         if let Some(unit) = plan_module(
             &document,
             (module_name, module),
@@ -200,28 +254,65 @@ fn plan_from_source(
     }
     if units.is_empty() {
         return Err(MmError::Build {
-            message:
+            message: if request.all {
                 "no buildable modules were found; add a module Dockerfile or build configuration"
-                    .to_owned(),
+                    .to_owned()
+            } else {
+                format!(
+                    "environment '{environment}' runs no module that mm builds; add a Dockerfile or build configuration to one of its modules, or build every module with `mm -e {environment} build --all`"
+                )
+            },
         });
     }
     infer_first_party_bases(&document.root, &mut units)?;
     let mut units = topological_build_units(units)?;
-    assign_canonical_fingerprints(&mut units, &document.config.build.platforms)?;
-
-    ImageBuildPlan::new(
-        ImageBuildScope {
-            project_id: document.config.project.id,
-            config_hash: document.source_hash,
-            environment,
-        },
-        source,
-        publish,
-        document.config.build.tag_strategy,
-        document.config.build.platforms,
-        units,
-    )
+    let platforms = match engine {
+        Some(_) => vec![local_platform(&document.config.build.platforms)],
+        None => document.config.build.platforms.clone(),
+    };
+    assign_canonical_fingerprints(&mut units, &platforms)?;
+    let scope = ImageBuildScope {
+        project_id: document.config.project.id,
+        config_hash: document.source_hash.clone(),
+        environment,
+    };
+    let strategy = document.config.build.tag_strategy;
+    match engine {
+        Some(engine) => {
+            localize(
+                &document.config.project.name,
+                &scope.environment,
+                &mut units,
+            )?;
+            let platform = platforms.into_iter().next().unwrap_or_default();
+            ImageBuildPlan::new_local(scope, source, engine, strategy, platform, units)
+        }
+        None => ImageBuildPlan::new(scope, source, publish, strategy, platforms, units),
+    }
     .map_err(|message| MmError::Build { message })
+}
+
+/// Names each unit's image in the local registry, tagged by its inputs.
+fn localize(
+    project: &str,
+    environment: &str,
+    units: &mut [ImageBuildUnitPlan],
+) -> Result<(), MmError> {
+    let build = |message| MmError::Build { message };
+    for unit in units {
+        let planned: &ImageBuildUnitPlan = unit;
+        let tags = planned
+            .variants
+            .iter()
+            .map(|variant| local_image_tag(environment, planned, variant))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(build)?;
+        for (variant, tag) in unit.variants.iter_mut().zip(tags) {
+            variant.tags = vec![tag];
+        }
+        unit.image = local_image_repository(project, &unit.module).map_err(build)?;
+    }
+    Ok(())
 }
 
 /// `excluded` files are left out of the build context hash.
