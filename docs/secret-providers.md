@@ -1,12 +1,76 @@
 ---
 title: Choose a secret store
-description: Use local Age secrets, an external OpenBao or Vault server, or a managed development server.
+description: Use local Age secrets, a file another tool keeps, an external OpenBao or Vault server, or a managed development server.
 ---
 
 For a local project, start with Age: an encrypted store that does not need a
 separate server. See [environment values and secrets](./concepts/environments-and-secrets.md).
-Use OpenBao or Vault when your team already has a server, or when you need to
-test that integration locally.
+When a tool already keeps its credentials in a file, read that file with the
+`file` provider. Use OpenBao or Vault when your team already has a server, or
+when you need to test that integration locally.
+
+## Read a secret from a file
+
+Some tools keep their credentials in a file of their own, such as a package
+manager's `auth.json`. The `file` provider reads the secret from that file
+when a build or deployment needs it, so the value is not copied into mm or
+into an environment variable:
+
+```yaml
+secrets:
+  registry.auth:
+    storage:
+      provider: file
+      location: ~/.config/tool/auth.json
+modules:
+  web:
+    build:
+      secrets: { registry_auth: registry.auth }
+```
+
+`location` is an absolute path or one that starts with `~/`, your home
+directory. A relative path is refused, because a file in the checkout could
+be committed with the project. The value is the file's content exactly as
+written, newlines included: UTF-8 text up to 1 MiB. mm reads it each time it
+is needed and keeps no copy.
+
+```sh
+mm secret status registry.auth
+```
+
+```text
+example [local]
+  KEY                          PROVIDER     STATUS       LOCATION
+  registry.auth                file         set          ~/.config/tool/auth.json
+```
+
+The secret is `unset` while the file is missing or empty. It is `invalid`,
+and `mm secret status` says why, when the path is a directory, a device or a
+pipe, holds more than 1 MiB or text that is not UTF-8, or lies inside mm's
+own home (`~/.mm`, or the directory `--mm-home` and `MM_HOME` name), which
+holds mm's keys. A symbolic link is followed, and its target is checked the
+same way. mm never writes the file: `mm secret set`, `rotate` and `generate`
+refuse a `file` secret, so edit the file instead.
+
+In CI, write the CI secret to the same path before mm builds. With GitHub
+Actions:
+
+```yaml
+- name: Write registry credentials
+  run: |
+    umask 077
+    mkdir -p ~/.config/tool
+    printf '%s' "$REGISTRY_AUTH" > ~/.config/tool/auth.json
+  env:
+    REGISTRY_AUTH: ${{ secrets.REGISTRY_AUTH }}
+```
+
+A remote host never reads a file a project names. A `file` secret serves
+builds made on the machine that runs mm; a deployment whose services need the
+value on a host is refused. For those, keep the value in a secret with
+`provider: age`, bind it for that environment, and stage it from your
+machine with `mm -e ENV secret set NAME --stdin < ~/.config/tool/auth.json`
+(see [Change an environment's variable](./how-to/change-a-variable.md)).
 
 ## Connect an existing server
 

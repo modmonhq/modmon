@@ -56,7 +56,11 @@ pub(crate) fn key_schema(key: &str) -> Option<schemars::Schema> {
 pub(crate) fn secret_capabilities()
 -> Result<crate::domain::secret::SecretCapabilitySnapshot, MmError> {
     Ok(crate::domain::secret::SecretCapabilitySnapshot {
-        storage: vec![age_storage_descriptor()?, environment_storage_descriptor()?],
+        storage: vec![
+            age_storage_descriptor()?,
+            environment_storage_descriptor()?,
+            crate::adapters::secrets::file_storage_descriptor()?,
+        ],
         delivery: vec![
             crate::adapters::environment::direct_environment_descriptor()?,
             crate::adapters::environment::operation_environment_file_descriptor()?,

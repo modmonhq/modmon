@@ -834,7 +834,7 @@ providers:
 secrets:
   database.password:
     storage:
-      provider: staging-secrets # age, env, or a declared provider instance
+      provider: staging-secrets # age, env, file, or a declared provider instance
       location: projects/example/db
     input: { prompt: Database password }
     rotation:
@@ -854,6 +854,11 @@ or a list of 3 or 5 node names). In an environment on your machine it is the
 local development instance, whose `installation` and `management-port`
 default to the provider's name and `18200`. See
 [keep deploy secrets in a managed store](../how-to/managed-secret-store.md).
+
+`provider: env` reads the environment variable `location` names, and
+`provider: file` reads the file at `location`, an absolute path or one that
+starts with `~/`. Both are read-only. See
+[read a secret from a file](../secret-providers.md#read-a-secret-from-a-file).
 
 Generator presets are `password` (length 32), `token` (48), `bytes` (32 and
 `base64-url`), `laravel-app-key`, and `uuid`. Length overrides must be 16–4096.

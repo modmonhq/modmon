@@ -1084,6 +1084,16 @@ hosts up again with `mm target setup plan --upgrade`. See
   not installed, the engine not running, or a Buildx builder whose `docker`
   driver cannot build several platforms, attach attestations, or write an
   archive (`docker buildx create --use`).
+- The `file` secret provider reads a secret from a file on the machine that
+  runs mm, such as the credentials file a package manager keeps, each time a
+  build or deployment needs it: `storage: {provider: file, location:
+  ~/.config/tool/auth.json}`. The content is used as written, newlines
+  included. `mm secret status` shows the path, never the value; `set`,
+  `rotate` and `generate` refuse it; a relative path, a non-regular file, a
+  file over 1 MiB and a path inside mm's home are refused; a host never reads
+  it. Each line of a multi-line secret is now redacted from build and
+  service output too. See
+  [read a secret from a file](docs/secret-providers.md#read-a-secret-from-a-file).
 
 ### Fixed
 
@@ -1454,6 +1464,11 @@ hosts up again with `mm target setup plan --upgrade`. See
 - A managed OpenBao or Vault provider starts on Docker Compose: its Compose
   file gave the options of its `/tmp` mount as separate `tmpfs` entries,
   which the engine refused.
+- A build secret without a usable value said only that it was unavailable.
+  It now says whether the secret is unset or invalid and why: an `env`
+  secret whose variable holds a newline is `invalid` and points to the
+  `file` provider for multi-line values. `mm secret status` gives the same
+  reason.
 
 ### Security
 

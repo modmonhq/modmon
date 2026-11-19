@@ -93,8 +93,9 @@ tunnel and deploy key read. Run it once per environment, for example
 `generate:` block, whichever environment uses it.
 
 When this machine has no connection to a secret's provider, such as a team
-OpenBao you have not added with `mm secret provider add`, the secret is listed
-as skipped with the reason and the others are still created. The command
+OpenBao you have not added with `mm secret provider add`, or the provider is
+read-only, such as `env` or `file`, the secret is listed as skipped with the
+reason and the others are still created. The command
 succeeds. Naming one secret, as in `mm secret generate database.password`,
 fails instead.
 

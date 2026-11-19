@@ -600,3 +600,106 @@ fn a_stage_without_its_sealed_values_or_with_a_bad_key_is_refused() {
     assert!(stage("web/../app", Some("x")).validate().is_err());
     assert!(stage("", Some("x")).validate().is_err());
 }
+
+fn host_context(
+    scope: RemoteScope,
+    project_root: &std::path::Path,
+) -> mm::app::ports::RemoteRequestContext {
+    use mm::domain::access::{
+        AccessAction, AccessResourceKind, Authorization, Capability, PrincipalId,
+    };
+    let principal_id = PrincipalId(uuid::Uuid::from_u128(31));
+    mm::app::ports::RemoteRequestContext {
+        request_id: uuid::Uuid::from_u128(32),
+        operation_nonce: uuid::Uuid::from_u128(33),
+        principal_id,
+        principal: "alice".to_owned(),
+        key_fingerprint: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned(),
+        session_id: uuid::Uuid::from_u128(34),
+        source: "test".to_owned(),
+        request_plan_hash: None,
+        authorization: Authorization {
+            principal_id,
+            display_name: "alice".to_owned(),
+            capability: Capability::new(AccessAction::Status, AccessResourceKind::Project),
+            policy_revision: 1,
+            grant_ids: std::collections::BTreeSet::new(),
+            authorization_hash: "a".repeat(64),
+        },
+        deadline_unix_ms: i64::MAX,
+        scope,
+        project_root: project_root.to_path_buf(),
+        release: None,
+        protocol: mm::domain::remote::PROTOCOL_VERSION,
+    }
+}
+
+#[tokio::test]
+async fn a_host_holds_no_file_secret_and_refuses_to_stage_one() -> TestResult {
+    use mm::app::ports::RemoteUseCases;
+    let directory = temp_dirs::tempdir()?;
+    let checkout = directory.path().join("checkouts/1");
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/minimal");
+    std::fs::create_dir_all(checkout.join(".config"))?;
+    std::fs::create_dir_all(checkout.join("api"))?;
+    for file in [".config/mm.yaml", "compose.yaml", "api/.env.example"] {
+        std::fs::copy(fixture.join(file), checkout.join(file))?;
+    }
+    let config = checkout.join(".config/mm.yaml");
+    std::fs::write(
+        &config,
+        std::fs::read_to_string(&config)?.replace(
+            "environments:\n",
+            "  registry.auth:\n    storage:\n      provider: file\n      location: ~/.config/tool/auth.json\nenvironments:\n",
+        ),
+    )?;
+    let document = mm::adapters::config::ConfigLoader.load_from(&checkout)?;
+    let scope = RemoteScope {
+        project_id: document.config.project.id,
+        environment: "local".to_owned(),
+        target: "uat".to_owned(),
+        target_fingerprint: "b".repeat(64),
+        runtime: RuntimeKind::DockerCompose,
+        node: None,
+    };
+    let host = mm::composition::DaemonUseCaseAdapter::new(directory.path().join("mm-home"));
+    let context = host_context(scope, &checkout);
+    host.secret_recipient(&context).await?;
+    let held = host.host_values(&context).await?;
+    let auth = held
+        .values
+        .iter()
+        .find(|value| value.key == "registry.auth")
+        .ok_or("the host does not list the file secret")?;
+    assert_eq!(auth.provider.as_deref(), Some("file"));
+    assert!(auth.active.is_none() && auth.staged.is_none());
+
+    let refused = host
+        .stage_values(
+            &context,
+            ValueStage {
+                stage: uuid::Uuid::new_v4(),
+                step: StageStep::Prepare {
+                    changes: vec![ValueChange {
+                        key: "registry.auth".to_owned(),
+                        kind: ValueKind::Secret,
+                        action: StagedAction::Set {
+                            revision: "r1".to_owned(),
+                        },
+                    }],
+                    sealed: Some("sealed".to_owned()),
+                },
+            },
+        )
+        .await
+        .err()
+        .ok_or("a host staged a file secret")?
+        .to_string();
+    assert!(refused.contains("hosts never read it"), "{refused}");
+    assert!(refused.contains("provider: age"), "{refused}");
+    assert!(
+        refused.contains("mm -e local secret set NAME --stdin"),
+        "{refused}"
+    );
+    Ok(())
+}

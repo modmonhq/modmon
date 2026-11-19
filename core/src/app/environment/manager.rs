@@ -121,13 +121,13 @@ impl EnvironmentManager {
             .any(|diagnostic| diagnostic.severity == Severity::Error);
         let mut secrets = Vec::new();
         let mut runtime_metadata = BTreeMap::new();
+        let scope = SecretScope::new(&environment);
         for (key, declaration) in &document.config.secrets {
             if requested_key.is_some_and(|requested| requested != key) {
                 continue;
             }
             let reference = configured_reference(declaration)?;
             let metadata = if inspect_providers {
-                let scope = SecretScope::new(&environment);
                 self.inspector
                     .inspect(&scope, &reference)
                     .await
@@ -146,12 +146,14 @@ impl EnvironmentManager {
                 }
             };
             if inspect_providers {
-                append_secret_diagnostic(&reference.canonical(), &metadata, &mut diagnostics);
+                self.secret_diagnostic(&scope, &reference, &metadata, &mut diagnostics)
+                    .await;
             }
             runtime_metadata.insert(key.clone(), metadata.clone());
             secrets.push(SecretBindingStatus {
                 key: key.clone(),
                 provider: reference.scheme().to_owned(),
+                location: Some(reference.locator().to_owned()),
                 status: metadata.status,
                 revision: metadata.revision,
             });
@@ -675,9 +677,8 @@ impl EnvironmentManager {
             .resolve_secrets(&context.document, &context.environment, &context.index)
             .await?;
         let mut diagnostics = context.validation.diagnostics.clone();
-        for (reference, metadata) in &secret_metadata {
-            append_secret_diagnostic(reference, metadata, &mut diagnostics);
-        }
+        self.resolved_secret_diagnostics(&context, &secret_metadata, &mut diagnostics)
+            .await?;
         let _modules = status_modules(
             &context.document,
             &context.environment,
@@ -732,7 +733,8 @@ impl EnvironmentManager {
             match result {
                 Ok(value) => {
                     if check {
-                        append_secret_diagnostic(&reference.canonical(), &value, diagnostics);
+                        self.secret_diagnostic(&scope, reference, &value, diagnostics)
+                            .await;
                     }
                     metadata.insert(reference.canonical(), value);
                 }

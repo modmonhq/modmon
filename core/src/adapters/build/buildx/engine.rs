@@ -114,7 +114,9 @@ fn build_command(
             .sensitive_arg(format!("id={id},src={}", path.to_string_lossy()));
     }
     for material in request.secrets.values() {
-        command = material.expose(|value| command.redact_value(value.to_owned()));
+        for mut fragment in material.redactions() {
+            command = command.redact_value(std::mem::take(&mut *fragment));
+        }
     }
     command.arg(staging.snapshot.to_string_lossy())
 }

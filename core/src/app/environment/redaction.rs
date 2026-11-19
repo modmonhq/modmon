@@ -18,7 +18,7 @@ pub(crate) async fn environment_redactions(
     for (canonical, reference) in &delivered {
         let resolution = secrets.resolve(&scope, reference).await?;
         match (resolution.metadata.status, resolution.material) {
-            (SecretStatus::Set, Some(material)) => values.push(material.into_zeroizing()),
+            (SecretStatus::Set, Some(material)) => values.extend(material.redactions()),
             (SecretStatus::Unset, None) => {}
             (status, _) => return Err(unreadable(document, environment, canonical, status)),
         }
@@ -39,7 +39,7 @@ pub(crate) async fn environment_redactions(
             && resolution.metadata.status == SecretStatus::Set
             && let Some(material) = resolution.material
         {
-            values.push(material.into_zeroizing());
+            values.extend(material.redactions());
         }
     }
     Ok(values)

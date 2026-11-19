@@ -672,6 +672,45 @@ async fn read_only_storage_rejects_mutation_and_scheduled_rotation()
     Ok(())
 }
 
+#[tokio::test]
+async fn generating_skips_a_read_only_secret_and_naming_one_says_where_it_is_read()
+-> Result<(), Box<dyn std::error::Error>> {
+    let project = temp_dirs::tempdir()?;
+    copy_fixture(project.path())?;
+    let config_path = project.path().join(".config/mm.yaml");
+    fs::write(
+        &config_path,
+        fs::read_to_string(&config_path)?
+            .replace("provider: age", "provider: env")
+            .replace("location: local/db-password", "location: DATABASE_PASSWORD"),
+    )?;
+    let home = temp_dirs::tempdir()?;
+    let age = Arc::new(AgeSecretStore::new(
+        home.path().join("identity.key"),
+        home.path().join("project.age"),
+    ));
+    let manager = secret_manager(
+        support::secret_registry(age)?,
+        Arc::new(FixedClock { unix_ms: 1_000 }),
+    )?;
+    let read_here = "secret 'database.password' is read from the environment variable DATABASE_PASSWORD; set it there";
+
+    let report = manager
+        .generate(project.path(), None, &SecretGenerationSelection::Missing)
+        .await?;
+    assert_eq!(report.secrets.len(), 1);
+    assert_eq!(report.secrets[0].status, SecretGenerationStatus::Skipped);
+    assert_eq!(report.secrets[0].reason.as_deref(), Some(read_here));
+
+    let named = manager
+        .generate(project.path(), None, &named("database.password"))
+        .await
+        .err()
+        .ok_or("a read-only secret was generated")?;
+    assert!(named.to_string().contains(read_here), "{named}");
+    Ok(())
+}
+
 fn named(name: &str) -> SecretGenerationSelection {
     SecretGenerationSelection::Named(name.to_owned())
 }

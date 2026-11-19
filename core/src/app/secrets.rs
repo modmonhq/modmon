@@ -17,7 +17,9 @@ use crate::domain::secret::{
     SecretRotationPlan, SecretRotationPlanItem, SecretRotationPlanStatus, SecretRotationResultItem,
     SecretScope, SecretStatus,
 };
-use crate::domain::secret_contract::{RevisionSemantics, RotationCapability, StorageOperation};
+use crate::domain::secret_contract::{
+    AuthenticationKind, RevisionSemantics, RotationCapability, StorageOperation,
+};
 
 mod generation;
 pub use generation::generated_secrets;
@@ -524,15 +526,22 @@ impl SecretManager {
             .storage_capabilities
             .storage_capability(&declaration.storage.provider)?;
         if descriptor.supports(operation) {
-            Ok(())
-        } else {
-            Err(MmError::Secret {
-                message: format!(
-                    "secret '{name}' uses storage backend '{}' which does not support {operation:?}; supported operations are {:?}",
-                    descriptor.id, descriptor.operations
-                ),
-            })
+            return Ok(());
         }
+        let location = &declaration.storage.location;
+        let message = match descriptor.authentication {
+            AuthenticationKind::LocalFile => {
+                format!("secret '{name}' is read from {location}; edit that file")
+            }
+            AuthenticationKind::ProcessEnvironment => format!(
+                "secret '{name}' is read from the environment variable {location}; set it there"
+            ),
+            _ => format!(
+                "secret '{name}' uses storage backend '{}' which does not support {operation:?}; supported operations are {:?}",
+                descriptor.id, descriptor.operations
+            ),
+        };
+        Err(MmError::Secret { message })
     }
 }
 

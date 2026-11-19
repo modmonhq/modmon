@@ -10,11 +10,13 @@ use crate::domain::secret_contract::{DeliveryCapabilityDescriptor, StorageCapabi
 use crate::domain::secret_contract::{MAX_SECRET_MATERIAL_BYTES, StorageProviderId};
 
 mod bundle;
+mod file;
 pub use bundle::{
     BundledDeployKey, BundledSecret, DeployKeyImport, MAX_SECRET_BUNDLE_BYTES,
     SECRET_BUNDLE_VERSION, SecretBundle, SecretImportEntry, SecretImportSummary,
     validate_secret_revision,
 };
+pub use file::{FileSecretLocation, file_secret_location};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct InitializedAgeStore {
@@ -200,6 +202,22 @@ impl SecretMaterial {
     pub fn into_zeroizing(self) -> Zeroizing<String> {
         self.0
     }
+
+    /// What output must hide: the value, and each line of a value that has
+    /// several, since output is often read one line at a time.
+    #[must_use]
+    pub fn redactions(&self) -> Vec<Zeroizing<String>> {
+        let value = self.0.as_str();
+        std::iter::once(value)
+            .chain(
+                value
+                    .lines()
+                    .map(str::trim)
+                    .filter(|line| !line.is_empty() && *line != value),
+            )
+            .map(|fragment| Zeroizing::new(fragment.to_owned()))
+            .collect()
+    }
 }
 
 fn validate_locator(locator: &str) -> Result<(), String> {
@@ -309,6 +327,8 @@ pub struct SecretResolution {
 pub struct SecretBindingStatus {
     pub key: String,
     pub provider: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<String>,
     pub status: SecretStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub revision: Option<String>,
@@ -359,7 +379,8 @@ pub enum SecretGenerationSelection {
 pub enum SecretGenerationStatus {
     Generated,
     AlreadySet,
-    /// Its provider has no connection from this machine; `reason` says why.
+    /// Its provider has no connection from this machine or is read-only;
+    /// `reason` says why.
     Skipped,
 }
 

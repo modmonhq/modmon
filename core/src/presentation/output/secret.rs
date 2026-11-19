@@ -97,14 +97,20 @@ pub(crate) fn write_secret_status(
         terminal_safe(&snapshot.environment)
     )
     .map_err(output_error)?;
-    writeln!(writer, "  {:<28} {:<12} STATUS", "KEY", "PROVIDER").map_err(output_error)?;
+    writeln!(
+        writer,
+        "  {:<28} {:<12} {:<12} LOCATION",
+        "KEY", "PROVIDER", "STATUS"
+    )
+    .map_err(output_error)?;
     for secret in &snapshot.secrets {
         writeln!(
             writer,
-            "  {:<28} {:<12} {}",
+            "  {:<28} {:<12} {:<12} {}",
             terminal_safe(&secret.key),
             terminal_safe(&secret.provider),
-            secret_status(secret.status)
+            secret_status(secret.status),
+            terminal_safe(secret.location.as_deref().unwrap_or("-"))
         )
         .map_err(output_error)?;
     }

@@ -1,6 +1,7 @@
 mod age_store;
 mod bundle;
 mod environment;
+mod file;
 mod host_connection;
 mod openbao;
 mod registry;
@@ -19,6 +20,7 @@ pub use bundle::{
 pub use environment::{
     EnvironmentSecretStore, environment_storage_descriptor, load_or_create_environment_revision_key,
 };
+pub use file::{FileSecretStore, HostFileSecrets, file_storage_descriptor};
 pub use host_connection::{
     HostProviderConnect, HostProviderConnection, HostProviderDriver, approle_from_lines,
     connect_host_openbao, connect_host_vault, disconnect_host_openbao, disconnect_host_vault,

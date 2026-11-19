@@ -46,9 +46,55 @@ impl EnvironmentManager {
     }
 }
 
+impl EnvironmentManager {
+    /// The diagnostic for a secret's state, with why it is invalid when its
+    /// store says.
+    pub(super) async fn secret_diagnostic(
+        &self,
+        scope: &SecretScope,
+        reference: &SecretReference,
+        metadata: &SecretMetadata,
+        diagnostics: &mut Vec<Diagnostic>,
+    ) {
+        let reason = if metadata.status == SecretStatus::Invalid {
+            self.inspector.invalid_reason(scope, reference).await
+        } else {
+            None
+        };
+        append_secret_diagnostic(
+            &reference.canonical(),
+            metadata,
+            reason.as_deref(),
+            diagnostics,
+        );
+    }
+
+    pub(super) async fn resolved_secret_diagnostics(
+        &self,
+        context: &EnvironmentContext,
+        metadata: &BTreeMap<String, SecretMetadata>,
+        diagnostics: &mut Vec<Diagnostic>,
+    ) -> Result<(), MmError> {
+        let references =
+            used_secret_references(&context.document, &context.environment, &context.index)?;
+        let scope = SecretScope::new(&context.environment);
+        for (canonical, metadata) in metadata {
+            match references.get(canonical) {
+                Some(reference) => {
+                    self.secret_diagnostic(&scope, reference, metadata, diagnostics)
+                        .await;
+                }
+                None => append_secret_diagnostic(canonical, metadata, None, diagnostics),
+            }
+        }
+        Ok(())
+    }
+}
+
 pub(super) fn append_secret_diagnostic(
     canonical_reference: &str,
     metadata: &SecretMetadata,
+    reason: Option<&str>,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     let scheme = canonical_reference
@@ -65,7 +111,10 @@ pub(super) fn append_secret_diagnostic(
         )),
         SecretStatus::Invalid => diagnostics.push(Diagnostic::error(
             "MM_SECRET_INVALID",
-            format!("secret provider '{scheme}' returned an unusable value"),
+            reason.map_or_else(
+                || format!("secret provider '{scheme}' returned an unusable value"),
+                |reason| format!("secret provider '{scheme}' returned an unusable value: {reason}"),
+            ),
         )),
         SecretStatus::Set | SecretStatus::Unset | SecretStatus::NotChecked => {}
     }
