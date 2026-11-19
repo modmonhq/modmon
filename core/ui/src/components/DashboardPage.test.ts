@@ -207,4 +207,18 @@ describe("dashboard states", () => {
     expect(statTone(second.container, "Issues")).toBe("warn");
     expect(statTone(second.container, "Projects")).toBe("idle");
   });
+
+  it("names the command that forgets registered projects gone from disk", () => {
+    const value = dashboard();
+    value.project = null;
+    value.stale_workspaces = [
+      { project_id: "00000000-0000-0000-0000-000000000043", last_used_at_unix_ms: 1_700_000_000_000 },
+      { project_id: "00000000-0000-0000-0000-000000000044", last_used_at_unix_ms: 1_700_000_000_000 },
+    ];
+    render(DashboardPage, { props: { dashboard: value, stale: false } });
+    const projects = within(screen.getByRole("heading", { name: "Projects" }).closest("section")!);
+    expect(projects.getByText(/2 registered projects are gone from disk/)).toBeTruthy();
+    expect(projects.getByText("mm workspace forget --stale").tagName).toBe("CODE");
+    expect(projects.getByRole("link", { name: "Example" })).toBeTruthy();
+  });
 });

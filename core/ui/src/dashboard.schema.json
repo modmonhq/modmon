@@ -344,6 +344,13 @@
         },
         "scope": {
           "$ref": "#/$defs/DashboardScopeDto"
+        },
+        "stale_workspaces": {
+          "description": "Registered projects whose folder or configuration file is gone;\n`mm workspace forget --stale` forgets them.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DashboardStaleWorkspace"
+          }
         }
       },
       "additionalProperties": false,
@@ -526,6 +533,24 @@
         "running_count",
         "healthy_count",
         "routes"
+      ]
+    },
+    "DashboardStaleWorkspace": {
+      "type": "object",
+      "properties": {
+        "last_used_at_unix_ms": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "project_id": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "project_id",
+        "last_used_at_unix_ms"
       ]
     },
     "EnvironmentDeliveryMode": {

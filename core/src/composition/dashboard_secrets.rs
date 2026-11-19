@@ -42,8 +42,8 @@ impl DashboardGateSecrets {
                     .to_owned(),
             });
         }
-        let limit = crate::domain::dashboard::MAX_DASHBOARD_PROJECTS;
-        let workspaces = self.state.list_workspaces(limit + 1)?;
+        let limit = crate::domain::workspace_registry::MAX_REGISTERED_WORKSPACES;
+        let workspaces = crate::app::registered_workspaces(self.state.as_ref(), limit + 1)?;
         if workspaces.len() > limit {
             return Err(MmError::Security {
                 message: "dashboard project registry exceeds its bound".to_owned(),
@@ -51,7 +51,7 @@ impl DashboardGateSecrets {
         }
         let matching = workspaces
             .iter()
-            .filter(|workspace| workspace.project_id == project_id)
+            .filter(|workspace| workspace.project_id == project_id && !workspace.stale)
             .collect::<Vec<_>>();
         let [workspace] = matching.as_slice() else {
             return Err(MmError::Security {

@@ -840,6 +840,62 @@ fn dashboard_hosts_are_deduplicated_and_manager_debug_redacts_dependencies()
 }
 
 #[test]
+fn service_planning_skips_registered_projects_whose_folder_is_gone()
+-> Result<(), Box<dyn std::error::Error>> {
+    use mm::adapters::config::ConfigLoader;
+    use mm::adapters::state::SqliteStateStore;
+    use mm::app::RegisteredDashboardHostSource;
+    use mm::app::ports::StateStore;
+    use mm::domain::workspace::{ProjectId, WorkspaceRegistration};
+
+    let fixture = Fixture::new()?;
+    let home = temp_dirs::tempdir()?;
+    let state = Arc::new(SqliteStateStore::open(&home.path().join("state.sqlite3"))?);
+    let mut roots = Vec::new();
+    for (id, name) in [(0x51_u128, "kept"), (0x52, "gone")] {
+        let root = home.path().join(name);
+        std::fs::create_dir_all(root.join(".config"))?;
+        std::fs::write(
+            root.join(".config/mm.yaml"),
+            format!(
+                "schema-version: 1\nproject:\n  id: {}\n  name: {name}\ntarget: local\nstacks: {{}}\nenvironments:\n  local:\n    bindings: {{}}\n",
+                Uuid::from_u128(id)
+            ),
+        )?;
+        let document = ConfigLoader.load_from(&root)?;
+        state.register_workspace(
+            &WorkspaceRegistration {
+                project_id: ProjectId(Uuid::from_u128(id)),
+                root: document.root,
+                config_path: document.path,
+            },
+            1_700_000_000_000,
+        )?;
+        roots.push(root);
+    }
+    std::fs::remove_dir_all(&roots[1])?;
+
+    let manager =
+        fixture
+            .manager
+            .clone()
+            .with_dashboard_hosts(Arc::new(RegisteredDashboardHostSource::new(
+                Arc::new(ConfigLoader),
+                state,
+            )));
+    let plan = manager.plan(Fixture::request(ServiceStackAction::Apply))?;
+    let kept = mm::domain::local_ingress::project_dashboard_slug(
+        "kept",
+        ProjectId(Uuid::from_u128(0x51)),
+    )?;
+    assert_eq!(
+        plan.dashboard_hosts,
+        vec![format!("mm.{kept}.test"), "mm.test".to_owned()]
+    );
+    Ok(())
+}
+
+#[test]
 fn generated_topology_is_pinned_limited_socketless_and_smtp_private_by_default()
 -> Result<(), Box<dyn std::error::Error>> {
     let fixture = Fixture::new()?;

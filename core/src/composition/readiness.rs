@@ -72,7 +72,11 @@ pub(crate) fn doctor_service(
     home: Option<&Path>,
     runtime: &RuntimeComposition,
 ) -> Result<crate::app::ReadinessService, MmError> {
+    let state = Arc::new(crate::adapters::state::SqliteStateInspector {
+        path: MmHome::inspect(home)?.state_database,
+    });
     Ok(readiness_service(home, runtime)?
+        .with_probe(Arc::new(crate::app::RegisteredWorkspacesCheck::new(state)))
         .with_probe(Arc::new(ClusterNodesCheck {
             home: home.map(Path::to_path_buf),
         }))

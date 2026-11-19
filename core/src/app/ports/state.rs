@@ -15,7 +15,17 @@ use crate::domain::target::{TargetBootstrapPlan, TargetId};
 use crate::domain::workspace::{ProjectId, WorkspaceId, WorkspaceRecord, WorkspaceRegistration};
 
 pub trait StateStore: Send + Sync {
-    fn list_workspaces(&self, limit: usize) -> Result<Vec<WorkspaceRecord>, MmError>;
+    /// The most recently used first.
+    fn workspace_usage(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<crate::domain::workspace_registry::WorkspaceUsage>, MmError>;
+    /// Deletes each workspace with its operations in one transaction, and
+    /// nothing if one of them changed since `expected` was read.
+    fn forget_workspaces(
+        &self,
+        expected: &[crate::domain::workspace_registry::WorkspaceUsage],
+    ) -> Result<u64, MmError>;
     fn register_workspace(
         &self,
         registration: &WorkspaceRegistration,
