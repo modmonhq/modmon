@@ -102,6 +102,18 @@ impl ServiceConfig {
         self.role == Some(super::ServiceRole::Job)
     }
 
+    /// Whether the development environment gives the service an automatic
+    /// local route. A service on the host's network gets none: mm routes
+    /// over networks of its own.
+    #[must_use]
+    pub fn takes_automatic_local_ingress(&self) -> bool {
+        self.automatic_local_ingress != Some(false)
+            && self.host_network.is_none()
+            && !self
+                .role
+                .is_some_and(super::ServiceRole::excludes_automatic_ingress)
+    }
+
     /// The secret files mounted in `environment`.
     pub fn secret_files_in<'a>(
         &'a self,

@@ -98,7 +98,35 @@ pub struct StackArtifactManifest {
     /// Docker Engine does: on a host that runs Podman.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub low_ports: Vec<String>,
+    /// The services that run in the host's network namespace.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub host_network: Vec<HostNetworkUse>,
     pub artifact_hash: String,
+}
+
+/// A service that runs in its host's network namespace (`network_mode:
+/// host`), and why, when the project says.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+pub struct HostNetworkUse {
+    pub service: String,
+    /// The service's `host-network` in `mm.yaml`. A remote host may allow
+    /// the service without it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+impl HostNetworkUse {
+    /// The line a plan shows for the service.
+    #[must_use]
+    pub fn line(&self) -> String {
+        match &self.reason {
+            Some(reason) => format!("{} uses the host's network: {reason}", self.service),
+            None => format!(
+                "{} uses the host's network, which the host's policy allows (network-host)",
+                self.service
+            ),
+        }
+    }
 }
 
 impl StackServiceManifest {
@@ -251,6 +279,14 @@ impl StackArtifactManifest {
                 &serde_json::to_string(&self.security)
                     .map_err(|error| format!("could not hash security options: {error}"))?,
             );
+        }
+        if !self.host_network.is_empty() {
+            hash_field(hasher, "host-network-v1");
+            hash_count(hasher, self.host_network.len());
+            for service in &self.host_network {
+                hash_field(hasher, &service.service);
+                hash_field(hasher, service.reason.as_deref().unwrap_or_default());
+            }
         }
         Ok(())
     }

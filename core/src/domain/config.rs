@@ -497,6 +497,12 @@ pub struct ServiceConfig {
     /// says why; a service that mounts a shared volume needs it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host_user_namespace: Option<String>,
+    /// Lets the service run in its host's network namespace
+    /// (`network_mode: host` in its Compose file) on this machine. The
+    /// value says why, and the plan shows it. On a remote host the host's
+    /// policy decides instead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_network: Option<String>,
     /// On a cluster target: how long a container of this service that
     /// leaves (a rolling update replaces it, it moves, or it is scaled
     /// away) keeps serving what is in flight once no node sends it new

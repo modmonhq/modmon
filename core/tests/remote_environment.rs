@@ -1699,15 +1699,15 @@ async fn the_terminal_uis_review_is_what_deploy_plan_prints() -> TestResult {
 }
 
 /// What a node of a hardened push target plans for `app`: `db` keeps a
-/// writable root (its exception) and `web` mounts a config file rendered
-/// from a template.
+/// writable root (its exception), `web` mounts a config file rendered
+/// from a template, and the host lets `vpn` use its network.
 fn hardened_node_plan() -> mm::domain::deployment::DeploymentPlan {
     use mm::domain::config_file::ConfigFileUse;
     use mm::domain::deployment::{
         DEPLOYMENT_PLAN_SCHEMA, DeploymentPlan, DeploymentRouteDiff, DeploymentStackPlan,
     };
     use mm::domain::hardening::{HardeningException, HardeningKey, ServiceSecurity};
-    use mm::domain::stack::{PreparedStackArtifact, StackArtifactManifest};
+    use mm::domain::stack::{HostNetworkUse, PreparedStackArtifact, StackArtifactManifest};
     use mm::domain::target::TargetId;
     use mm::domain::traefik_dynamic::{PreparedTraefikDynamicConfig, TraefikDynamicConfigManifest};
 
@@ -1752,6 +1752,10 @@ fn hardened_node_plan() -> mm::domain::deployment::DeploymentPlan {
         preserved_volumes: Vec::new(),
         security: vec![db],
         low_ports: Vec::new(),
+        host_network: vec![HostNetworkUse {
+            service: "vpn".to_owned(),
+            reason: None,
+        }],
         artifact_hash: "e".repeat(64),
     };
     let artifact_root = std::path::PathBuf::from("/var/lib/mm-home/compose/app");
@@ -1848,6 +1852,7 @@ async fn the_review_shows_hardening_config_files_and_the_pushed_bundle() -> Test
     let planned = [
         "    security: db: writable root, no capabilities, no new privileges, default seccomp, tmpfs /tmp",
         "    security: db: not read-only (the root filesystem stays writable): Postgres writes its socket under /var/run",
+        "    network: vpn uses the host's network, which the host's policy allows (network-host)",
         "  config file: app/web /etc/nginx/nginx.conf from template web/nginx.conf (version bbbbbbbbbbbb): new",
     ];
     let sent = format!("  bundle:   {bundle} (812 files, 1.5 MiB; sent to app-1, db-1)");

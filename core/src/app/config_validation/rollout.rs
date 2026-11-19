@@ -168,6 +168,11 @@ fn side_by_side_problems(
                 "service '{service}' sets `userns_mode: {mode}`, which on Podman gives the new container other user ids than the old one, so it could not change what the old one wrote (without it mm gives the service fixed ids of its own)"
             ));
         }
+        if config.get("network_mode").and_then(Value::as_str) == Some("host") {
+            problems.push(format!(
+                "service '{service}' runs on the host's network, where two containers cannot both hold its ports"
+            ));
+        }
         if let Some(port) = published_host_port(config) {
             problems.push(format!(
                 "service '{service}' publishes host port {port}, which two containers cannot both hold"

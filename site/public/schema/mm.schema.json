@@ -2440,6 +2440,13 @@
             }
           ]
         },
+        "host-network": {
+          "description": "Lets the service run in its host's network namespace\n(`network_mode: host` in its Compose file) on this machine. The\nvalue says why, and the plan shows it. On a remote host the host's\npolicy decides instead.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "host-user-namespace": {
           "description": "On a remote host that runs Podman, keeps this service in the host's\nuser namespace instead of one of its own (`userns: auto`). The value\nsays why; a service that mounts a shared volume needs it.",
           "type": [

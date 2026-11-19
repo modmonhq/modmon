@@ -61,9 +61,10 @@ pub(super) fn reject_reserved_ingress_configuration(
     path: &Path,
     bytes: &[u8],
     routed_services: &std::collections::BTreeSet<&str>,
-    proxy_ports: (u16, u16, u16),
+    proxy_ports: Option<(u16, u16, u16)>,
     project_root: &Path,
     compose_directory: &Path,
+    host_network: &super::host_network::HostNetwork<'_>,
 ) -> Result<(), MmError> {
     let mut document =
         serde_yaml_ng::from_slice::<serde_yaml_ng::Value>(bytes).map_err(|error| {
@@ -72,6 +73,7 @@ pub(super) fn reject_reserved_ingress_configuration(
             }
         })?;
     reject_compose_yaml_tags(path, &document)?;
+    let written = document.clone();
     document
         .apply_merge()
         .map_err(|error| MmError::Environment {
@@ -80,6 +82,9 @@ pub(super) fn reject_reserved_ingress_configuration(
                 path.display()
             ),
         })?;
+    if let Some(root) = document.as_mapping_mut() {
+        super::guardrails::resolve_extends(root);
+    }
     let Some(root) = document.as_mapping() else {
         return Ok(());
     };
@@ -93,7 +98,20 @@ pub(super) fn reject_reserved_ingress_configuration(
                 continue;
             };
             reject_reserved_service_identity(path, service_name, service)?;
-            reject_reserved_service_networking(path, service_name, service, routed_services)?;
+            let as_written = written
+                .get("services")
+                .and_then(|services| services.get(service_name))
+                .and_then(serde_yaml_ng::Value::as_mapping);
+            if let Some(message) = host_network.refusal(
+                path,
+                service_name,
+                service,
+                as_written,
+                routed_services.contains(service_name),
+            ) {
+                return Err(MmError::Environment { message });
+            }
+            reject_reserved_service_networking(path, service_name, service)?;
             reject_unsafe_service_mounts(
                 path,
                 service,
@@ -208,7 +226,6 @@ fn reject_reserved_service_networking(
     path: &Path,
     service_name: &str,
     service: &serde_yaml_ng::Mapping,
-    routed_services: &BTreeSet<&str>,
 ) -> Result<(), MmError> {
     if mapping_value(service, "networks").is_some_and(|networks| {
         networks.as_mapping().is_some_and(|networks| {
@@ -230,20 +247,6 @@ fn reject_reserved_service_networking(
             ),
         });
     }
-    if let Some(network_mode) = mapping_value(service, "network_mode")
-        && (routed_services.contains(service_name)
-            || network_mode
-                .as_str()
-                .is_some_and(|mode| mode.eq_ignore_ascii_case("host") || mode.contains('$')))
-    {
-        return Err(MmError::Environment {
-            message: format!(
-                "Compose file '{}' gives routed or host networking to service '{}'",
-                path.display(),
-                service_name
-            ),
-        });
-    }
     match super::compose_environment::compose_environment_refusal(path, service_name, service) {
         Some(message) => Err(MmError::Environment { message }),
         None => Ok(()),
@@ -253,7 +256,7 @@ fn reject_reserved_service_networking(
 fn reject_unsafe_service_mounts(
     path: &Path,
     service: &serde_yaml_ng::Mapping,
-    proxy_ports: (u16, u16, u16),
+    proxy_ports: Option<(u16, u16, u16)>,
     project_root: &Path,
     compose_directory: &Path,
 ) -> Result<(), MmError> {
@@ -275,7 +278,9 @@ fn reject_unsafe_service_mounts(
             ),
         });
     }
-    if mapping_value(service, "ports").is_some_and(|ports| uses_proxy_port(ports, proxy_ports)) {
+    if let Some(proxy_ports) = proxy_ports
+        && mapping_value(service, "ports").is_some_and(|ports| uses_proxy_port(ports, proxy_ports))
+    {
         return Err(MmError::Environment {
             message: format!(
                 "Compose file '{}' publishes an mm-reserved ingress proxy port",

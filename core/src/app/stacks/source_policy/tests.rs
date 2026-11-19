@@ -3,6 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::*;
+use crate::app::stacks::host_network::HostNetwork;
 
 fn yaml(source: &str) -> serde_yaml_ng::Value {
     let parsed = serde_yaml_ng::from_str(source);
@@ -61,9 +62,10 @@ fn reserved_resource_identity_network_and_environment_contracts_fail_closed()
             Path::new("compose.yaml"),
             source.as_bytes(),
             &routed,
-            (80, 443, 8080),
+            Some((80, 443, 8080)),
             root.path(),
             root.path(),
+            &HostNetwork::default(),
         );
         assert!(result.is_err(), "must reject: {source}");
     }
@@ -71,25 +73,28 @@ fn reserved_resource_identity_network_and_environment_contracts_fail_closed()
         Path::new("compose.yaml"),
         b"services: {web: image-only, worker: {network_mode: bridge}}",
         &BTreeSet::new(),
-        (80, 443, 8080),
+        Some((80, 443, 8080)),
         root.path(),
         root.path(),
+        &HostNetwork::default(),
     )?;
     reject_reserved_ingress_configuration(
         Path::new("compose.yaml"),
         b"name: compose",
         &BTreeSet::new(),
-        (80, 443, 8080),
+        Some((80, 443, 8080)),
         root.path(),
         root.path(),
+        &HostNetwork::default(),
     )?;
     reject_reserved_ingress_configuration(
         Path::new("compose.yaml"),
         b"services: {web: {labels: {example.owner: safe}, networks: [public]}}\nnetworks: {public: {name: public}}",
         &BTreeSet::new(),
-        (80, 443, 8080),
+        Some((80, 443, 8080)),
         root.path(),
         root.path(),
+        &HostNetwork::default(),
     )?;
     for source in [
         "[unterminated",
@@ -101,9 +106,10 @@ fn reserved_resource_identity_network_and_environment_contracts_fail_closed()
                 Path::new("compose.yaml"),
                 source.as_bytes(),
                 &BTreeSet::new(),
-                (80, 443, 8080),
+                Some((80, 443, 8080)),
                 root.path(),
                 root.path(),
+                &HostNetwork::default(),
             )
             .is_err()
         );
@@ -112,9 +118,10 @@ fn reserved_resource_identity_network_and_environment_contracts_fail_closed()
         Path::new("compose.yaml"),
         b"plain scalar",
         &BTreeSet::new(),
-        (80, 443, 8080),
+        Some((80, 443, 8080)),
         root.path(),
         root.path(),
+        &HostNetwork::default(),
     )?;
     Ok(())
 }
@@ -142,9 +149,10 @@ fn unsafe_mount_and_proxy_port_forms_are_rejected() -> Result<(), Box<dyn std::e
                 Path::new("compose.yaml"),
                 source.as_bytes(),
                 &BTreeSet::new(),
-                (80, 443, 8080),
+                Some((80, 443, 8080)),
                 root.path(),
                 root.path(),
+                &HostNetwork::default(),
             )
             .is_err()
         );
@@ -155,9 +163,10 @@ fn unsafe_mount_and_proxy_port_forms_are_rejected() -> Result<(), Box<dyn std::e
             Path::new("compose.yaml"),
             b"services: {web: {volumes: ['./escape:/data']}}",
             &BTreeSet::new(),
-            (80, 443, 8080),
+            Some((80, 443, 8080)),
             root.path(),
             root.path(),
+            &HostNetwork::default(),
         )
         .is_err()
     );
@@ -174,9 +183,10 @@ fn unsafe_mount_and_proxy_port_forms_are_rejected() -> Result<(), Box<dyn std::e
         Path::new("compose.yaml"),
         b"services: {web: {volumes: ['./safe:/data', 'cache:/cache'], ports: ['9000:9000']}}",
         &BTreeSet::new(),
-        (80, 443, 8080),
+        Some((80, 443, 8080)),
         root.path(),
         root.path(),
+        &HostNetwork::default(),
     )?;
     Ok(())
 }

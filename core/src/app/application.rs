@@ -244,6 +244,7 @@ impl Application {
         let environment = resolve_environment(&document, selection.environment.as_deref())?;
         let mut validation = validate(&document, &environment);
         self.add_environment_diagnostics(&document, &environment, &mut validation);
+        super::stacks::compose_source_diagnostics(&document, &mut validation);
         for path in self.documents.ignored_sources(&document) {
             validation.push(
                 Diagnostic::warning(

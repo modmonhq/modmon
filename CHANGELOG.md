@@ -370,6 +370,14 @@ installations `mm target setup` upgrades in place and what it refuses.
   their project ID, when each was last used, and which are gone.
   `mm workspace forget --stale` (or `ROOT|ID`) forgets them through a reviewed
   plan: their operation history and `mm env set` values go, their files stay.
+- A service may run on its host's network (`network_mode: host`), as a VPN
+  or DNS server needs. On a remote host or a cluster node the host policy
+  decides: `allow` with `features: [network-host]` for that `stack/service`.
+  On your own machine the service says why with `host-network: <why>` under
+  `modules.<module>.services.<service>`, and the plan shows the reason.
+  Such a service has no routes, joins no network, and keeps the host's user
+  namespace. See
+  [run a service on the host's network](docs/remote-access.md#run-a-service-on-the-hosts-network).
 - Releases are published by the release workflow when a `vX.Y.Z` tag is
   pushed to `master`: the Linux x86-64 and ARM64 archives are built from the
   tag in pinned containers by `scripts/release/build-linux.sh` (which also
@@ -1029,6 +1037,10 @@ installations `mm target setup` upgrades in place and what it refuses.
   longer stops a build. One that would be sent is refused with its path in
   the context and the ignore file to exclude it in, in the terminal and over
   MCP.
+- `mm config validate` checks every environment's Compose files the way
+  `mm deploy` and `mm dev up` compile them and reports what they would
+  refuse as `MM_COMPOSE_SOURCE`. Before, such a file passed validation and
+  CI and failed first at the deployment.
 - A node of a cluster no longer refuses a deployment plan for want of a
   secret that only a service placed on other nodes mounts, such as the
   secret file of a `role: job` service pinned to one node.
@@ -1356,6 +1368,12 @@ installations `mm target setup` upgrades in place and what it refuses.
 
 ### Security
 
+- A remote host checks a Compose service with what it inherits through
+  `extends` from another service of the same file, under the extending
+  service's own name, and a host's `allow` entry for the base does not cover
+  it. Before, `extends: {service: base}` let a service run a feature such as
+  `privileged` or `network_mode: host` that the host never allowed for it,
+  also when the base itself does not run in the environment.
 - On a cluster node, a container on a network of its own host (the engine's
   default bridge, a Compose network that is not under `networks:`) no longer
   reaches the other nodes through the mesh, where it arrived with its node's

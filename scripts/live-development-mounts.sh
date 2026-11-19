@@ -44,6 +44,8 @@ compose_project=
 overlay=
 units=$root/units
 units_project=
+hostnet=$root/host-network
+hostnet_project=
 
 cleanup_units() {
   [ -n "$units_project" ] || return 0
@@ -55,8 +57,17 @@ cleanup_units() {
     xargs -r "$engine" network rm >/dev/null 2>&1 || true
 }
 
+cleanup_hostnet() {
+  [ -n "$hostnet_project" ] || return 0
+  "$engine" ps --all --quiet --filter "label=com.docker.compose.project=$hostnet_project" |
+    xargs -r "$engine" rm --force >/dev/null 2>&1 || true
+  "$engine" network ls --quiet --filter "label=com.docker.compose.project=$hostnet_project" |
+    xargs -r "$engine" network rm >/dev/null 2>&1 || true
+}
+
 cleanup() {
   cleanup_units
+  cleanup_hostnet
   if [ -n "$compose_project" ] && [ -n "$overlay" ]; then
     "$engine" compose --file "$project/compose.yaml" --file "$overlay" \
       --project-name "$compose_project" down --remove-orphans >/dev/null 2>&1 || true
@@ -305,9 +316,66 @@ units_mm dev enable status >/dev/null
 units_mm --output json config validate >/dev/null
 cleanup_units
 
+hostnet_mm() {
+  "$MM_BIN" --root "$hostnet" --mm-home "$home" "$@"
+}
+
+mkdir -p "$hostnet/.config" "$hostnet/vpn"
+cat >"$hostnet/compose.yaml" <<'YAML'
+services:
+  vpn:
+    image: docker.io/library/alpine:3.22
+    command: ["sh", "-c", "sleep 300"]
+    network_mode: host
+    cap_add: [NET_ADMIN]
+    mem_limit: 64m
+YAML
+cat >"$hostnet/.config/mm.yaml" <<YAML
+schema-version: 1
+project:
+  id: 719c527b-6242-7b43-bfd4-bd60e27c1de3
+  name: host-network-live
+  development-environment: local
+default-environment: local
+target: local
+runtime:
+  driver: $runtime
+stacks:
+  edge:
+    files: [compose.yaml]
+modules:
+  vpn:
+    path: vpn
+    services:
+      vpn:
+        stack: edge
+environments:
+  local: {}
+YAML
+
+if hostnet_mm --output json config validate >"$root/hostnet-validate.json" 2>&1; then
+  printf '%s\n' "network_mode: host without host-network validated" >&2
+  exit 1
+fi
+grep -q MM_COMPOSE_SOURCE "$root/hostnet-validate.json"
+grep -q 'add `host-network: <why>` under modules.vpn.services.vpn' "$root/hostnet-validate.json"
+sed -i 's/^        stack: edge$/        stack: edge\n        host-network: owns the tunnel interface/' "$hostnet/.config/mm.yaml"
+hostnet_mm --output json config validate >/dev/null
+hostnet_mm deploy plan >"$root/hostnet-plan.txt"
+grep -q "network: vpn uses the host's network: owns the tunnel interface" "$root/hostnet-plan.txt"
+hostnet_mm --output json deploy plan >"$root/hostnet-plan.json"
+hostnet_project=$(jq -r '.stacks[0].compose_project_name' "$root/hostnet-plan.json")
+hostnet_mm deploy --yes apply --plan "$(jq -r .plan_hash "$root/hostnet-plan.json")" >/dev/null
+vpn=$("$engine" ps --quiet --filter "label=com.docker.compose.project=$hostnet_project" --filter label=com.docker.compose.service=vpn)
+test -n "$vpn"
+test "$("$engine" inspect --format '{{.HostConfig.NetworkMode}}' "$vpn")" = host
+"$engine" inspect --format '{{json .HostConfig.CapAdd}}' "$vpn" | grep -q NET_ADMIN
+cleanup_hostnet
+
 printf '%s\n' \
   "reviewed Laravel proposal, immediate live edit, owned preservation, disable, and cleanup passed ($runtime)" \
   "optional unit off by default, enabled with its dependency and job, disabled with its volume kept, routes following it, and the dependency refusal passed ($runtime)" \
+  "host network refused without host-network, then declared, planned with its reason, and started with network_mode host ($runtime)" \
   "mount plan: $proposal_hash" \
   "live deployment plan: $first_deploy_hash" \
   "cleanup deployment plan: $cleanup_deploy_hash" \

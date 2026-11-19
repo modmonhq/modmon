@@ -42,11 +42,8 @@ impl ReadinessProbe for LocalTlsCheck {
             && document.config.modules.values().any(|module| {
                 module.services.values().any(|service| {
                     service.is_active(&context.environment)
-                        && service.automatic_local_ingress != Some(false)
+                        && service.takes_automatic_local_ingress()
                         && service.local_https != Some(false)
-                        && !service
-                            .role
-                            .is_some_and(|role| role.excludes_automatic_ingress())
                 })
             });
         if !automatic_https

@@ -293,6 +293,7 @@ modules:
             down: { less: 40%, for: 5m }
         allow-shared-volumes: false # true lets a database or queue mount a shared volume
         host-user-namespace: shares its files with a host user # Podman hosts: keep the host's user ids, and why
+        host-network: owns the tunnel interface # this machine: lets `network_mode: host` run, and why
         drain: 1m # cluster targets: how long a leaving container keeps serving
         health: # cluster targets; defaults shown
           on-failure: restart # or none
@@ -439,6 +440,33 @@ Its value says why and may not be empty. Every service that mounts a volume
 another service mounts too needs it (`MM_USER_NAMESPACE`). On Docker Engine and on your own machine it changes
 nothing. See [run Podman on the hosts](../remote-daemon.md#run-podman-on-the-hosts).
 
+`host-network` lets the service's Compose definition say
+`network_mode: host`, which puts its containers in the network namespace of
+the machine they run on, as a VPN or DNS server needs. Its value says why,
+the plan shows it, and it may not be empty (`MM_HOST_NETWORK`). It is
+required in an environment that runs on your own machine; there a service
+with `network_mode: host` and no `host-network` fails `mm config validate`,
+`mm deploy`, and `mm dev up` with a message that names the Compose file, the
+service, and this key. On a remote host or a cluster its host policy decides
+instead, and the key is optional: see
+[run a service on the host's network](../remote-access.md#run-a-service-on-the-hosts-network).
+Wherever it runs, such a service:
+
+- writes `network_mode: host` itself, on the service: not from a variable,
+  and not through a YAML merge key;
+- has no ingress route, gets no automatic local route, and no development
+  mail variables;
+- joins no network: neither `networks` in its Compose definition nor a
+  network of `mm.yaml` under the stack, its module, or the service;
+- publishes no `ports`: it listens on the host's ports itself;
+- keeps the host's user namespace (`userns_mode: host`), unless its Compose
+  definition sets `userns_mode`;
+- cannot use `update.order: start-first`, because two containers cannot hold
+  the same ports.
+
+`cap_add` works as for any service: on your own machine nothing refuses
+`cap_add: [NET_ADMIN]`.
+
 `drain` says how long a container of the service that leaves a cluster node
 (an update replaced it, the service moved, autoscale removed it, or
 `mmd container leave` took it out)
@@ -455,8 +483,8 @@ nodes of a cluster target replace the service's stack at the same time.
 `failure` is `rollback` (every node the deployment changed returns to what it
 ran before) or `pause` (the deployment stops where it is). `start-first` is
 refused with `MM_UPDATE_ORDER` for a service that publishes a fixed host port,
-sets `container_name`, runs more than one container, or on Podman sets its
-own `userns_mode` other than `host`. See
+runs on the host's network, sets `container_name`, runs more than one
+container, or on Podman sets its own `userns_mode` other than `host`. See
 [rolling deploys and rollback](../remote-daemon.md#rolling-deploys-and-rollback).
 
 Set `environments` on a service to run it only in the named environments. Omitted
@@ -971,4 +999,9 @@ versions are rejected rather than guessed or rewritten.
 
 `mm config validate` resolves the selected environment and performs cross-resource,
 path, file, ingress, build, environment, and secret-reference checks without
-inspecting containers.
+inspecting containers. It also checks every environment's Compose files the
+way `mm deploy` and `mm dev up` compile them, and reports what they would
+refuse with `MM_COMPOSE_SOURCE`, naming the environments. It knows targets by
+name only, as `--for-remote` does: an environment on the target `local` runs
+on this machine, and every other one on a host that decides by its own
+policy.

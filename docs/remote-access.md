@@ -449,8 +449,13 @@ project, and `build:` (remote hosts never build).
 A host checks only the services the environment it plans runs: the ones
 `mm deploy plan` renders. A service whose `environments:` leaves the
 environment out is not checked there, and neither is a stack left with no
-service. A service that only `local` runs, such as a developer tool with
-`network_mode: host`, needs no exception on any host.
+service. A service is checked with what it inherits through YAML merge keys
+and through `extends` from another service of the same file, under its own
+name: an `allow` entry for the service it extends does not cover it. A
+service that only `local` runs, such as a developer tool with
+`network_mode: host`, needs no exception on any host; on your machine it
+says why with
+[`host-network`](#run-a-service-on-the-hosts-network).
 
 Check before you push:
 
@@ -489,6 +494,71 @@ enroll the project is refused with the project's id.
 A host also decides which OCI runtimes a service's `runtime:` may name, and
 can run every service that is reachable from outside under one of them. See
 [choose an OCI runtime](./hardening.md#choose-an-oci-runtime).
+
+### Run a service on the host's network
+
+A VPN that manages the host's interfaces, or a DNS server that answers on
+the host's own address, needs `network_mode: host` in its Compose
+definition:
+
+```yaml
+# compose.yaml
+services:
+  vpn:
+    image: ghcr.io/acme/vpn:1.4
+    network_mode: host
+    cap_add: [NET_ADMIN]
+```
+
+On a remote host or a cluster node, `mmd` plans it only when the host policy
+allows `network-host` for that service, and `cap-add` for capabilities
+beyond Docker's defaults. A host admin adds it on every host that runs the
+service:
+
+```yaml
+projects:
+  019c527b-6242-7b43-bfd4-bd60e27c1de3:
+    allow:
+      - service: edge/vpn # <stack>/<service>
+        features: [network-host, cap-add]
+```
+
+A host without that entry refuses the plan, and the message names the
+environment, the service, and the feature to allow. `mm config validate
+--for-remote --host-policy` with a copy of the hosts' `host.yaml` reports the
+same before you push.
+
+mm runs the service's containers in the host's user namespace
+(`userns_mode: host`) unless its Compose definition sets `userns_mode`
+itself: a capability such as `NET_ADMIN` reaches the host's network only
+from there. On Podman this means the service does not get user ids of its
+own.
+
+To run the service on your own machine too, for example in `mm dev up`, say
+why in `mm.yaml`. The plan shows the reason, on your machine and on the
+hosts:
+
+```yaml
+modules:
+  edge:
+    services:
+      vpn:
+        stack: edge
+        host-network: owns the tunnel interface
+```
+
+Without it, `mm config validate`, `mm deploy`, and `mm dev up` refuse an
+environment that runs on your machine, and the message names the Compose
+file, the service, and the key to add. What else such a service may not do
+is listed under
+[`host-network`](./reference/configuration.md#modules-services-and-builds).
+
+On a cluster the service is on none of the
+[networks across the nodes](./remote-daemon.md#networks-across-nodes): other
+services do not reach it by name, and it resolves names as its node does, so
+service names do not resolve from it. Reach it on the node's address, and
+have it reach other services on the ports they publish. It runs one container
+on each node of its placement; two on one node would want the same ports.
 
 ## Remove a developer
 
