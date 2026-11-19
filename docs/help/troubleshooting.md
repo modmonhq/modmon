@@ -232,6 +232,18 @@ Then run a reviewed build with `--publish` and re-plan deployment. A build
 without `--publish`, a failed build, or one for different source/configuration
 does not qualify.
 
+## A build cannot run
+
+The message says why and the command that fixes it. When `mm build --publish`
+reports that the Buildx builder uses the `docker` driver, create a builder that
+can build several platforms and attach attestations, and build again:
+
+```sh
+docker buildx create --use
+mm build --publish plan
+```
+
+A local build runs on the engine's own builder and does not need this.
 
 ## Configuration schema is rejected
 

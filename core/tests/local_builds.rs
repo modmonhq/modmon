@@ -771,6 +771,15 @@ async fn build_with(
         .await)
 }
 
+fn own_words(result: Result<mm::domain::build::ImageBuildResult, MmError>) -> String {
+    match result {
+        Ok(_) => "the build succeeded".to_owned(),
+        Err(error) => error
+            .refusal()
+            .unwrap_or_else(|| format!("not in mm's words: {error}")),
+    }
+}
+
 #[tokio::test]
 async fn a_local_docker_build_runs_on_the_engine_and_records_its_image_ids()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -807,5 +816,118 @@ async fn a_local_docker_build_runs_on_the_engine_and_records_its_image_ids()
         seen.iter().all(|line| !line.contains("ghcr.io")),
         "{seen:#?}"
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_build_that_cannot_run_says_why_and_what_to_run() -> Result<(), Box<dyn std::error::Error>>
+{
+    let project = local_project()?;
+    let machine = Machine::new()?;
+
+    let driver = ScriptedEngine::new(vec![
+        (
+            "docker buildx build",
+            Ok((
+                1,
+                "",
+                "ERROR: Multi-platform build is not supported for the docker driver.\nSwitch to a different driver, or turn on the containerd image store, and try again.",
+            )),
+        ),
+        (
+            "docker buildx inspect",
+            Ok((0, "Name:          default\nDriver:        docker\n", "")),
+        ),
+    ]);
+    let message = own_words(build_with(&project, &machine, driver, (None, true)).await?);
+    assert!(
+        message.contains("the buildx builder 'default' uses the docker driver, which can't build several platforms at once (linux/amd64, linux/arm64)"),
+        "{message}"
+    );
+    assert!(
+        message.contains("`docker buildx create --use`"),
+        "{message}"
+    );
+    assert!(!message.contains("containerd"), "{message}");
+
+    let attestations = ScriptedEngine::new(vec![(
+        "docker buildx build",
+        Ok((
+            1,
+            "",
+            "ERROR: Attestation is not supported for the docker driver.",
+        )),
+    )]);
+    let message = own_words(build_with(&project, &machine, attestations, (None, true)).await?);
+    assert!(
+        message.contains("the current buildx builder uses the docker driver, which can't attach the provenance and SBOM attestations"),
+        "{message}"
+    );
+
+    let no_buildx = ScriptedEngine::new(vec![(
+        "docker buildx build",
+        Ok((
+            1,
+            "",
+            "docker: 'buildx' is not a docker command.\nSee 'docker --help'",
+        )),
+    )]);
+    let message = own_words(build_with(&project, &machine, no_buildx, (None, true)).await?);
+    assert!(
+        message.contains("Docker Buildx is not installed"),
+        "{message}"
+    );
+    assert!(message.contains("`docker buildx version`"), "{message}");
+
+    let stopped = ScriptedEngine::new(vec![(
+        "docker build ",
+        Ok((
+            1,
+            "",
+            "ERROR: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?",
+        )),
+    )]);
+    let message = own_words(
+        build_with(
+            &project,
+            &machine,
+            stopped,
+            (Some(LocalImageEngine::Docker), false),
+        )
+        .await?,
+    );
+    assert!(message.contains("Docker is not running"), "{message}");
+    assert!(message.contains("`docker info`"), "{message}");
+
+    let absent = ScriptedEngine::new(vec![("podman build", Err(std::io::ErrorKind::NotFound))]);
+    let message = own_words(
+        build_with(
+            &project,
+            &machine,
+            absent,
+            (Some(LocalImageEngine::Podman), false),
+        )
+        .await?,
+    );
+    assert!(message.contains("Podman is not installed"), "{message}");
+
+    let unknown = ScriptedEngine::new(vec![(
+        "docker build ",
+        Ok((
+            1,
+            "",
+            "failed to solve: process \"/bin/sh -c make\" did not complete successfully",
+        )),
+    )]);
+    let error = build_with(
+        &project,
+        &machine,
+        unknown,
+        (Some(LocalImageEngine::Docker), false),
+    )
+    .await?
+    .err()
+    .ok_or("a failed build succeeded")?;
+    assert!(matches!(error, MmError::ProcessFailed { .. }), "{error}");
     Ok(())
 }

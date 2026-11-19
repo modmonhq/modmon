@@ -1,3 +1,4 @@
+use super::failure::{Asked, Builder};
 use super::*;
 use crate::domain::build::LocalImageEngine;
 use crate::domain::runtime::PODMAN_INHERITED_ENVIRONMENT;
@@ -27,7 +28,12 @@ pub(super) async fn build_variant(
     request: BuildVariantRequest<'_>,
 ) -> Result<BuiltImage, MmError> {
     let staging = prepare_build_staging(artifacts, &request)?;
-    let BuildVariantRequest { unit, variant, .. } = request;
+    let BuildVariantRequest {
+        unit,
+        variant,
+        platforms,
+        ..
+    } = request;
     let tags = variant
         .tags
         .iter()
@@ -36,9 +42,22 @@ pub(super) async fn build_variant(
     let reference = tags.first().cloned().ok_or_else(|| MmError::Build {
         message: format!("module '{}' has no local image tag", unit.module),
     })?;
-    let output = process.run(build_command(engine, &request, &staging)).await?;
+    let output = process
+        .run(build_command(engine, &request, &staging))
+        .await
+        .map_err(|error| super::failure::not_started(error, Builder::Engine(engine)))?;
     if !output.success() {
-        return Err(failed(engine, &output));
+        let asked = Asked {
+            platforms,
+            publish: false,
+        };
+        return Err(super::failure::explain(
+            process,
+            Builder::Engine(engine),
+            &output,
+            Some(asked),
+        )
+        .await);
     }
     let digest = image_id(process, engine, &reference)
         .await?
@@ -114,13 +133,14 @@ pub(super) async fn image_id(
                 .arg(reference)
                 .timeout(Duration::from_secs(60)),
         )
-        .await?;
+        .await
+        .map_err(|error| super::failure::not_started(error, Builder::Engine(engine)))?;
     if !output.success() {
         let stderr = output.stderr.to_ascii_lowercase();
         if IMAGE_MISSING.iter().any(|missing| stderr.contains(missing)) {
             return Ok(None);
         }
-        return Err(failed(engine, &output));
+        return Err(super::failure::explain(process, Builder::Engine(engine), &output, None).await);
     }
     let id = output.stdout.trim();
     let id = if id.starts_with("sha256:") {
@@ -137,16 +157,4 @@ pub(super) async fn image_id(
         });
     }
     Ok(Some(id))
-}
-
-fn failed(engine: LocalImageEngine, output: &crate::app::ports::CommandOutput) -> MmError {
-    MmError::ProcessFailed {
-        program: match engine {
-            LocalImageEngine::Docker => "docker",
-            LocalImageEngine::Podman => "podman",
-        }
-        .to_owned(),
-        code: output.code,
-        stderr: output.stderr.trim().to_owned(),
-    }
 }

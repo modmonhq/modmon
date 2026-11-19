@@ -1012,6 +1012,10 @@ installations `mm target setup` upgrades in place and what it refuses.
 - `mm dev up` builds first, in the plan it shows, every local image that is
   missing or whose build inputs changed since its last local build, and
   keeps the others.
+- A build that cannot run says why and what to run: Docker, Buildx or Podman
+  not installed, the engine not running, or a Buildx builder whose `docker`
+  driver cannot build several platforms, attach attestations, or write an
+  archive (`docker buildx create --use`).
 
 ### Fixed
 

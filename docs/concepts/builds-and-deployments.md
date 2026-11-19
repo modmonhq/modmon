@@ -86,6 +86,15 @@ Commit your changes. For a shallow clone, fetch the missing history with
 `git fetch --unshallow --tags`; otherwise use `git fetch --tags`.
 Replace any `ghcr.io/example/...` image names with repositories you own.
 
+The default Buildx builder of Docker Engine uses the `docker` driver, which
+cannot build several platforms at once or attach the provenance and SBOM
+attestations a published build carries. `mm build --publish` then stops and
+names the builder; create one that can and make it the default with:
+
+```sh
+docker buildx create --use
+```
+
 ### Platforms on one machine
 
 A local build already builds only this machine's platform. To publish only
