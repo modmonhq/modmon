@@ -1,12 +1,12 @@
 //! Clients and hosts on different releases: the remote protocol they agree
 //! on, what a daemon makes of a newer or an older client, what a client
-//! makes of what a newer daemon adds, and the frozen protocol-19 frames
+//! makes of what a newer daemon adds, and the frozen frames of protocol 1
 //! every later build still reads and writes the same.
 //!
-//! The fixtures under `tests/fixtures/protocol/<N>/` are written once by
 //! `cargo test --test protocol_compatibility -- --ignored write_protocol_fixtures`
-//! and never rewritten: a change that breaks one breaks the peers that
-//! still speak protocol N.
+//! adds the fixture of a new frame, method, result or stream item under
+//! `tests/fixtures/protocol/<N>/`. Existing fixtures are never rewritten: a
+//! change that breaks one breaks the peers that still speak protocol N.
 
 mod daemon_host;
 mod temp_dirs;
@@ -162,22 +162,19 @@ async fn a_daemon_refuses_a_client_it_has_no_protocol_in_common_with() -> TestRe
             (PROTOCOL_VERSION + 11, Some(PROTOCOL_VERSION + 6)),
             NEWER,
             protocol_refusal(
-                (NEWER, range(PROTOCOL_VERSION + 6, PROTOCOL_VERSION + 11)),
+                (
+                    NEWER,
+                    Some(range(PROTOCOL_VERSION + 6, PROTOCOL_VERSION + 11)),
+                ),
                 (THIS, ProtocolRange::THIS),
             ),
             "Upgrade the host: run `mm target setup plan --upgrade` and apply that plan with --upgrade",
         ),
         (
-            (MINIMUM_PROTOCOL_VERSION - 1, None),
+            (19, None),
             "",
-            protocol_refusal(
-                (
-                    "",
-                    range(MINIMUM_PROTOCOL_VERSION - 1, MINIMUM_PROTOCOL_VERSION - 1),
-                ),
-                (THIS, ProtocolRange::THIS),
-            ),
-            "Update mm on this machine to",
+            protocol_refusal(("", None), (THIS, ProtocolRange::THIS)),
+            "This mm is from before 0.1.1, and the host's mmd",
         ),
     ];
     for (offer, release, refusal, step) in cases {
@@ -188,10 +185,7 @@ async fn a_daemon_refuses_a_client_it_has_no_protocol_in_common_with() -> TestRe
         assert_eq!(message, refusal);
         assert!(message.contains(step), "{message}");
         assert!(
-            message.contains(&format!(
-                "the host's mmd {THIS} speaks {}",
-                ProtocolRange::THIS
-            )),
+            message.contains(&format!("the host's mmd {THIS} speaks")),
             "{message}"
         );
         assert!(client.ended().await?.is_err());
@@ -202,17 +196,28 @@ async fn a_daemon_refuses_a_client_it_has_no_protocol_in_common_with() -> TestRe
 #[tokio::test]
 async fn a_daemon_answers_a_request_it_cannot_read_and_acts_on_none_of_it() -> TestResult {
     let host = Host::with_alice().await?;
-    let newer = PROTOCOL_VERSION + 6;
-    let unknown_method = json!({"method": "teleport", "payload": {"to": "elsewhere"}});
-    let (mut unknown_field, _) = request(newer, json!({"method": "who_am_i"}))?;
+    let teleport = || json!({"method": "teleport", "payload": {"to": "elsewhere"}});
+    let (mut unknown_field, _) = request(PROTOCOL_VERSION, json!({"method": "who_am_i"}))?;
     unknown_field["on_behalf_of"] = json!("bob");
-    let (unknown_method, _) = request(newer, unknown_method)?;
-    for (frame, method) in [(unknown_method, "teleport"), (unknown_field, "who_am_i")] {
+    let cases = [
+        (
+            request(PROTOCOL_VERSION, teleport())?.0,
+            "teleport",
+            PROTOCOL_VERSION,
+        ),
+        (unknown_field, "who_am_i", PROTOCOL_VERSION),
+        (
+            request(PROTOCOL_VERSION + 6, teleport())?.0,
+            "teleport",
+            PROTOCOL_VERSION + 6,
+        ),
+    ];
+    for (frame, method, offered) in cases {
         let mut client = host.session(ALICE).await?;
         client
             .send_json(&hello(
                 &host,
-                (newer, Some(MINIMUM_PROTOCOL_VERSION)),
+                (offered, Some(MINIMUM_PROTOCOL_VERSION)),
                 NEWER,
             ))
             .await?;
@@ -437,7 +442,7 @@ fn frozen_protocol_frames_still_read_and_write_the_same() -> TestResult {
     for expected in expected_fixtures()? {
         if !fixtures(PROTOCOL_VERSION).join(&expected).is_file() {
             problems.push(format!(
-                "protocol {PROTOCOL_VERSION} has no fixture {expected}: a new frame, method or result needs a new protocol and its fixtures"
+                "protocol {PROTOCOL_VERSION} has no fixture {expected}: write it with `cargo test --test protocol_compatibility -- --ignored write_protocol_fixtures`"
             ));
         }
     }
@@ -498,7 +503,7 @@ fn expected_fixtures() -> TestResult<Vec<String>> {
 }
 
 #[test]
-#[ignore = "writes the fixtures of a new protocol once; run it by name"]
+#[ignore = "writes the fixtures that are missing; run it by name"]
 fn write_protocol_fixtures() -> TestResult {
     let root = fixtures(PROTOCOL_VERSION);
     let mut problems = Vec::new();

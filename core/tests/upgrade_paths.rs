@@ -6,9 +6,7 @@ use std::net::Ipv4Addr;
 use base64::Engine;
 use mm::domain::cluster_setup::{HostRelease, ReleaseConsent, release_notices};
 use mm::domain::mesh::{MeshFacts, MeshMember, MeshNodeOrigin, PeerAction, plan_node};
-use mm::domain::remote::{
-    Behind, MINIMUM_PROTOCOL_VERSION, PROTOCOL_VERSION, ProtocolRange, negotiate, protocol_refusal,
-};
+use mm::domain::remote::{Behind, PROTOCOL_VERSION, ProtocolRange, negotiate, protocol_refusal};
 use mm::domain::repo_target::WireguardMesh;
 
 mod temp_dirs;
@@ -132,12 +130,12 @@ fn a_node_on_an_earlier_protocol_is_replaced_only_when_asked() -> TestResult {
             release("0.1.0", 16, None),
         ),
         (
-            "protocol 17 and later",
+            "protocol 17 to 19",
             format!(
-                r#","release":{{"version":"0.1.0","protocol":{PROTOCOL_VERSION},"build":"{}"}}"#,
+                r#","release":{{"version":"0.1.0","protocol":19,"build":"{}"}}"#,
                 "b".repeat(64)
             ),
-            release("0.1.0", PROTOCOL_VERSION, Some('b')),
+            release("0.1.0", 19, Some('b')),
         ),
     ] {
         let facts: MeshFacts = serde_json::from_str(&mesh_show(&reported))?;
@@ -235,36 +233,54 @@ fn the_same_build_is_installed_again_without_a_flag() -> TestResult {
 #[test]
 fn a_client_and_a_host_on_different_protocols_are_told_which_side_to_upgrade() {
     let host = ProtocolRange::THIS;
-    let only = |version: u16| ProtocolRange {
-        minimum: version,
-        maximum: version,
-    };
-    let older_client = protocol_refusal(("", only(MINIMUM_PROTOCOL_VERSION - 1)), (THIS, host));
-    assert!(
-        older_client.contains(&format!(
-            "This mm speaks remote protocol {}, and the host's mmd {THIS} speaks {host}. Update mm on this machine to {THIS} or newer: run `mm update`",
-            MINIMUM_PROTOCOL_VERSION - 1
-        )),
-        "{older_client}"
+    let range = |minimum: u16, maximum: u16| ProtocolRange { minimum, maximum };
+    assert_eq!(
+        protocol_refusal(("", None), (THIS, host)),
+        format!(
+            "This mm is from before 0.1.1, and the host's mmd {THIS} speaks remote protocol {host}. Update mm on this machine to {THIS} or newer with the installer, https://modmon.dev/install.sh"
+        )
     );
-    let newer_client = ProtocolRange {
-        minimum: PROTOCOL_VERSION + 1,
-        maximum: PROTOCOL_VERSION + 3,
-    };
-    let older_host = protocol_refusal(("9.0.0", newer_client), (THIS, host));
+    let later_host = range(PROTOCOL_VERSION + 1, PROTOCOL_VERSION + 2);
+    let behind = protocol_refusal((THIS, Some(host)), ("0.3.0", later_host));
+    assert!(
+        behind.contains(&format!(
+            "This mm {THIS} speaks remote protocol {host}, and the host's mmd 0.3.0 speaks {later_host}. Update mm on this machine to 0.3.0 or newer: run `mm update`"
+        )),
+        "{behind}"
+    );
+    let newer_client = range(PROTOCOL_VERSION + 1, PROTOCOL_VERSION + 3);
+    let older_host = protocol_refusal(("9.0.0", Some(newer_client)), (THIS, host));
     assert!(
         older_host.contains(&format!(
-            "This mm 9.0.0 speaks remote protocol {} to {}, and the host's mmd {THIS} speaks {host}. Upgrade the host: run `mm target setup plan --upgrade` and apply that plan with --upgrade",
-            PROTOCOL_VERSION + 1,
-            PROTOCOL_VERSION + 3
+            "This mm 9.0.0 speaks remote protocol {newer_client}, and the host's mmd {THIS} speaks {host}. Upgrade the host: run `mm target setup plan --upgrade` and apply that plan with --upgrade"
         )),
         "{older_host}"
     );
     assert_eq!(negotiate(newer_client, host), Err(Behind::Daemon));
-    assert_eq!(
-        negotiate(only(MINIMUM_PROTOCOL_VERSION - 1), host),
-        Err(Behind::Client)
-    );
+    assert_eq!(negotiate(host, later_host), Err(Behind::Client));
+}
+
+#[test]
+fn a_host_from_before_0_1_1_is_older_whatever_protocol_it_reports() -> TestResult {
+    for protocol in 16..=19 {
+        let before = release("0.1.0", protocol, Some('b'));
+        assert!(!before.is_newer_than(&this()), "{before}");
+        assert!(this().is_newer_than(&before), "{before}");
+        let nodes = [("app-1", Some(&before))];
+        let refused = release_notices(&nodes, &this(), ReleaseConsent::default())
+            .err()
+            .ok_or(format!("{before} was replaced without --upgrade"))?;
+        assert!(refused.contains("pass --upgrade"), "{refused}");
+        assert!(!refused.contains("--downgrade"), "{refused}");
+        assert_eq!(
+            release_notices(&nodes, &this(), ASKED)?,
+            [format!(
+                "app-1: replaces mm and mmd {before} with {}",
+                this()
+            )]
+        );
+    }
+    Ok(())
 }
 
 struct Runs(Option<HostRelease>);
@@ -400,7 +416,7 @@ async fn a_target_without_nodes_reads_its_host_release_as_a_cluster_reads_each_n
     assert_ne!(same.plan_hash, fresh.plan_hash);
 
     for earlier in [
-        release("0.1.0", PROTOCOL_VERSION - 1, Some('b')),
+        release("0.1.0", 19, Some('b')),
         release(THIS, PROTOCOL_VERSION, Some('b')),
     ] {
         let refused = host

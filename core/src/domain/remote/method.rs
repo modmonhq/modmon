@@ -46,8 +46,11 @@ impl RemoteMethod {
         }
     }
 
-    /// The oldest protocol whose daemons read this request as it is: a
-    /// method or field added later names the protocol that added it here.
+    /// The oldest protocol whose daemons take this request as meant. A new
+    /// method or field does not raise it: a daemon that cannot read a
+    /// request refuses it whole. Only a request whose meaning a breaking
+    /// protocol changed names that protocol here, so that it is never sent
+    /// to a host that agreed on an older one.
     #[must_use]
     pub const fn protocol(&self) -> u16 {
         MINIMUM_PROTOCOL_VERSION

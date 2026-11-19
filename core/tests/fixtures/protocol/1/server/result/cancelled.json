@@ -1,0 +1,31 @@
+{
+  "request_id": "00000000-0000-4000-8000-000000000001",
+  "result": {
+    "result": "cancelled",
+    "value": {
+      "problem": "web",
+      "released": "web",
+      "rolled_back": "web",
+      "runs": [
+        {
+          "job": "web",
+          "run": "00000000-0000-4000-8000-000000000001",
+          "state": "queued"
+        }
+      ],
+      "stopped": [
+        {
+          "alive_at_unix_ms": 1,
+          "deadline_unix_ms": 1,
+          "id": "web",
+          "principal": "web",
+          "started_at_unix_ms": 1,
+          "stopping": "web",
+          "what": "web"
+        }
+      ]
+    }
+  },
+  "type": "result",
+  "version": 1
+}

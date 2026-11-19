@@ -208,7 +208,8 @@ impl RemoteDaemon {
             .ok_or_else(|| protocol("client disconnected before hello"))?;
         let offer = read_hello(&first)?;
         let release = env!("CARGO_PKG_VERSION");
-        let Ok(version) = negotiate(offer.protocols(), ProtocolRange::THIS) else {
+        let negotiated = offer.protocols().map(|client| negotiate(client, ProtocolRange::THIS));
+        let Some(Ok(version)) = negotiated else {
             let refusal = protocol_refusal((offer.release(), offer.protocols()), (release, ProtocolRange::THIS));
             send_error(writer, (PROTOCOL_VERSION, None), remote_error(
                 UPGRADE_REQUIRED_CODE, &refusal, false, MutationState::NotStarted,

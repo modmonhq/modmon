@@ -14,81 +14,12 @@ use crate::domain::scheduler::{JobRun, JobRunRequest, JobRunsRequest};
 use crate::domain::users::AccessChange;
 use crate::domain::workspace::{ProjectId, WorkspaceSnapshot};
 
-/// Protocol 19: a node's plan and a cluster plan's seal carry the
-/// environment's Cloudflare Tunnel (`NodeIngress.tunnel`,
-/// `SealedIngress.tunnel`) and each route's headers and allowlist
-/// (`IngressRoute.headers`, `allow`), a node's status says how its tunnel
-/// connector fares (`WorkspaceSnapshot.tunnel`), and the errors
-/// `MM_TUNNEL_NOT_CONNECTED` and `MM_TUNNEL_TOKEN_MISSING` cross the wire;
-/// a node reports its member of the environment's managed secret store with
-/// its facts (`NodeFacts.secret_store`, `NodeReport.secret_store`), takes a
-/// snapshot of it (`StoreSnapshot`), puts one back (`StoreRestore`), and
-/// moves the age store's secrets into it (`StoreMigrate`). A client's hello
-/// names the oldest protocol it speaks and its release (`minimum`,
-/// `ClientHello.client_version`), and the two sides speak the newest
-/// protocol both have ([`negotiate`]); a daemon answers a request it cannot
-/// read with `MM_REMOTE_UPGRADE_REQUIRED`. 0.1.1 shipped protocol 19, and
-/// every later release speaks it until a release note says otherwise.
-/// (Protocol 18 had the Compose overlay a host generates keep a service with
-/// `role: job` out of a deployment, and its status is `job_only`; a
-/// `secret-files` or `config-files` entry may name the `environments` it is
-/// mounted in; a deployment plan carries the release it deploys, the
-/// name and inputs the deployer gave (`PlanDeployment.release`), which the
-/// stored plans, the request context and the deployment records keep
-/// (`ReleaseFacts`), and the error `MM_RELEASE_INPUT` crosses the wire.
-/// Protocol 17 had a host give its store's age recipient
-/// (`SecretRecipient`), stage secrets and variables for the next deployment
-/// in two steps (`StageValues`), report what it holds and has staged for
-/// each declared key (`HostValues`), and a plan list the staged changes it
-/// makes live (`RemoteDeploymentPlan.staged`). Protocol 16 had `Cancel` stop
-/// what runs for an environment, a host
-/// report the operations in flight with its deployments
-/// (`NodeDeploymentStatus.operations`) and how its daemon fares
-/// (`NodeFacts.daemon`), a failed step name its error code
-/// (`StepFailure.code`), and the errors `MM_TIMEOUT` and `MM_CANCELLED`
-/// cross the wire. Protocol 15 had a cluster plan's seal carry its
-/// ingress routes and the nodes that serve them, which those nodes apply
-/// when the rollout finishes; had a plan answer name the `once` jobs the
-/// host ran (`RemoteDeploymentPlan.once`), and had a rollout start what a
-/// stage's `before-deploy` jobs need in a step of its own
-/// (`RolloutStep::Ahead`). Protocol 14 had a host restart a service's
-/// containers (`Restart`) and run a declared job (`RunJob`) for a principal
-/// at `operate`, and list the job runs it recorded (`JobRuns`), and had a
-/// cluster plan's stages name the jobs a deployment runs before a stack,
-/// which a node runs in a step of its own (`RolloutStep::Job`). Protocol 13
-/// had a node's facts and its report name the container engine setup
-/// installed on it and how it answers (`NodeFacts.engine`,
-/// `NodeReport.engine`). Protocol 12 let a client send a commit's files to
-/// a host that does not fetch them (`Deliver`, answered by `Delivered`),
-/// and had a plan made from such a bundle name its hash
-/// (`RemotePlanBinding.bundle_hash`). Protocol 11 had a host try the OCI
-/// runtimes its policy offers (`Runtimes`), had a node's mesh status say
-/// whether the firewall chains that guard the mesh are in place, and put
-/// each service's security options into a plan's stacks. Protocol 10 let a
-/// log read cover every service (`LogRequest` without a selector), had each
-/// line name its container, had a node answer a log read for a service it
-/// does not run with no lines instead of a refusal, and put the host's
-/// applied deployment and its drift into a status. Protocol 9 put a
-/// cluster plan's shared volumes into its seal, gave a
-/// rollout a step that makes them ready (`Storage`), and had a node report
-/// and delete shared volumes (`StorageStatus`, `PlanVolumeDelete`,
-/// `DeleteVolume`). Protocol 8 gave a cluster network a /20 and each node
-/// a /24 of it, and had a node report the address ranges it already uses
-/// with the networks it holds. Protocol 7 had a deployment roll out in steps the client orders
-/// (`Rollout`), put the rollout's stages into a cluster plan's seal, and had
-/// a host report the deployments it remembers (`DeploymentStatus`).
-/// Protocol 6 put the addresses of the cluster's networks into the seal
-/// and had a node report the ones it holds. Protocol 5 had a node report its mesh interface and peers. Protocol 4 had a cluster node stop the services that moved away in a
-/// step of its own, after every node has applied. Protocol 3 made requests
-/// name the cluster node they are for and sealed a cluster plan on every
-/// node under one hash. Protocol 2 made identity the SSH key alone and
-/// stopped clients from sending paths.) This build speaks protocols
-/// [`MINIMUM_PROTOCOL_VERSION`] to this one.
-pub const PROTOCOL_VERSION: u16 = 19;
+/// The newest remote protocol this build speaks; protocol 1 is the 0.1.1 baseline.
+pub const PROTOCOL_VERSION: u16 = 1;
 
-/// The oldest remote protocol this build speaks. Raising it drops every
-/// client and host that speaks only older ones: a breaking release.
-pub const MINIMUM_PROTOCOL_VERSION: u16 = 19;
+/// The oldest remote protocol this build speaks. It rises only with a
+/// breaking release.
+pub const MINIMUM_PROTOCOL_VERSION: u16 = 1;
 
 pub const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_STREAM_FRAMES: u64 = 1_000_000;
@@ -762,8 +693,8 @@ mod method;
 mod protocol;
 pub use protocol::{
     Behind, FrameHead, HANDSHAKE_MISMATCH, HelloOffer, IDENTITY_REFUSED, MethodHead,
-    PROTOCOL_REFUSED, ProtocolRange, RequestHead, UPGRADE_REQUIRED_CODE, negotiate,
-    protocol_refusal, refused_handshake, request_not_understood, require_protocol,
+    PROTOCOL_REFUSED, ProtocolRange, RequestHead, UPGRADE_REQUIRED_CODE, client_is_newer,
+    negotiate, protocol_refusal, refused_handshake, request_not_understood, require_protocol,
 };
 #[path = "remote/moves.rs"]
 mod moves;

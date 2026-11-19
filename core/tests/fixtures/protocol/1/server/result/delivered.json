@@ -1,0 +1,15 @@
+{
+  "request_id": "00000000-0000-4000-8000-000000000001",
+  "result": {
+    "result": "delivered",
+    "value": {
+      "bundle_hash": "web",
+      "bytes": 1,
+      "commit": "web",
+      "files": 1,
+      "received": true
+    }
+  },
+  "type": "result",
+  "version": 1
+}

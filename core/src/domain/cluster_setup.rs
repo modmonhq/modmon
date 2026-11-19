@@ -28,20 +28,19 @@ pub struct HostRelease {
 }
 
 impl HostRelease {
-    /// A later remote protocol, or the same one and a later version.
+    /// A later version, or the same version and a later remote protocol.
+    /// The version comes first: builds before 0.1.1 report protocols up to
+    /// 19, and 0.1.1 starts again at 1.
     #[must_use]
     pub fn is_newer_than(&self, other: &Self) -> bool {
-        match self.protocol.cmp(&other.protocol) {
-            std::cmp::Ordering::Greater => true,
-            std::cmp::Ordering::Less => false,
-            std::cmp::Ordering::Equal => matches!(
-                (
-                    semver::Version::parse(&self.version),
-                    semver::Version::parse(&other.version)
-                ),
-                (Ok(mine), Ok(theirs)) if mine > theirs
-            ),
-        }
+        let version = match (
+            semver::Version::parse(&self.version),
+            semver::Version::parse(&other.version),
+        ) {
+            (Ok(mine), Ok(theirs)) => mine.cmp(&theirs),
+            _ => std::cmp::Ordering::Equal,
+        };
+        version.then(self.protocol.cmp(&other.protocol)) == std::cmp::Ordering::Greater
     }
 
     /// The same release, and not known to be another build of it.

@@ -1,9 +1,0 @@
-{
-  "request_id": "00000000-0000-4000-8000-000000000001",
-  "result": {
-    "result": "store_snapshot",
-    "value": "web"
-  },
-  "type": "result",
-  "version": 19
-}

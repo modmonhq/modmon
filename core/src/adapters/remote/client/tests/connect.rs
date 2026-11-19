@@ -332,7 +332,7 @@ fn a_newer_daemon_agrees_on_the_protocol_this_mm_speaks() -> Result<(), Box<dyn 
             keys: &keys,
         },
     )?;
-    let said = "This mm 0.1.1 speaks remote protocol 19, and the host's mmd 9.9.9 speaks 21 to 25. Update mm on this machine to 9.9.9 or newer: run `mm update`";
+    let said = "This mm 0.1.1 speaks remote protocol 1, and the host's mmd 0.3.0 speaks 2 to 3. Update mm on this machine to 0.3.0 or newer: run `mm update`";
     let refused = transport
         .endpoint
         .refused(HandshakeRefusal::Daemon(RemoteError {

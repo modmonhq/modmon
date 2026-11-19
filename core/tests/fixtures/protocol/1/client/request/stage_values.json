@@ -1,0 +1,35 @@
+{
+  "deadline_unix_ms": 1,
+  "method": {
+    "method": "stage_values",
+    "payload": {
+      "stage": "00000000-0000-4000-8000-000000000001",
+      "step": {
+        "changes": [
+          {
+            "action": {
+              "action": "set",
+              "revision": "web"
+            },
+            "key": "web",
+            "kind": "secret"
+          }
+        ],
+        "sealed": "web",
+        "step": "prepare"
+      }
+    }
+  },
+  "operation_nonce": "00000000-0000-4000-8000-000000000001",
+  "request_id": "00000000-0000-4000-8000-000000000001",
+  "scope": {
+    "environment": "web",
+    "node": "web",
+    "project_id": "00000000-0000-4000-8000-000000000001",
+    "runtime": "podman-compose",
+    "target": "web",
+    "target_fingerprint": "web"
+  },
+  "type": "request",
+  "version": 1
+}

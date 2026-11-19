@@ -77,12 +77,18 @@ pub fn negotiate(client: ProtocolRange, daemon: ProtocolRange) -> Result<u16, Be
 }
 
 /// A daemon's refusal of a client it has no protocol in common with: both
-/// releases and protocols, and what the side that is behind runs.
+/// releases and protocols, and what the side that is behind runs. A client
+/// without a range is from before 0.1.1.
 #[must_use]
 pub fn protocol_refusal(
-    (client_release, client): (&str, ProtocolRange),
+    (client_release, client): (&str, Option<ProtocolRange>),
     (daemon_release, daemon): (&str, ProtocolRange),
 ) -> String {
+    let Some(client) = client else {
+        return format!(
+            "This mm is from before 0.1.1, and the host's mmd {daemon_release} speaks remote protocol {daemon}. Update mm on this machine to {daemon_release} or newer with the installer, https://modmon.dev/install.sh"
+        );
+    };
     let this = match client_release {
         "" => "This mm".to_owned(),
         release => format!("This mm {release}"),
@@ -96,6 +102,15 @@ pub fn protocol_refusal(
     format!(
         "{this} speaks remote protocol {client}, and the host's mmd {daemon_release} speaks {daemon}. {step}"
     )
+}
+
+/// Whether a client is newer than this daemon: it offered a later protocol,
+/// or it is a later release.
+#[must_use]
+pub fn client_is_newer(offered: u16, client_release: &str, daemon_release: &str) -> bool {
+    offered > PROTOCOL_VERSION
+        || crate::domain::version_pin::newer(client_release, daemon_release)
+            == Some(std::cmp::Ordering::Greater)
 }
 
 /// A daemon's answer to a request it cannot read.
@@ -150,8 +165,8 @@ pub struct FrameHead {
 }
 
 /// A client's hello as a daemon reads it: what a newer client adds is left
-/// out, and a client from before 0.1.1, which sends no `minimum`, speaks
-/// only `version`.
+/// out. A client from before 0.1.1 sends no `minimum`, and its `version`
+/// counts from before protocol 1.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct HelloOffer {
     pub version: u16,
@@ -161,12 +176,14 @@ pub struct HelloOffer {
 }
 
 impl HelloOffer {
+    /// The protocols the client speaks, or `None` for a client from before
+    /// 0.1.1.
     #[must_use]
-    pub fn protocols(&self) -> ProtocolRange {
-        ProtocolRange {
-            minimum: self.minimum.unwrap_or(self.version),
+    pub fn protocols(&self) -> Option<ProtocolRange> {
+        self.minimum.map(|minimum| ProtocolRange {
+            minimum,
             maximum: self.version,
-        }
+        })
     }
 
     /// The client's release as it said, or nothing when it said none fit to

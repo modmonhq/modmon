@@ -1,0 +1,96 @@
+{
+  "request_id": "00000000-0000-4000-8000-000000000001",
+  "result": {
+    "result": "access_plan",
+    "value": {
+      "access": {
+        "deploy-from-after": [
+          "web"
+        ],
+        "deploy-from-before": [
+          "web"
+        ],
+        "entries": [
+          {
+            "after": {
+              "exec": true,
+              "forward": true,
+              "level": "view",
+              "secrets": true
+            },
+            "before": {
+              "exec": true,
+              "forward": true,
+              "level": "view",
+              "secrets": true
+            },
+            "keys-added": [
+              "web"
+            ],
+            "keys-removed": [
+              "web"
+            ],
+            "user": "web"
+          }
+        ],
+        "environment": "web",
+        "previous-commit": "web",
+        "record": {
+          "commit": "web",
+          "deploy-from": [
+            "web"
+          ],
+          "environment": "web",
+          "project-id": "00000000-0000-4000-8000-000000000001",
+          "reconciled-at-unix-ms": 1,
+          "reconciled-by": "web",
+          "schema-version": 1,
+          "users": {
+            "web": {
+              "access": {
+                "level": "view"
+              },
+              "agent": {
+                "access": {
+                  "level": "view"
+                },
+                "keys": []
+              },
+              "keys": [
+                {
+                  "fingerprint": "web",
+                  "public-key": "web"
+                }
+              ],
+              "machine": true
+            }
+          }
+        }
+      },
+      "binding": {
+        "access_change_hash": "web",
+        "authorization_hash": "web",
+        "authorization_revision": 1,
+        "bundle_hash": "web",
+        "commit": "web",
+        "daemon_fingerprint": "web",
+        "daemon_version": "web",
+        "deployment_plan_hash": "web",
+        "environment": "web",
+        "expires_at_unix_ms": 1,
+        "kind": "deployment",
+        "node": "web",
+        "plan_hash": "web",
+        "plan_nonce": "00000000-0000-4000-8000-000000000001",
+        "principal_id": "00000000-0000-4000-8000-000000000001",
+        "project_id": "00000000-0000-4000-8000-000000000001",
+        "protocol_version": 1,
+        "runtime": "podman-compose",
+        "target": "web",
+        "target_fingerprint": "web"
+      }
+    }
+  },
+  "type": "result",
+  "version": 1
+}

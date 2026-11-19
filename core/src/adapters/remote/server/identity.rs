@@ -24,7 +24,7 @@ use crate::domain::remote::{
     MAX_STREAM_FRAMES, MutationState, PLAN_TTL_MS, PROTOCOL_VERSION, ProtocolRange, RemoteAccessPlan,
     RemoteDeploymentPlan, RemoteError, RemoteMethod, RemotePlanBinding, RemotePlanKind, RemoteResult,
     RemoteStreamItem, RequestHead, ServerFrame, ServerHello, StoredRemotePlan, UPGRADE_REQUIRED_CODE,
-    negotiate, protocol_refusal, request_not_understood,
+    client_is_newer, negotiate, protocol_refusal, request_not_understood,
 };
 use crate::domain::users::AccessChange;
 

@@ -28,8 +28,8 @@ fn read_hello(bytes: &[u8]) -> Result<HelloOffer, MmError> {
 }
 
 /// Answers a request this daemon cannot read whole and acts on none of it:
-/// a client newer than this daemon is told to upgrade the host, any other
-/// is told what is wrong with it.
+/// a client of a later protocol or release is told to upgrade the host, any
+/// other is told what is wrong with it.
 async fn refuse_unread<W: AsyncWrite + Unpin + ?Sized>(
     writer: &mut W,
     agreed: &Agreed,
@@ -44,7 +44,7 @@ async fn refuse_unread<W: AsyncWrite + Unpin + ?Sized>(
     let Ok(head) = head else {
         return Err(unread);
     };
-    if agreed.offered <= PROTOCOL_VERSION {
+    if !client_is_newer(agreed.offered, &agreed.client_release, env!("CARGO_PKG_VERSION")) {
         send_operation_error(writer, (agreed.protocol, head.request_id), &unread, MutationState::NotStarted).await?;
         return Err(unread);
     }

@@ -1,0 +1,11 @@
+{
+  "request_id": "00000000-0000-4000-8000-000000000001",
+  "result": {
+    "result": "rollout",
+    "value": {
+      "outcome": "held"
+    }
+  },
+  "type": "result",
+  "version": 1
+}

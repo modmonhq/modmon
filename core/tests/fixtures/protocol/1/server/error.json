@@ -1,0 +1,11 @@
+{
+  "error": {
+    "code": "web",
+    "message": "web",
+    "mutation_state": "not_started",
+    "retryable": true
+  },
+  "request_id": "00000000-0000-4000-8000-000000000001",
+  "type": "error",
+  "version": 1
+}
