@@ -53,8 +53,10 @@ fn configured_producers(document: &ConfigDocument) -> BTreeMap<String, Vec<Strin
             .as_ref()
             .filter(|build| build.enabled)
             .and_then(|build| build.image.as_deref())
-            .and_then(|image| normalize_image_repository(image).ok())
         else {
+            continue;
+        };
+        let Ok(image) = normalize_image_repository(image) else {
             continue;
         };
         producers.entry(image).or_default().push(name.clone());
@@ -81,10 +83,14 @@ fn build_bases(
                 .unwrap_or(Path::new("Dockerfile")),
         ),
     );
-    let parsed = read_dockerfile(&dockerfile)
-        .ok()
-        .and_then(|source| parse_dockerfile(&source, &dockerfile.display().to_string()).ok());
-    for base in parsed.map(|parsed| parsed.bases).unwrap_or_default() {
+    let inferred = match read_dockerfile(&dockerfile) {
+        Ok(source) => match parse_dockerfile(&source, &dockerfile.display().to_string()) {
+            Ok(parsed) => parsed.bases,
+            Err(_) => Vec::new(),
+        },
+        Err(_) => Vec::new(),
+    };
+    for base in inferred {
         if let DockerfileBaseKind::Literal { repository } = base.kind
             && let Some(modules) = producers.get(&repository)
         {
