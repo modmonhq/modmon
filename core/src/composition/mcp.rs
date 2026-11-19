@@ -326,9 +326,9 @@ impl McpUseCases for McpApplicationAdapter {
                 .await?,
             ),
             McpReadKind::Plans => self.read_plans(context, &runtime, &selection).await,
+            McpReadKind::Health => self.read_health(context, &runtime, &selection).await,
             McpReadKind::Services
             | McpReadKind::Routes
-            | McpReadKind::Health
             | McpReadKind::Names
             | McpReadKind::Operations => {
                 self.read_runtime_snapshot(

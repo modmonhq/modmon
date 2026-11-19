@@ -161,7 +161,7 @@ fn index_validation_counts_only_errors() {
     };
     assert!(matches!(
         ensure_index_valid(&invalid),
-        Err(MmError::Validation { errors: 2 })
+        Err(MmError::Validation { errors: 2, .. })
     ));
 }
 

@@ -101,13 +101,13 @@ pub(crate) fn write_json(value: &impl Serialize) -> Result<(), MmError> {
     if let Ok(recorded) = serde_json::to_value(value) {
         crate::presentation::record::result(&recorded);
     }
-    let stdout = crate::presentation::record::stdout();
-    let mut writer = stdout.lock();
-    serde_json::to_writer_pretty(&mut writer, value).map_err(|error| MmError::Io {
+    let text = serde_json::to_string_pretty(value).map_err(|error| MmError::Io {
         context: "writing JSON output".to_owned(),
         source: io::Error::other(error),
     })?;
-    writeln!(writer).map_err(output_error)
+    let stdout = crate::presentation::record::stdout();
+    let mut writer = stdout.lock();
+    writeln!(writer, "{}", crate::domain::error::shown(&text)).map_err(output_error)
 }
 
 /// An error in one line, as the command line prints it first: its code,
@@ -137,7 +137,7 @@ pub fn write_error_with_context(
         serde_json::to_writer(
             &mut writer,
             &serde_json::json!({
-                "error": { "code": error.code(), "message": error.to_string(),
+                "error": { "code": error.code(), "message": crate::domain::error::shown(&error.to_string()),
                     "recovery": match error {
                         MmError::Setup { issue } => Some(serde_json::json!({ "issue": issue, "help": issue.help(), "command": context.command(issue) })),
                         _ => None,
@@ -339,7 +339,7 @@ pub(crate) fn restart_summary(outcome: &crate::domain::observability::RestartOut
 }
 
 pub(crate) fn terminal_safe(value: &str) -> String {
-    value
+    crate::domain::error::shown(value)
         .chars()
         .flat_map(|character| match character {
             '\n' => "\\n".chars().collect::<Vec<_>>(),

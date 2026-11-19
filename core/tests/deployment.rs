@@ -1186,7 +1186,7 @@ async fn a_single_host_keeps_a_config_file_version_until_the_deployment_that_rep
     fs::remove_file(&source)?;
     let missing = fixture.service.plan(&fixture.selection).await;
     assert!(
-        matches!(missing, Err(MmError::Validation { errors: 1 })),
+        matches!(missing, Err(MmError::Validation { errors: 1, .. })),
         "{missing:?}"
     );
     Ok(())

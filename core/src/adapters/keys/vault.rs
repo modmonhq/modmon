@@ -499,7 +499,10 @@ fn keychain_error(problem: &str, finished: &Finished) -> MmError {
         });
     MmError::Secret {
         message: match said {
-            Some(said) => format!("the system keychain {problem}: {said}"),
+            Some(said) => format!(
+                "the system keychain {problem}: {}",
+                crate::domain::error::printed(&said)
+            ),
             None => format!("the system keychain {problem}"),
         },
     }

@@ -43,7 +43,7 @@ Human output prints the corresponding quoted command. Other errors may have
 | `MM_CONFIG_NOT_FOUND`             |                       2 | No `.config/mm.yaml` found from the selected root or its parents.                                             |
 | `MM_CONFIG_READ`                  |                       2 | Configuration could not be read.                                                                              |
 | `MM_CONFIG_PARSE`                 |                       2 | YAML, UTF-8, location, or typed-schema parse failure.                                                         |
-| `MM_CONFIG_INVALID`               |                       2 | Validation returned one or more errors.                                                                       |
+| `MM_CONFIG_INVALID`               |                       2 | Validation returned one or more errors. The message names the first three, each with its code and file; `mm config validate` lists every one. |
 | `MM_CONFIG_EXISTS`                |                       2 | Initialization would replace an existing configuration.                                                       |
 | `MM_ENVIRONMENT_REQUIRED`         |                       2 | No CLI, environment-variable, or default environment selection.                                               |
 | `MM_ENVIRONMENT`                  |                       2 | Environment compilation or operation error.                                                                   |

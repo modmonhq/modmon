@@ -295,7 +295,7 @@ impl StackManager {
             .filter(|diagnostic| diagnostic.severity == Severity::Error)
             .count();
         if errors > 0 {
-            return Err(MmError::Validation { errors });
+            return Err(MmError::invalid(&validation.diagnostics));
         }
         let images = match (images, state) {
             (ImageSource::Receipt(receipt), _) => {

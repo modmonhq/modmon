@@ -82,86 +82,76 @@ pub(super) fn audit_unavailable(mutation: bool, request_id: uuid::Uuid) -> CallT
     )
 }
 
-/// What an agent is told about a failed call, and what to do next. The
-/// text is fixed for each kind of error, so nothing a provider printed
-/// reaches the model. Two exceptions are mm's own words: a refusal mm
-/// makes from the configuration and the request (`MmError::refusal`),
-/// passed as it is, and a host that could not be reached
-/// (`MmError::own_words`), the same words the command line prints,
-/// without the detail that can quote `ssh`.
+/// What an agent is told about a failed call, and what to do next: the
+/// message the command line prints, redacted as the command log is, and
+/// the help it prints. What another program printed stays out
+/// ([`MmError::agent_message`]).
 pub(super) fn safe_error_message(
     error: &MmError,
 ) -> (
     std::borrow::Cow<'static, str>,
     std::borrow::Cow<'static, str>,
 ) {
-    if let Some(refusal) = error.refusal() {
-        let refusal = if refusal.ends_with('.') {
-            refusal
-        } else {
-            format!("{refusal}.")
-        };
-        return (
-            std::borrow::Cow::Owned(refusal),
-            std::borrow::Cow::Borrowed(
-                "The message names what to do instead. Do it with these tools where one covers it; an agent cannot run `mm` commands, so tell the user any command it names.",
-            ),
-        );
-    }
-    if let Some((problem, help)) = error.own_words() {
-        return (
-            std::borrow::Cow::Owned(format!("{problem}.")),
-            std::borrow::Cow::Owned(format!(
-                "{help}. An agent cannot run `mm` commands: tell the user what failed and this next step."
-            )),
-        );
-    }
-    let (message, next) = fixed_error_message(error);
-    (
-        std::borrow::Cow::Borrowed(message),
-        std::borrow::Cow::Borrowed(next),
-    )
+    let message = error.agent_message();
+    let message = if message.ends_with('.') {
+        message
+    } else {
+        format!("{message}.")
+    };
+    (std::borrow::Cow::Owned(message), next_action(error))
 }
 
-fn fixed_error_message(error: &MmError) -> (&'static str, &'static str) {
-    match error {
-        MmError::Security { .. } | MmError::AuthenticationFailed => (
-            "The operation was rejected by authorization or review policy. A remote host applies the agents: block and users file of the commit it deployed, which can be narrower than this checkout.",
-            "Call mm_access to see what agents may do. If the action is outside the grant, tell the user what you wanted to run and let them run it.",
-        ),
-        MmError::State { .. } => (
-            "Application state changed or the operation could not be completed safely.",
-            "Request a fresh bounded read or plan before retrying.",
-        ),
-        MmError::Timeout { .. } => (
-            "The call did not finish in time: the engine or a host is busy, stuck, or not answering, or an operation passed its deadline.",
-            "Call mm_read with kind 'operations' to see what runs and since when. Tell the user what you found; for a remote environment, `mm deploy status` shows it and `mm deploy cancel OPERATION` stops a stuck operation.",
-        ),
-        MmError::Cancelled { .. } => (
-            "The operation was stopped before it finished: someone cancelled it, or its client went away.",
-            "Call mm_read with kind 'operations' to see what runs now before trying again.",
-        ),
+fn next_action(error: &MmError) -> std::borrow::Cow<'static, str> {
+    if let Some((_, help)) = error.own_words() {
+        return std::borrow::Cow::Owned(format!(
+            "{help}. An agent cannot run `mm` commands: tell the user what failed and this next step."
+        ));
+    }
+    if let Some(help) = error.help() {
+        return std::borrow::Cow::Owned(format!(
+            "{help} An agent cannot run `mm` commands: tell the user any command this names."
+        ));
+    }
+    if error.refusal().is_some() {
+        return std::borrow::Cow::Borrowed(
+            "The message names what to do instead. Do it with these tools where one covers it; an agent cannot run `mm` commands, so tell the user any command it names.",
+        );
+    }
+    std::borrow::Cow::Borrowed(match error {
+        MmError::Security { .. } | MmError::AuthenticationFailed => {
+            "If it is about what agents may do, call mm_access: a remote host applies the agents: block and users file of the commit it deployed, which can be narrower than this checkout. If the action is outside the grant, tell the user what you wanted to run and let them run it. Otherwise change what the message names."
+        }
+        MmError::State { .. } => "Request a fresh bounded read or plan before retrying.",
+        MmError::Timeout { .. } => {
+            "Call mm_read with kind 'operations' to see what runs and since when. Tell the user what you found; for a remote environment, `mm deploy status` shows it and `mm deploy cancel OPERATION` stops a stuck operation."
+        }
+        MmError::Cancelled { .. } => {
+            "Call mm_read with kind 'operations' to see what runs now before trying again."
+        }
         MmError::Remote {
             code: "MM_HOST_BUSY" | "MM_DEPLOY_RUNNING",
             ..
-        } => (
-            "Another operation is changing this environment's hosts, so this one did not start and changed nothing.",
-            "Call mm_read with kind 'operations' to see who runs what and since when. Try again when it is done; if it is stuck, tell the user that `mm deploy cancel OPERATION` stops it.",
-        ),
+        } => {
+            "Call mm_read with kind 'operations' to see who runs what and since when. Try again when it is done; if it is stuck, tell the user that `mm deploy cancel OPERATION` stops it."
+        }
         MmError::ConfigNotFound { .. }
         | MmError::ConfigRead { .. }
         | MmError::ConfigParse { .. }
         | MmError::Validation { .. }
         | MmError::EnvironmentRequired
-        | MmError::Environment { .. } => (
-            "The selected project configuration or scope is invalid.",
-            "Call mm_access for the configured environments, and mm_read with kinds 'project' and 'health' for diagnostics. A project without configuration needs the user to run `mm init`.",
-        ),
-        _ => (
-            "The typed application use case failed without exposing provider output.",
-            "Use bounded health and operation reads; provider details remain redacted.",
-        ),
-    }
+        | MmError::Environment { .. } => {
+            "Fix what the message names. Call mm_access for the configured environments, and mm_read with kinds 'project' and 'health' for diagnostics. A project without configuration needs the user to run `mm init`."
+        }
+        MmError::ProcessFailed { .. }
+        | MmError::RuntimeResponse { .. }
+        | MmError::Remote { .. }
+        | MmError::OperationFailure { .. } => {
+            "Use bounded health and operation reads. What the program printed is shown to the user when they run the same mm command in their own terminal."
+        }
+        _ => {
+            "Change what the message names with these tools where one covers it; an agent cannot run `mm` commands, so tell the user any command it names."
+        }
+    })
 }
 
 pub(super) fn scrub_sensitive(value: &mut serde_json::Value, inherited: bool) {

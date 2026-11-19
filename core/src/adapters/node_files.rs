@@ -139,6 +139,6 @@ pub(crate) fn failure(output: &CommandOutput) -> String {
     if stderr.is_empty() {
         format!("exit {}", output.code.unwrap_or(-1))
     } else {
-        stderr.to_owned()
+        crate::domain::error::printed(stderr)
     }
 }

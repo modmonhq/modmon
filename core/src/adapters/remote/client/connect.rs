@@ -283,7 +283,15 @@ fn connect_failure(stderr: &str) -> (String, String) {
                 && !line.starts_with("warning:")
                 && !line.starts_with("could not chdir to home directory")
         })
-        .map(|line| line.chars().filter(|character| !character.is_control()).take(300).collect::<String>())
+        .map(|line| {
+            crate::domain::error::printed(
+                &line
+                    .chars()
+                    .filter(|character| !character.is_control())
+                    .take(300)
+                    .collect::<String>(),
+            )
+        })
         .unwrap_or_default();
     if has("host key verification failed") || has("remote host identification has changed") {
         return (

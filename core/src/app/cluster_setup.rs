@@ -18,7 +18,6 @@ use crate::domain::cluster_setup::{
     ClusterDeployKeyPlan, ClusterNodePlan, ClusterSetupPlan, HostKeyOrigin,
 };
 use crate::domain::config::ConfigDocument;
-use crate::domain::diagnostic::Severity;
 use crate::domain::error::MmError;
 use crate::domain::repo_target::RepoTargetConfig;
 use crate::domain::runtime::RuntimeKind;
@@ -485,15 +484,12 @@ impl ClusterSetupService {
 
 /// Setup never runs from a configuration that does not validate.
 fn require_valid(document: &ConfigDocument, environment: &str) -> Result<(), MmError> {
-    let errors = crate::app::config_validation::validate(document, environment)
-        .diagnostics
-        .iter()
-        .filter(|diagnostic| diagnostic.severity == Severity::Error)
-        .count();
-    if errors > 0 {
-        return Err(MmError::Validation { errors });
+    let report = crate::app::config_validation::validate(document, environment);
+    if report.is_valid() {
+        Ok(())
+    } else {
+        Err(MmError::invalid(&report.diagnostics))
     }
-    Ok(())
 }
 
 /// One notice per registry whose login secret has no value in `environment`.

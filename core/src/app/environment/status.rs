@@ -127,7 +127,7 @@ pub(super) fn ensure_index_valid(validation: &ValidationReport) -> Result<(), Mm
     if errors == 0 {
         Ok(())
     } else {
-        Err(MmError::Validation { errors })
+        Err(MmError::invalid(&validation.diagnostics))
     }
 }
 

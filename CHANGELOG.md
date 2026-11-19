@@ -363,6 +363,12 @@ installations `mm target setup` upgrades in place and what it refuses.
   first-party images they build FROM; `mm build --all` builds every module,
   as before. A build receipt promotes to an environment that runs fewer
   modules than the one it was built for.
+- A failed MCP call returns the message the command line prints for its
+  error, redacted as the command log is, with the command line's help in
+  `next_action`; what another program printed stays out, and a failed
+  program is named with its exit code. `mm_read` `health` returns the
+  findings of `mm config validate` when the environment's status cannot be
+  read, and `MM_CONFIG_INVALID` names its first three findings.
 
 ### Added
 

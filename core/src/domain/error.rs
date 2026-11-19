@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use thiserror::Error;
 
+use crate::domain::command_log::redact_text;
+use crate::domain::diagnostic::{Diagnostic, Severity};
 use crate::domain::runtime::{RuntimeCapability, RuntimeKind};
 use crate::domain::secret_contract::SecretWorkloadKind;
 
@@ -77,8 +79,12 @@ pub enum MmError {
     #[error("authentication failed")]
     AuthenticationFailed,
 
-    #[error("configuration validation failed with {errors} error(s)")]
-    Validation { errors: usize },
+    #[error("configuration validation failed with {errors} error(s){}", findings_text(.errors, .findings))]
+    Validation {
+        errors: usize,
+        /// The first errors, each with its code and where it is.
+        findings: Vec<String>,
+    },
 
     #[error("project initialization path already exists at {path}")]
     ConfigAlreadyExists { path: PathBuf },
@@ -100,14 +106,14 @@ pub enum MmError {
     #[error("{program} timed out after {seconds} seconds")]
     ProcessTimeout { program: String, seconds: u64 },
 
-    #[error("{program} failed with exit code {code:?}: {stderr}")]
+    #[error("{program} failed with exit code {code:?}: {}", printed(.stderr))]
     ProcessFailed {
         program: String,
         code: Option<i32>,
         stderr: String,
     },
 
-    #[error("runtime response was invalid: {message}")]
+    #[error("runtime response was invalid: {}", printed(.message))]
     RuntimeResponse { message: String },
 
     /// A remote host, or its `mmd`, that mm could not reach or talk to.
@@ -202,6 +208,66 @@ pub const NODE_MISMATCH_CODE: &str = "MM_NODE_MISMATCH";
 /// Code of a host's refusal to act on an environment it never deployed.
 pub const NOT_DEPLOYED_CODE: &str = "MM_NOT_DEPLOYED";
 
+const PRINTED_START: char = '\u{2068}';
+const PRINTED_END: char = '\u{2069}';
+
+/// `text` that another program, an engine, a provider, or a host printed,
+/// set apart for an error message: the command line shows it, and
+/// [`MmError::agent_message`] leaves it out, also when the message is quoted
+/// in another error's or sent by a host.
+#[must_use]
+pub fn printed(text: &str) -> String {
+    let mut marked = String::with_capacity(text.len() + 6);
+    marked.push(PRINTED_START);
+    marked.extend(
+        text.chars()
+            .filter(|character| !matches!(*character, PRINTED_START | PRINTED_END)),
+    );
+    marked.push(PRINTED_END);
+    marked
+}
+
+/// A message as the command line shows it: [`printed`] text without its marks.
+#[must_use]
+pub fn shown(text: &str) -> String {
+    text.chars()
+        .filter(|character| !matches!(*character, PRINTED_START | PRINTED_END))
+        .collect()
+}
+
+/// A message without the [`printed`] text in it; a mark left open leaves
+/// out the rest.
+fn without_printed(text: &str) -> String {
+    let mut kept = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find(PRINTED_START) {
+        kept.push_str(&rest[..start]);
+        kept.push_str("[what it printed is left out]");
+        let after = &rest[start + PRINTED_START.len_utf8()..];
+        let Some(end) = after.find(PRINTED_END) else {
+            return kept;
+        };
+        rest = &after[end + PRINTED_END.len_utf8()..];
+    }
+    kept.push_str(rest);
+    shown(&kept)
+}
+
+/// How many of a report's errors a validation error names.
+const NAMED_FINDINGS: usize = 3;
+
+fn findings_text(errors: &usize, findings: &[String]) -> String {
+    match findings.len() {
+        0 => String::new(),
+        named if named < *errors => format!(
+            ": {}; `mm config validate` lists the other {}",
+            findings.join("; "),
+            *errors - named
+        ),
+        _ => format!(": {}", findings.join("; ")),
+    }
+}
+
 fn wrong_node_identity(actual: Option<&str>) -> String {
     actual.map_or_else(
         || "has no node name (/etc/mm/node.env is missing; `mm target setup` writes it)".to_owned(),
@@ -293,6 +359,76 @@ impl MmError {
         match self {
             own @ Self::InOwnWords(_) => own,
             other => Self::InOwnWords(Box::new(other)),
+        }
+    }
+
+    /// The refusal of a report whose diagnostics hold errors, naming the
+    /// first of them.
+    #[must_use]
+    pub fn invalid(diagnostics: &[Diagnostic]) -> Self {
+        let errors = diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.severity == Severity::Error);
+        Self::Validation {
+            errors: errors.clone().count(),
+            findings: errors
+                .take(NAMED_FINDINGS)
+                .map(Diagnostic::summary)
+                .collect(),
+        }
+    }
+
+    /// The message the command line prints for this error, for an agent
+    /// over MCP: what another program, an engine, a provider, or a host's
+    /// processes printed ([`printed`]) is left out, an error made of that
+    /// names the step that failed instead, and secrets are redacted as the
+    /// command log redacts them.
+    #[must_use]
+    pub fn agent_message(&self) -> String {
+        let text = match self {
+            Self::InOwnWords(_) => self.refusal().unwrap_or_default(),
+            Self::Unreachable { .. } => self
+                .own_words()
+                .map(|(problem, _)| problem)
+                .unwrap_or_default(),
+            Self::ProcessFailed { program, code, .. } => format!(
+                "{program} failed {}; what it printed is left out here",
+                code.map_or_else(
+                    || "without an exit code".to_owned(),
+                    |code| format!("with exit code {code}")
+                )
+            ),
+            Self::RuntimeResponse { .. } => "the container engine or a host answered in a way mm could not use; what it printed is left out here".to_owned(),
+            Self::Remote {
+                code: code @ ("MM_PROCESS_FAILED" | "MM_REMOTE"),
+                ..
+            } => format!(
+                "a host of this environment failed with {code}; what its programs printed is left out here"
+            ),
+            Self::OperationFailure {
+                operation_id,
+                mutation_status,
+                cleanup_failures,
+                recovery,
+                primary,
+            } => format!(
+                "operation {operation_id} failed (mutation state: {mutation_status}): {}; {} cleanup step(s) failed; recovery: {recovery}",
+                primary.agent_message(),
+                cleanup_failures.len()
+            ),
+            other => other.to_string(),
+        };
+        redact_text(&without_printed(&text))
+    }
+
+    /// The help the command line prints after this error, if any.
+    #[must_use]
+    pub fn help(&self) -> Option<&'static str> {
+        match self {
+            Self::Setup { issue } => Some(issue.help()),
+            Self::InOwnWords(error) => error.help(),
+            Self::OperationFailure { primary, .. } => primary.help(),
+            _ => None,
         }
     }
 

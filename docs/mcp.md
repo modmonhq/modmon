@@ -182,8 +182,42 @@ to do instead:
 }
 ```
 
-Any other failure gets a fixed text for its kind of error, so nothing a
-provider, an engine, or a host printed reaches the agent.
+Every other failure returns its code and the message the command line
+prints for it, so it names the file, key, or step that failed. The help the
+command line prints after the error, and what an agent can do about it, are
+in `next_action`. A refused build context, for example, names the file and
+the rule, and a configuration that does not validate names its first
+findings:
+
+```json
+{
+  "error": {
+    "code": "MM_CONFIG_INVALID",
+    "message": "configuration validation failed with 1 error(s): MM_REPO_TARGET_INVALID at /work/shop/.config/mm.yaml: target 'staging' needs host, host-key, and daemon-fingerprint, or a nodes: list.",
+    "next_action": "Fix what the message names. Call mm_access for the configured environments, and mm_read with kinds 'project' and 'health' for diagnostics. A project without configuration needs the user to run `mm init`."
+  }
+}
+```
+
+What another program, the container engine, a secret provider, or a host's
+processes printed is never passed on. Where the command line quotes it, the
+agent reads `[what it printed is left out]`, also when the message comes
+from a host or quotes another error. A program that failed
+(`MM_PROCESS_FAILED`) is named with its exit code; an answer from the engine
+or a host that mm could not use (`MM_RUNTIME_RESPONSE`, or a host's
+`MM_PROCESS_FAILED`) names only that step. The user sees the whole output by
+running the same `mm` command in a terminal.
+
+The rest is redacted the way the command log redacts what a command printed:
+a `NAME=value` pair whose name contains `password`, `secret`, `token`,
+`private_key`, `cookie`, or `passphrase`, a private key block, the user and
+password in a URL, a `Bearer` or `Basic` credential, and access tokens of
+well-known forms read `[REDACTED]`.
+
+`mm_read` `health` does not fail when the environment's status cannot be
+read: it returns `runtime: null` and the findings of `mm config validate` for
+the environment, with the error that stopped the status as one more finding
+under its own code.
 
 On a cluster target, the reads `nodes` and `deployments` do not fail when a
 node refuses the agent key or does not answer, and neither does `services`

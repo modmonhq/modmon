@@ -488,9 +488,9 @@ impl crate::app::ports::RemoteUseCases for DaemonUseCaseAdapter {
                     environment = context.scope.environment,
                 ),
             }),
-            Err(MmError::Validation { errors }) => Err(super::daemon_checkout::invalid_at_commit(
-                &selection, errors,
-            )),
+            Err(MmError::Validation { errors, .. }) => Err(
+                super::daemon_checkout::invalid_at_commit(&selection, errors),
+            ),
             planned => planned,
         }
     }

@@ -89,7 +89,14 @@ fn mutation_status_and_error_code_exit_contracts_are_complete() {
             3,
         ),
         (MmError::AuthenticationFailed, "MM_SECURITY", 3),
-        (MmError::Validation { errors: 1 }, "MM_CONFIG_INVALID", 2),
+        (
+            MmError::Validation {
+                errors: 1,
+                findings: Vec::new(),
+            },
+            "MM_CONFIG_INVALID",
+            2,
+        ),
         (
             MmError::ConfigAlreadyExists {
                 path: PathBuf::from("mm.yaml"),

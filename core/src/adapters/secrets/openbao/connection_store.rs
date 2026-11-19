@@ -331,7 +331,10 @@ impl OpenBaoConnectionStore {
         let document =
             serde_json::from_slice::<ConnectionDocument>(&plaintext).map_err(|error| {
                 MmError::Secret {
-                    message: format!("provider connection registry is invalid: {error}"),
+                    message: format!(
+                        "provider connection registry is invalid: {}",
+                        crate::domain::error::printed(&error.to_string())
+                    ),
                 }
             })?;
         if document.version != CONNECTION_DOCUMENT_VERSION {

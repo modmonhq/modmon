@@ -282,10 +282,14 @@ impl EnvironmentManager {
             return Err(outage.refusal(&context.environment, &provider, refusal));
         }
         outage.check(&context.environment, &secret_metadata)?;
-        if secret_diagnostics.iter().any(|diagnostic| {
-            diagnostic.severity == Severity::Error && diagnostic.code == "MM_SECRET_INVALID"
-        }) {
-            return Err(MmError::Validation { errors: 1 });
+        let invalid = secret_diagnostics
+            .into_iter()
+            .filter(|diagnostic| {
+                diagnostic.severity == Severity::Error && diagnostic.code == "MM_SECRET_INVALID"
+            })
+            .collect::<Vec<_>>();
+        if !invalid.is_empty() {
+            return Err(MmError::invalid(&invalid));
         }
         let input_hash = status_input_hash(&context.index, &overrides, &secret_metadata);
         let services = context
@@ -688,9 +692,7 @@ impl EnvironmentManager {
             .filter(|diagnostic| diagnostic.severity == Severity::Error)
             .count();
         if error_count > 0 {
-            return Err(MmError::Validation {
-                errors: error_count,
-            });
+            return Err(MmError::invalid(&diagnostics));
         }
         let input_hash = status_input_hash(&context.index, &overrides, &secret_metadata);
         let bundle = compile_bundle(

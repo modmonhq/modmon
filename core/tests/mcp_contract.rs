@@ -871,14 +871,329 @@ fn mms_own_refusals_reach_the_agent_as_mm_says_them() -> Result<(), Box<dyn std:
             .starts_with("the schedules of 'production' are reconciled by its deployment")),
         "{schedules}"
     );
-    // Any other error keeps its fixed text: nothing it carries is shown.
+    // Only an error in mm's own words is a refusal; any other reaches the
+    // agent as the command line prints it, with what to do next.
+    let other = mm::domain::error::MmError::Environment {
+        message: "provider said: something".to_owned(),
+    };
+    assert_eq!(other.refusal(), None);
+    assert_eq!(other.agent_message(), other.to_string());
+    Ok(())
+}
+
+/// An agent reads an error as the command line prints it, with secrets
+/// redacted as the command log redacts them; what another program printed
+/// never reaches it, and an error made of that names the step instead.
+#[test]
+fn an_agent_reads_the_cli_message_without_secrets_or_provider_output() {
+    use mm::domain::diagnostic::Diagnostic;
+    use mm::domain::error::{MmError, MutationStatus, printed};
+
+    let leaky = MmError::Environment {
+        message: "could not log in with password=SENTINEL-VALUE-4471 as ops".to_owned(),
+    };
     assert_eq!(
-        mm::domain::error::MmError::Environment {
-            message: "provider said: something".to_owned()
-        }
-        .refusal(),
-        None
+        leaky.agent_message(),
+        "environment error: could not log in with password=[REDACTED] as ops"
     );
+    let key = MmError::Build {
+        message: concat!(
+            "-----BEGIN ",
+            "OPENSSH PRIVATE KEY-----\nSENTINEL-KEY\n-----END ",
+            "OPENSSH PRIVATE KEY-----\n"
+        )
+        .to_owned(),
+    };
+    assert!(
+        !key.agent_message().contains("SENTINEL"),
+        "{}",
+        key.agent_message()
+    );
+
+    let failed = MmError::ProcessFailed {
+        program: "docker".to_owned(),
+        code: Some(1),
+        stderr: "Error response from daemon: SENTINEL-STDERR".to_owned(),
+    };
+    assert!(failed.to_string().contains("SENTINEL-STDERR"));
+    assert_eq!(
+        failed.agent_message(),
+        "docker failed with exit code 1; what it printed is left out here"
+    );
+    for withheld in [
+        MmError::RuntimeResponse {
+            message: "SENTINEL-ENGINE-ANSWER".to_owned(),
+        },
+        MmError::Remote {
+            code: "MM_PROCESS_FAILED",
+            message: "podman failed with exit code 125: SENTINEL-HOST-STDERR".to_owned(),
+        },
+        MmError::operation_failure(
+            "op-1",
+            MutationStatus::Unknown,
+            failed,
+            vec!["rm: SENTINEL-CLEANUP".to_owned()],
+            "run `mm deploy` again",
+        ),
+    ] {
+        let message = withheld.agent_message();
+        assert!(!message.contains("SENTINEL"), "{message}");
+        assert!(message.contains("left out here"), "{message}");
+    }
+
+    // What a program printed stays out wherever its text goes: quoted in
+    // mm's message, in another error's message, or in the message a host
+    // sent.
+    let quoted = MmError::Environment {
+        message: format!(
+            "git merge-base failed: {}",
+            printed("fatal: unable to access 'https://ci:SENTINEL-GIT@git.example.test/x.git/'")
+        ),
+    };
+    let nested = MmError::Target {
+        message: format!(
+            "node app-2 could not be read ({})",
+            MmError::ProcessFailed {
+                program: "ssh".to_owned(),
+                code: Some(255),
+                stderr: "SENTINEL-SSH".to_owned(),
+            }
+        ),
+    };
+    let provider = MmError::Secret {
+        message: format!(
+            "the store did not start: {}",
+            MmError::RuntimeResponse {
+                message: "the engine answered with 500: SENTINEL-BODY".to_owned(),
+            }
+        ),
+    };
+    let hosted = MmError::Security {
+        message: MmError::Build {
+            message: format!("buildx said {}", printed("SENTINEL-HOST")),
+        }
+        .to_string(),
+    };
+    for error in [quoted, nested, provider, hosted] {
+        let message = error.agent_message();
+        assert!(!message.contains("SENTINEL"), "{message}");
+        assert!(
+            message.contains("[what it printed is left out]"),
+            "{message}"
+        );
+        assert!(error.to_string().contains("SENTINEL"), "{error}");
+    }
+    let unmarked = MmError::Environment {
+        message: "could not fetch https://ci:SENTINEL-URL@git.example.test/x.git with Bearer SENTINEL-BEARER as ghp_SENTINELTOKEN0000".to_owned(),
+    };
+    let message = unmarked.agent_message();
+    assert!(!message.contains("SENTINEL"), "{message}");
+    assert!(
+        message.contains("https://[REDACTED]@git.example.test/x.git"),
+        "{message}"
+    );
+
+    let invalid = MmError::invalid(&[
+        Diagnostic::error("MM_FIRST", "modules.web.path does not exist").at_location(
+            "/work/.config/mm.yaml",
+            7,
+            3,
+        ),
+        Diagnostic::warning("MM_ADVICE", "not an error"),
+        Diagnostic::error("MM_SECOND", "second"),
+        Diagnostic::error("MM_THIRD", "third"),
+        Diagnostic::error("MM_FOURTH", "fourth"),
+    ]);
+    assert_eq!(invalid.code(), "MM_CONFIG_INVALID");
+    assert_eq!(
+        invalid.agent_message(),
+        "configuration validation failed with 4 error(s): MM_FIRST at /work/.config/mm.yaml:7: modules.web.path does not exist; MM_SECOND: second; MM_THIRD: third; `mm config validate` lists the other 1"
+    );
+}
+
+fn engine_off() -> [(&'static str, String); 1] {
+    [("MM_ENGINE_API", "off".to_owned())]
+}
+
+/// A configuration that does not validate is named finding by finding,
+/// in the words and with the code the command line prints.
+#[test]
+fn a_validation_failure_names_the_finding_over_mcp_as_on_the_command_line()
+-> Result<(), Box<dyn std::error::Error>> {
+    let project = Project::new()?;
+    project.edit(|config| {
+        config["targets"] =
+            serde_yaml_ng::from_str("lab: {host: 203.0.113.20}").unwrap_or_default();
+    })?;
+    let mut session = Session::start_with(&project, &engine_off())?;
+    let refused = session.call(
+        "mm_deploy_plan",
+        serde_json::json!({"scope": {"environment": "local", "runtime": "docker-compose"}}),
+    )?;
+    assert_eq!(refused["error"]["code"], "MM_CONFIG_INVALID", "{refused}");
+    let message = refused["error"]["message"].as_str().unwrap_or_default();
+    for named in [
+        "MM_REPO_TARGET_INVALID at ",
+        ".config/mm.yaml",
+        "target 'lab'",
+    ] {
+        assert!(message.contains(named), "{named}: {message}");
+    }
+    assert!(!message.contains("provider output"), "{message}");
+    let cli = project
+        .mm()
+        .args(["--runtime", "docker-compose", "--environment", "local"])
+        .args(["deploy", "plan"])
+        .output()?;
+    let said = String::from_utf8_lossy(&cli.stderr);
+    assert!(
+        said.contains(&format!(
+            "error[MM_CONFIG_INVALID]: {}",
+            message.trim_end_matches('.')
+        )),
+        "{said}"
+    );
+    Ok(())
+}
+
+/// A `git` that fails the way it does outside a repository, with a line of
+/// its own that must not reach the agent.
+#[cfg(unix)]
+const FAILING_GIT: &str = "#!/bin/sh\necho 'fatal: SENTINEL-GIT-STDERR' >&2\nexit 128\n";
+
+#[cfg(unix)]
+fn git(root: &Path, arguments: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
+    let output = std::process::Command::new("git")
+        .current_dir(root)
+        .args([
+            "-c",
+            "user.name=mm-test",
+            "-c",
+            "user.email=mm@example.test",
+        ])
+        .args(["-c", "commit.gpgsign=false"])
+        .args(arguments)
+        .output()?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).into_owned().into())
+    }
+}
+
+/// A build context that would ship a sensitive file is refused over MCP
+/// naming the file; a program that fails is named with its exit code, and
+/// what it printed stays out.
+#[cfg(unix)]
+#[test]
+fn a_build_refusal_names_the_file_and_a_failed_program_keeps_its_output()
+-> Result<(), Box<dyn std::error::Error>> {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let project = Project::new()?;
+    let root = project.root.path();
+    fs::write(
+        root.join("compose.yaml"),
+        "services:\n  web:\n    image: example/web\n",
+    )?;
+    fs::create_dir(root.join("web"))?;
+    fs::write(root.join("web/Dockerfile"), "FROM scratch\n")?;
+    fs::write(root.join("web/.env"), "EXAMPLE=1\n")?;
+    project.edit(|config| {
+        config["modules"] = serde_yaml_ng::from_str(
+            "web: {path: web, build: {image: example/web}, services: {web: {stack: app}}}",
+        )
+        .unwrap_or_default();
+    })?;
+    let scope = serde_json::json!({"environment": "local", "runtime": "docker-compose"});
+
+    let tools = temp_dirs::tempdir()?;
+    fs::write(tools.path().join("git"), FAILING_GIT)?;
+    fs::set_permissions(tools.path().join("git"), fs::Permissions::from_mode(0o755))?;
+    let path = format!(
+        "{}:{}",
+        tools.path().display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let mut session = Session::start_with(
+        &project,
+        &[("PATH", path), ("MM_ENGINE_API", "off".to_owned())],
+    )?;
+    let failed = session.call("mm_build_plan", serde_json::json!({"scope": scope}))?;
+    assert_eq!(failed["error"]["code"], "MM_PROCESS_FAILED", "{failed}");
+    assert_eq!(
+        failed["error"]["message"],
+        "git failed with exit code 128; what it printed is left out here.",
+        "{failed}"
+    );
+    assert!(!failed.to_string().contains("SENTINEL"), "{failed}");
+    drop(session);
+
+    git(root, &["init", "--quiet", "--initial-branch=main"])?;
+    git(root, &["add", "--all"])?;
+    git(root, &["commit", "--quiet", "--message", "fixture"])?;
+    let mut session = Session::start_with(&project, &engine_off())?;
+    let refused = session.call("mm_build_plan", serde_json::json!({"scope": scope}))?;
+    assert_eq!(refused["error"]["code"], "MM_SECURITY", "{refused}");
+    let message = refused["error"]["message"].as_str().unwrap_or_default();
+    assert!(
+        message.contains(".env") && message.contains("build context"),
+        "{refused}"
+    );
+    assert!(!message.contains("authorization"), "{refused}");
+    Ok(())
+}
+
+/// `mm_read` of `health` on an environment whose status cannot be read
+/// returns what `mm config validate` finds and the error that stopped the
+/// status, rather than failing with it.
+#[test]
+fn health_of_a_broken_environment_returns_its_findings() -> Result<(), Box<dyn std::error::Error>> {
+    let project = Project::new()?;
+    let root = project.root.path();
+    fs::write(
+        root.join("compose.yaml"),
+        "services:\n  web:\n    image: example/web\n",
+    )?;
+    fs::create_dir(root.join("web"))?;
+    project.edit(|config| {
+        config["modules"] = serde_yaml_ng::from_str(
+            "web: {path: web, env: {template: .env.example}, services: {web: {stack: app}}}",
+        )
+        .unwrap_or_default();
+        config["environments"]["production"]["target"] = "lab".into();
+    })?;
+    FilesystemTargetStore::new(project.home.path().join("targets.yaml")).insert_target(
+        "lab",
+        TargetDefinition {
+            available_runtimes: vec![RuntimeKind::PodmanCompose],
+            ..TargetDefinition::local(TargetId(Uuid::from_u128(93)))
+        },
+    )?;
+    let mut session = Session::start_with(&project, &engine_off())?;
+    let health = session.call(
+        "mm_read",
+        serde_json::json!({
+            "scope": {"environment": "production", "runtime": "docker-compose"},
+            "kind": "health",
+        }),
+    )?;
+    assert!(health["error"].is_null(), "{health}");
+    assert!(health["runtime"].is_null(), "{health}");
+    let findings = health["validation"]["diagnostics"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let found = |code: &str, text: &str| {
+        findings.iter().any(|finding| {
+            finding["code"] == code
+                && finding["message"]
+                    .as_str()
+                    .is_some_and(|message| message.contains(text))
+        })
+    };
+    assert!(found("MM_TARGET", "does not offer runtime"), "{health}");
+    assert!(found("MM_ENV_TEMPLATE_READ", ""), "{health}");
     Ok(())
 }
 
