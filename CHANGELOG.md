@@ -1063,6 +1063,15 @@ hosts up again with `mm target setup plan --upgrade`. See
 - `mm doctor`'s `MM_HOST_RELEASE_OLDER` said to run `mm target setup plan`
   without `--upgrade`, which setup refuses for hosts on an older release;
   `MM_HOST_RELEASE_NEWER` now says `mm update`.
+- State that another release wrote no longer stops an update. A newer `mm`
+  or `mmd` reads what an older one stored and moves the state database
+  forward; an older one ignores fields a newer one added, and refuses a file
+  or database whose format changed with a message that names it and says to
+  run `mm update` (or, on a host, `mm target setup plan --upgrade`), without
+  changing it. Before, records refused any field they did not know, a newer
+  migration said to use a compatible mm, and an `mmd` whose deployment
+  record it could not read did not start. See
+  [compatibility](docs/reference/compatibility.md#stored-state).
 - Job output, `mm service logs` and MCP `mm_logs` are redacted against the
   secrets the environment hands out (its services' variables and secret
   files, registry logins, tunnel token and certificate) and the other

@@ -1,6 +1,6 @@
 ---
 title: Compatibility between releases
-description: Which releases of mm and mmd work together, what happens when one side is older, and what to run then.
+description: Which releases of mm and mmd work together, what happens when one side is older, what an update does with stored state, and what to run then.
 ---
 
 From 0.1.1 on, `mm` on your machine and `mmd` on your hosts do not have to run
@@ -90,6 +90,51 @@ A deployment plan records the protocol of the session that made it. Anyone
 whose `mm` shares a protocol with the host can apply it, whichever release
 made it. Plans expire after ten minutes, so an upgrade of the host between plan
 and apply means planning again.
+
+## Stored state
+
+`mm` keeps state on your machine in its home, `~/.mm` (or `MM_HOME`): the
+state database `state.sqlite3`, the target catalog `targets.yaml`, the local
+services, the secret stores, pinned host keys, and saved forwards. On a host,
+`mmd` keeps its configuration in `/etc/mm` (`mmd.json`, `host.yaml`) and its
+records in `/var/lib/mm`: access records, deployments and rollouts, the
+mesh, the cluster's networks, ingress routes, and what it restarts and
+scales.
+
+### After an update
+
+Every release from 0.1.1 on reads the state an earlier one wrote. `mm update`
+and `mm target setup --upgrade` replace the binaries and keep that state:
+the newer release fills in what the older one did not record and moves the
+state database forward with its migrations the first time it opens it.
+Nothing needs to be recreated or reset.
+
+### After a downgrade
+
+An older release reads what a newer one wrote as long as the newer one only
+added to it; it ignores what it does not know. When a newer release changed
+the format of a file or the state database, the older one refuses it and
+changes nothing. The message names the file, what it does not know, and what
+to run:
+
+```text
+state store error: ~/.mm/state.sqlite3 was written by a newer mm (state migration 0002_example); update with `mm update`
+state store error: /etc/mm/mmd.json was written by a newer mm (schema 3); upgrade this host: run `mm update` on your machine, then `mm target setup plan --upgrade`
+```
+
+Run the command it names, or go back to the newer release.
+
+Plans and build receipts carry a hash of what was reviewed. An older release
+never acts on part of one: it refuses one with a field or schema it does not
+know, or whose hash no longer matches what it can read.
+
+`mm.yaml` and its includes, `MM_HOME/mcp.json`, and `/etc/mm/host.yaml` are
+written by hand, so a key mm does not know there is an error: a misspelled
+key never goes unnoticed. A `schema-version` newer than the release knows is
+refused with the message above.
+
+How mm keeps these promises as it changes is in
+[stored state](../contribute/stored-state.md).
 
 ## How this is checked
 
