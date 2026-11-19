@@ -272,6 +272,7 @@ complete -c mm -n "__fish_mm_using_subcommand config; and not __fish_seen_subcom
 complete -c mm -n "__fish_mm_using_subcommand config; and not __fish_seen_subcommand_from validate module service stack build environment binding secret ingress mount job schedule access user schema split join sources help" -f -a "join" -d 'Plan moving a split key back into .config/mm.yaml; apply only with --plan and --yes'
 complete -c mm -n "__fish_mm_using_subcommand config; and not __fish_seen_subcommand_from validate module service stack build environment binding secret ingress mount job schedule access user schema split join sources help" -f -a "sources" -d 'Show which file declares each top-level key'
 complete -c mm -n "__fish_mm_using_subcommand config; and not __fish_seen_subcommand_from validate module service stack build environment binding secret ingress mount job schedule access user schema split join sources help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
+complete -c mm -n "__fish_mm_using_subcommand config; and __fish_seen_subcommand_from validate" -l host-policy -d 'With --for-remote: check against this copy of a host\'s host.yaml, its `allow` list and, without --environment, the environments it runs' -r -F
 complete -c mm -n "__fish_mm_using_subcommand config; and __fish_seen_subcommand_from validate" -l root -d 'Project root or a path inside the project' -r -F
 complete -c mm -n "__fish_mm_using_subcommand config; and __fish_seen_subcommand_from validate" -s e -l environment -d 'Environment to operate on (overrides MM_ENVIRONMENT and default-environment)' -r
 complete -c mm -n "__fish_mm_using_subcommand config; and __fish_seen_subcommand_from validate" -l runtime -d 'Ephemeral runtime adapter for this invocation only' -r -f -a "podman-compose\t''
@@ -280,7 +281,7 @@ complete -c mm -n "__fish_mm_using_subcommand config; and __fish_seen_subcommand
 complete -c mm -n "__fish_mm_using_subcommand config; and __fish_seen_subcommand_from validate" -l mm-home -d 'Directory containing mm\'s local state and target catalog' -r -F
 complete -c mm -n "__fish_mm_using_subcommand config; and __fish_seen_subcommand_from validate" -l output -d 'Human text or machine-readable JSON. JSON errors stay JSON' -r -f -a "human\t''
 json\t''"
-complete -c mm -n "__fish_mm_using_subcommand config; and __fish_seen_subcommand_from validate" -l for-remote -d 'Also refuse Compose features a remote host blocks unless its host policy allows them'
+complete -c mm -n "__fish_mm_using_subcommand config; and __fish_seen_subcommand_from validate" -l for-remote -d 'Also refuse Compose features a remote host blocks, in the services the environment runs; without --environment, in every environment whose target is not `local`'
 complete -c mm -n "__fish_mm_using_subcommand config; and __fish_seen_subcommand_from validate" -s h -l help -d 'Print help'
 complete -c mm -n "__fish_mm_using_subcommand config; and __fish_seen_subcommand_from validate" -s V -l version -d 'Print version'
 complete -c mm -n "__fish_mm_using_subcommand config; and __fish_seen_subcommand_from module" -l root -d 'Project root or a path inside the project' -r -F

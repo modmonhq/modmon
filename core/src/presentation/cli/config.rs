@@ -53,9 +53,12 @@ pub enum ResourceCommand {
 pub enum ConfigCommand {
     /// Validate .config/mm.yaml, its split files, and local overrides, without probing a runtime.
     Validate {
-        /// Also refuse Compose features a remote host blocks unless its host policy allows them.
+        /// Also refuse Compose features a remote host blocks, in the services the environment runs; without --environment, in every environment whose target is not `local`.
         #[arg(long)]
         for_remote: bool,
+        /// With --for-remote: check against this copy of a host's host.yaml, its `allow` list and, without --environment, the environments it runs.
+        #[arg(long, value_name = "FILE", requires = "for_remote")]
+        host_policy: Option<PathBuf>,
     },
     /// Review typed module declarations.
     Module {
@@ -162,7 +165,10 @@ pub(super) fn run(
     invocation: &super::dispatch::Invocation,
 ) -> Result<u8, MmError> {
     match command {
-        ConfigCommand::Validate { for_remote } => run_validate(invocation, for_remote),
+        ConfigCommand::Validate {
+            for_remote,
+            host_policy,
+        } => run_validate(invocation, for_remote, host_policy.as_deref()),
         ConfigCommand::Schema { key: None } => {
             output::write_json(&composition::schema())?;
             Ok(0)
@@ -217,7 +223,11 @@ pub(super) fn run(
     }
 }
 
-fn run_validate(invocation: &super::dispatch::Invocation, for_remote: bool) -> Result<u8, MmError> {
+fn run_validate(
+    invocation: &super::dispatch::Invocation,
+    for_remote: bool,
+    host_policy: Option<&std::path::Path>,
+) -> Result<u8, MmError> {
     let mut validation = crate::app::Application::read_only(
         composition::project_documents(),
         composition::environment_sources(),
@@ -227,9 +237,13 @@ fn run_validate(invocation: &super::dispatch::Invocation, for_remote: bool) -> R
     .validate(&invocation.selection)?;
     if for_remote {
         let document = composition::project_documents().load_from(&invocation.start)?;
+        let policy = host_policy
+            .map(|path| composition::host_policy_file(path).map(|policy| (path, policy)))
+            .transpose()?;
         for diagnostic in crate::app::remote_guardrail_diagnostics(
             &document,
             invocation.selection.environment.as_deref(),
+            policy.as_ref().map(|(path, policy)| (*path, policy)),
         )? {
             validation.validation.push(diagnostic);
         }

@@ -959,7 +959,8 @@ installations `mm target setup` upgrades in place and what it refuses.
   `host.yaml` allows one feature for one service. A host checks only the
   services the planned environment runs. `mm config validate --for-remote`
   reports them before a push, for the environment `-e` names or else for each
-  environment whose target is not `local`.
+  environment whose target is not `local`; `--host-policy FILE` checks against
+  a copy of a host's `host.yaml` and reports what it allows.
 - Split configuration files. Any top-level key except `schema-version` can live
   in `.config/mm/<key>.yaml`, which holds just that key's value. `mm config
   split KEY` and `mm config join KEY` move a key through a reviewed plan that

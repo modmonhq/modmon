@@ -15,6 +15,7 @@ mod server;
 
 pub use access::{
     AccessGuard, AccessSnapshot, DeployedState, HostAccessStore, StoredRollout, load_host_policy,
+    parse_host_policy,
 };
 pub use audit::{AUDIT_FILE, AUDIT_KEPT, AUDIT_READ_LIMIT, AUDIT_ROTATE_BYTES, AuditLog};
 pub use bundle::{BundleReceiver, BundleRecord, DeliveryScope};

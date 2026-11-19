@@ -1,14 +1,17 @@
 //! A remote host checks the Compose features of the services the planned
 //! environment runs, and `mm config validate --for-remote` checks the same
-//! services, environment by environment.
+//! services, environment by environment, against an empty host policy or a
+//! copy of the one the hosts have.
 
 mod daemon_host;
 mod temp_dirs;
 
 use std::path::Path;
 
-use daemon_host::{ALICE, Host, PROMPT, TestResult};
+use daemon_host::{ALICE, Host, OPS, PROMPT, TestResult};
 use mm::domain::remote::{RemoteMethod, RemoteResult};
+
+const PROJECT_ID: &str = "019c527b-6242-7b43-bfd4-bd60e27c1de3";
 
 const CONFIG: &str = "schema-version: 1
 project:
@@ -169,6 +172,91 @@ fn a_feature_behind_a_yaml_merge_key_is_found() -> TestResult {
         [
             "MM_REMOTE_GUARDRAIL a remote host refuses this in environment 'staging': app/web uses network-host (network_mode: host)"
         ]
+    );
+    Ok(())
+}
+
+fn host_policy(environments: &str, allow: &str) -> String {
+    format!(
+        "schema-version: 2
+break-glass:
+  - name: ops
+    key: {OPS}
+projects:
+  {PROJECT_ID}:
+    name: example
+    delivery: push
+    environments: {environments}
+    allow:
+{allow}"
+    )
+}
+
+#[test]
+fn a_host_policy_allows_what_it_grants_and_refuses_the_rest() -> TestResult {
+    let temporary = project(
+        "services:\n  web:\n    image: example/web\n    pid: host\n    cap_add: [SYS_ADMIN]\n",
+    )?;
+    let policy = temporary.path().join("host.yaml");
+    std::fs::write(
+        &policy,
+        host_policy(
+            "[staging]",
+            "      - service: app/web\n        features: [pid-host]\n",
+        ),
+    )?;
+    let policy_flag = ["--host-policy", policy.to_str().unwrap_or_default()];
+
+    let (status, findings) = validate(temporary.path(), &["-e", "staging"], &policy_flag)?;
+    assert_eq!(status, 2);
+    assert_eq!(
+        messages(&findings),
+        [
+            "MM_REMOTE_GUARDRAIL a remote host refuses this in environment 'staging': app/web uses cap-add (cap_add: SYS_ADMIN)",
+            "MM_REMOTE_GUARDRAIL_ALLOWED the host policy allows this in environment 'staging': app/web uses pid-host (pid: host)",
+        ]
+    );
+    assert_eq!(findings[0]["severity"], "error");
+    assert_eq!(findings[1]["severity"], "info");
+
+    // Granted as well: allowed, and nothing fails. Without -e the policy
+    // says which environments its hosts run.
+    std::fs::write(
+        &policy,
+        host_policy(
+            "[staging]",
+            "      - service: app/web\n        features: [pid-host, cap-add]\n",
+        ),
+    )?;
+    let (status, findings) = validate(temporary.path(), &[], &policy_flag)?;
+    assert_eq!(status, 0, "{:?}", messages(&findings));
+    assert_eq!(findings.len(), 2, "{:?}", messages(&findings));
+    assert!(
+        messages(&findings)
+            .iter()
+            .all(|message| message.starts_with("MM_REMOTE_GUARDRAIL_ALLOWED")
+                && message.contains("environment 'staging'"))
+    );
+
+    // A policy that does not enroll the project says so.
+    std::fs::write(
+        &policy,
+        host_policy("[staging]", "      []\n")
+            .replace(PROJECT_ID, "019c527b-6242-7b43-bfd4-bd60e27c1de4"),
+    )?;
+    let output = temp_dirs::mm()
+        .arg("--root")
+        .arg(temporary.path().join("project"))
+        .arg("--mm-home")
+        .arg(temporary.path().join("home"))
+        .args(["-e", "staging", "config", "validate", "--for-remote"])
+        .args(policy_flag)
+        .output()?;
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("enrolls no project 019c527b-6242-7b43-bfd4-bd60e27c1de3"),
+        "{stderr}"
     );
     Ok(())
 }

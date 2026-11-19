@@ -9491,12 +9491,16 @@ _mm() {
             return 0
             ;;
         mm__subcmd__config__subcmd__validate)
-            opts="-e -h -V --for-remote --root --environment --runtime --target --mm-home --output --help --version"
+            opts="-e -h -V --for-remote --host-policy --root --environment --runtime --target --mm-home --output --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
+                --host-policy)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
                 --root)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0

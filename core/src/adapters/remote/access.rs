@@ -479,17 +479,22 @@ pub fn load_host_policy(path: &Path) -> Result<(HostPolicy, Vec<u8>), MmError> {
         context: format!("reading host policy {}", path.display()),
         source,
     })?;
+    Ok((parse_host_policy(path, &bytes)?, bytes))
+}
+
+/// Checks `bytes`, read from `path`, as `mmd` checks its host policy.
+pub fn parse_host_policy(path: &Path, bytes: &[u8]) -> Result<HostPolicy, MmError> {
     if bytes.len() > MAX_POLICY_BYTES {
         return Err(security("host policy exceeds 4 MiB"));
     }
     let duplicate = |error: serde_yaml_ng::Error| MmError::ConfigParse {
         path: path.to_path_buf(),
         message: crate::domain::host_policy::duplicate_key_message(
-            &String::from_utf8_lossy(&bytes),
+            &String::from_utf8_lossy(bytes),
             &error.to_string(),
         ),
     };
-    let value = serde_yaml_ng::from_slice::<serde_yaml_ng::Value>(&bytes).map_err(duplicate)?;
+    let value = serde_yaml_ng::from_slice::<serde_yaml_ng::Value>(bytes).map_err(duplicate)?;
     // YAML merge keys can otherwise obscure the authoritative value being reviewed.
     if contains_tag_or_merge(&value) {
         return Err(security(
@@ -506,12 +511,12 @@ pub fn load_host_policy(path: &Path) -> Result<(HostPolicy, Vec<u8>), MmError> {
             "this is a schema-1 access.yaml; mmd now reads /etc/mm/host.yaml (schema-version: 2) and takes users from each project's users file. See the migration guide in the remote access docs.",
         ));
     }
-    let host: HostPolicy = serde_yaml_ng::from_slice(&bytes).map_err(duplicate)?;
+    let host: HostPolicy = serde_yaml_ng::from_slice(bytes).map_err(duplicate)?;
     host.validate().map_err(|message| MmError::ConfigParse {
         path: path.to_path_buf(),
         message,
     })?;
-    Ok((host, bytes))
+    Ok(host)
 }
 
 /// `expiry-time` takes `YYYYMMDD`; keys expire at the start of that UTC day.

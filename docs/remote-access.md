@@ -473,6 +473,19 @@ projects:
         features: [pid-host]
 ```
 
+To check a project against the policy its hosts have, for example in CI,
+keep a copy of their `host.yaml` and pass it:
+
+```sh
+mm config validate --for-remote --host-policy ops/staging-host.yaml
+```
+
+With `--host-policy`, mm reads the file as `mmd` does and checks the
+environments it runs for the project, or the one `-e` names. A feature its
+`allow` list grants is reported as `MM_REMOTE_GUARDRAIL_ALLOWED` and does not
+fail the command; anything else fails as before. A policy that does not
+enroll the project is refused with the project's id.
+
 A host also decides which OCI runtimes a service's `runtime:` may name, and
 can run every service that is reachable from outside under one of them. See
 [choose an OCI runtime](./hardening.md#choose-an-oci-runtime).
