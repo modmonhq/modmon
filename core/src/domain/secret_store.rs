@@ -358,7 +358,7 @@ pub struct StoreInitAnswer {
 /// An AppRole login: what mmd reads and writes the environment's values
 /// with, or reads the store's own state with.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct StoreCredential {
     pub role_id: Zeroizing<String>,
     pub secret_id: Zeroizing<String>,
@@ -373,7 +373,7 @@ impl std::fmt::Debug for StoreCredential {
 /// Everything a member needs to unseal itself and serve mmd, and the
 /// operator needs to recover the store. Only ever sealed with age.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct StoreRecovery {
     pub project_id: ProjectId,
     pub environment: String,
@@ -528,7 +528,7 @@ pub use report::{ClusterStoreMember, ClusterStoreReport};
 
 /// A snapshot file's contents: the Raft data and the keys it opens with.
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct StoreSnapshot {
     pub project_id: ProjectId,
     pub environment: String,

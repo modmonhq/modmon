@@ -20,6 +20,7 @@ use crate::app::ports::{
 };
 use crate::domain::environment::is_safe_environment_value;
 use crate::domain::error::MmError;
+use crate::domain::stored_state::{StoredOn, newer_mm_message, stored_version, unknown_in};
 use crate::domain::secret::{
     InitializedAgeStore, SecretExpectedState, SecretMaterial, SecretMetadata, SecretReference,
     SecretReplacement, SecretResolution, SecretScope, SecretStatus, SecretWriteResult,
@@ -123,9 +124,20 @@ impl AgeSecretStore {
                 message: format!("could not decrypt Age secret store: {error}"),
             }
         })?);
+        let newer = |version: &str| MmError::Secret {
+            message: newer_mm_message(&self.store_path, version, StoredOn::MmHome),
+        };
+        if let Some(version) = stored_version(&plaintext, "version")
+            && version > CURRENT_SECRET_DOCUMENT_VERSION
+        {
+            return Err(newer(&format!("version {version}")));
+        }
         let document = serde_json::from_slice::<SecretDocument>(&plaintext).map_err(|error| {
-            MmError::Secret {
-                message: format!("Age secret store has invalid contents: {error}"),
+            match unknown_in(&error) {
+                Some(unknown) => newer(&unknown),
+                None => MmError::Secret {
+                    message: format!("Age secret store has invalid contents: {error}"),
+                },
             }
         })?;
         if document.version != CURRENT_SECRET_DOCUMENT_VERSION {

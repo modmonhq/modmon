@@ -15,7 +15,7 @@ use super::{
 
 /// One node of a cluster target, in the order the target declares them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct TargetNode {
     pub name: String,
     pub host: String,

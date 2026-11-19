@@ -120,7 +120,7 @@ fn rejects_missing_non_file_symlink_and_insecure_configuration_paths()
 }
 
 #[test]
-fn rejects_oversized_malformed_unknown_and_semantically_invalid_content()
+fn rejects_oversized_malformed_newer_and_semantically_invalid_content()
 -> Result<(), Box<dyn std::error::Error>> {
     let temporary = crate::test_support::tempdir()?;
     fs::set_permissions(temporary.path(), fs::Permissions::from_mode(0o700))?;
@@ -131,9 +131,17 @@ fn rejects_oversized_malformed_unknown_and_semantically_invalid_content()
     assert!(DaemonConfig::load(&path).is_err());
 
     let mut unknown = serde_json::to_value(config(temporary.path()))?;
-    unknown["principals"] = serde_json::json!([]);
-    write_config(&path, &serde_json::to_vec(&unknown)?)?;
-    assert!(DaemonConfig::load(&path).is_err());
+    unknown["added_later"] = serde_json::json!([]);
+    assert!(DaemonConfig::parse(&path, &serde_json::to_vec(&unknown)?).is_ok());
+    unknown["schema_version"] = serde_json::json!(3);
+    let newer = DaemonConfig::parse(&path, &serde_json::to_vec(&unknown)?)
+        .err()
+        .map(|error| error.to_string())
+        .unwrap_or_default();
+    assert!(
+        newer.contains("written by a newer mm (schema 3)"),
+        "{newer}"
+    );
 
     let mut invalid = config(temporary.path());
     invalid.schema_version = 1;

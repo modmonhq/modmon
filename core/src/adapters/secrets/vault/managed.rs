@@ -25,6 +25,7 @@ use crate::domain::managed_service::{
     ManagedServiceFile, ManagedServicePlan, ManagedServicePlanRequest,
 };
 use crate::domain::secret_backend::ManagedSecretBackendAction;
+use crate::domain::stored_state::{StoredOn, check_schema, unreadable};
 use crate::domain::workspace::ProjectId;
 
 use super::admin::{VaultConnectionAdministrator, VaultSetupRequest, normalized_locations};
@@ -97,7 +98,6 @@ impl ManagedVaultPlan {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct ManagedVaultState {
     schema: u32,
     installation: String,

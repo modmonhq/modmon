@@ -10,8 +10,10 @@ use crate::adapters::file_lock;
 use crate::domain::access::AccessPolicy;
 use crate::domain::error::MmError;
 use crate::domain::host_policy::{
-    EmergencyBlock, EnvironmentAccessRecord, HostPolicy, ProjectEnrollment, effective_policy,
+    ACCESS_RECORD_SCHEMA_VERSION, EmergencyBlock, EnvironmentAccessRecord,
+    HOST_POLICY_SCHEMA_VERSION, HostPolicy, ProjectEnrollment, effective_policy,
 };
+use crate::domain::stored_state::{StoredOn, check_schema, stored_version, unreadable};
 use crate::domain::workspace::ProjectId;
 
 const MAX_POLICY_BYTES: usize = 4 * 1024 * 1024;
@@ -140,11 +142,11 @@ impl HostAccessStore {
         for project in host.projects.keys() {
             let directory = self.project_directory(*project).join("access");
             for (path, bytes) in read_json_files(&directory)? {
-                let record: EnvironmentAccessRecord =
-                    serde_json::from_slice(&bytes).map_err(|error| MmError::ConfigParse {
-                        path: path.clone(),
-                        message: error.to_string(),
-                    })?;
+                if let Some(schema) = stored_version(&bytes, "schema-version") {
+                    check_schema(&path, schema, ACCESS_RECORD_SCHEMA_VERSION, StoredOn::Host)?;
+                }
+                let record: EnvironmentAccessRecord = serde_json::from_slice(&bytes)
+                    .map_err(|error| unreadable(&path, "access record", &error, StoredOn::Host))?;
                 if record.project_id != *project
                     || path.file_stem().and_then(|stem| stem.to_str())
                         != Some(record.environment.as_str())
@@ -159,11 +161,8 @@ impl HostAccessStore {
             }
             let path = self.blocks_path(*project);
             if let Some(bytes) = read_optional(&path)? {
-                let project_blocks: Vec<EmergencyBlock> =
-                    serde_json::from_slice(&bytes).map_err(|error| MmError::ConfigParse {
-                        path: path.clone(),
-                        message: error.to_string(),
-                    })?;
+                let project_blocks: Vec<EmergencyBlock> = serde_json::from_slice(&bytes)
+                    .map_err(|error| unreadable(&path, "access blocks", &error, StoredOn::Host))?;
                 hasher.update(&(bytes.len() as u64).to_le_bytes());
                 hasher.update(&bytes);
                 blocks.extend(
@@ -510,6 +509,13 @@ pub fn parse_host_policy(path: &Path, bytes: &[u8]) -> Result<HostPolicy, MmErro
         return Err(security(
             "this is a schema-1 access.yaml; mmd now reads /etc/mm/host.yaml (schema-version: 2) and takes users from each project's users file. See the migration guide in the remote access docs.",
         ));
+    }
+    if let Some(version) = value
+        .get("schema-version")
+        .and_then(serde_yaml_ng::Value::as_u64)
+        .and_then(|version| u32::try_from(version).ok())
+    {
+        check_schema(path, version, HOST_POLICY_SCHEMA_VERSION, StoredOn::Host)?;
     }
     let host: HostPolicy = serde_yaml_ng::from_slice(bytes).map_err(duplicate)?;
     host.validate().map_err(|message| MmError::ConfigParse {

@@ -1,10 +1,11 @@
 use std::collections::BTreeMap;
+use std::path::Path;
 use std::time::Duration;
 
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
 use uuid::Uuid;
 
-use super::{SqliteStateStore, state_error};
+use super::{SqliteStateStore, state_error, stored_json};
 use crate::app::ports::SchedulerRepository;
 use crate::domain::config::{JobConfig, ScheduleConcurrency, ScheduleConfig};
 use crate::domain::error::MmError;
@@ -112,6 +113,7 @@ fn retire_absent<'a>(
 
 fn load_schedule_definitions(
     connection: &Connection,
+    path: &Path,
     project_id: ProjectId,
     environment: &str,
 ) -> Result<BTreeMap<String, ScheduleConfig>, MmError> {
@@ -130,7 +132,7 @@ fn load_schedule_definitions(
         .map_err(state_error)?;
     for row in rows {
         let (name, json) = row.map_err(state_error)?;
-        schedules.insert(name, deserialize_definition(&json, "schedule")?);
+        schedules.insert(name, deserialize_definition(path, &json, "schedule")?);
     }
     Ok(schedules)
 }
@@ -191,6 +193,7 @@ fn insert_run_tx(transaction: &Transaction<'_>, run: &NewJobRun) -> Result<Uuid,
 
 fn load_claim(
     connection: &Connection,
+    path: &Path,
     id: Uuid,
 ) -> Result<(JobRun, JobConfig, Option<ScheduleConfig>), MmError> {
     let (job, schedule) = connection
@@ -205,10 +208,10 @@ fn load_claim(
     })?;
     Ok((
         run,
-        deserialize_definition(&job, "job")?,
+        deserialize_definition(path, &job, "job")?,
         schedule
             .as_deref()
-            .map(|json| deserialize_definition(json, "schedule"))
+            .map(|json| deserialize_definition(path, json, "schedule"))
             .transpose()?,
     ))
 }
@@ -412,12 +415,11 @@ fn serialize_definition<T: serde::Serialize>(value: &T) -> Result<String, MmErro
 }
 
 fn deserialize_definition<T: serde::de::DeserializeOwned>(
+    path: &Path,
     value: &str,
     kind: &str,
 ) -> Result<T, MmError> {
-    serde_json::from_str(value).map_err(|error| MmError::Security {
-        message: format!("stored {kind} definition is invalid: {error}"),
-    })
+    stored_json(path, value, &format!("{kind} definition"))
 }
 
 fn parse_uuid(value: &str) -> Result<Uuid, MmError> {

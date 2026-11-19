@@ -16,7 +16,7 @@ impl GateRepository for SqliteStateStore {
         self.connection()?.query_row(
             "SELECT policy_json FROM gate_policies WHERE project_id=?1 AND environment_name=?2 AND policy_name=?3",
             params![project_id.0.to_string(), environment, name], |row| row.get::<_, String>(0),
-        ).optional().map_err(state_error)?.map(|json| decode(&json, "gate policy")).transpose()
+        ).optional().map_err(state_error)?.map(|json| decode(&self.path, &json, "gate policy")).transpose()
     }
 
     fn policy_by_id(&self, id: Uuid) -> Result<Option<GatePolicy>, MmError> {
@@ -28,7 +28,7 @@ impl GateRepository for SqliteStateStore {
             )
             .optional()
             .map_err(state_error)?
-            .map(|json| decode(&json, "gate policy"))
+            .map(|json| decode(&self.path, &json, "gate policy"))
             .transpose()
     }
 
@@ -46,7 +46,7 @@ impl GateRepository for SqliteStateStore {
             .map_err(state_error)?;
         rows.map(|row| {
             row.map_err(state_error)
-                .and_then(|json| decode(&json, "gate policy"))
+                .and_then(|json| decode(&self.path, &json, "gate policy"))
         })
         .collect()
     }
@@ -392,10 +392,12 @@ fn encode(value: &impl serde::Serialize, kind: &str) -> Result<String, MmError> 
         message: format!("could not serialize {kind}: {error}"),
     })
 }
-fn decode<T: serde::de::DeserializeOwned>(json: &str, kind: &str) -> Result<T, MmError> {
-    serde_json::from_str(json).map_err(|error| MmError::State {
-        message: format!("stored {kind} is invalid: {error}"),
-    })
+fn decode<T: serde::de::DeserializeOwned>(
+    path: &Path,
+    json: &str,
+    kind: &str,
+) -> Result<T, MmError> {
+    stored_json(path, json, kind)
 }
 fn stale(kind: &str) -> MmError {
     MmError::State {

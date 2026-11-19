@@ -40,7 +40,7 @@ impl ValueKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
+#[serde(tag = "action", rename_all = "snake_case")]
 pub enum StagedAction {
     /// A new value, sealed to the node. Every node gets the same revision.
     Set { revision: String },
@@ -61,7 +61,6 @@ impl StagedAction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct ValueChange {
     pub key: String,
     pub kind: ValueKind,

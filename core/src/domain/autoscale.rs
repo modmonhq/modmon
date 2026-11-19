@@ -185,7 +185,7 @@ impl PercentSpec {
 /// One rule, resolved: the share and how long it has to hold, in whole
 /// steps of the metrics store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct Rule {
     pub threshold: Percent,
     pub hold_seconds: u64,
@@ -200,7 +200,7 @@ impl Rule {
 
 /// A service's autoscale settings with every default filled in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct ScalePolicy {
     pub min: u32,
     pub max: u32,

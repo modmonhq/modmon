@@ -1,6 +1,5 @@
 
 #[derive(Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct HostStaging {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     variables: BTreeMap<String, StoredSecret>,
@@ -31,7 +30,6 @@ impl HostStaging {
 /// A stage a node checked and keeps until the client commits or reverts
 /// it on every node. Its values stay sealed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct PreparedStage {
     pub environment: String,
     pub principal: String,
@@ -42,7 +40,6 @@ pub struct PreparedStage {
 }
 
 #[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct StagedEntry {
     value: Option<Zeroizing<String>>,
     revision: String,
@@ -95,7 +92,6 @@ impl StagedEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct ChangeRecord {
     revision: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -105,7 +101,6 @@ struct ChangeRecord {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct StageUndo {
     stage: Uuid,
     previous: BTreeMap<String, Option<StagedEntry>>,

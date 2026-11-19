@@ -14,7 +14,7 @@ use crate::domain::build::{
     ImageBuildPlan, ImageBuildResult, PLAN_SCHEMA, ReusableImage, ReusableImageRecord,
 };
 use crate::domain::config_resolve::{route_paths_overlap, route_priority};
-use crate::domain::deployment::DeploymentPlan;
+use crate::domain::deployment::{DEPLOYMENT_PLAN_SCHEMA, DeploymentPlan};
 use crate::domain::environment::{EnvironmentValueOverride, is_safe_environment_value};
 use crate::domain::error::MmError;
 use crate::domain::ingress::{
@@ -24,11 +24,16 @@ use crate::domain::ingress::{
 use crate::domain::operation::{
     NewOperation, OperationEvent, OperationId, OperationKind, OperationState, OperationSummary,
 };
+use crate::domain::stored_state::{StoredOn, unreadable, written_by_newer_mm};
 use crate::domain::target::{TargetBootstrapPlan, TargetBootstrapResult, TargetId};
 use crate::domain::workspace::{ProjectId, WorkspaceId, WorkspaceRecord, WorkspaceRegistration};
 
 const INITIAL_SCHEMA: &str = include_str!("../../../migrations/0001_initial.sql");
-const MIGRATIONS: &[(&str, &str)] = &[("0001_initial", INITIAL_SCHEMA)];
+/// Applied in order and recorded in `schema_migrations`. Append only: a
+/// released migration never changes.
+const MIGRATIONS: &[Migration] = &[("0001_initial", INITIAL_SCHEMA)];
+
+pub type Migration = (&'static str, &'static str);
 
 mod environment_values;
 mod gate;
@@ -43,6 +48,7 @@ use home::make_private_file;
 
 pub struct SqliteStateStore {
     connection: Mutex<Connection>,
+    path: PathBuf,
 }
 
 impl std::fmt::Debug for SqliteStateStore {
@@ -54,8 +60,18 @@ impl std::fmt::Debug for SqliteStateStore {
 }
 
 impl SqliteStateStore {
-    /// Existing state only: no migrations, WAL changes, or file creation.
+    /// Existing state only: no file creation. State an earlier release
+    /// wrote is migrated first.
     pub fn inspect(path: &Path) -> Result<Option<Self>, MmError> {
+        Self::inspect_with(path, MIGRATIONS)
+    }
+
+    pub fn open(path: &Path) -> Result<Self, MmError> {
+        Self::open_with(path, MIGRATIONS)
+    }
+
+    #[doc(hidden)]
+    pub fn inspect_with(path: &Path, migrations: &[Migration]) -> Result<Option<Self>, MmError> {
         ensure_no_symlink_components(path)?;
         if !path.exists() {
             return Ok(None);
@@ -65,15 +81,21 @@ impl SqliteStateStore {
         let connection =
             Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
                 .map_err(state_error)?;
-        if !inspect_schema(&connection, path)? {
-            return Ok(None);
+        match inspect_schema(&connection, path, migrations)? {
+            Schema::Missing => Ok(None),
+            Schema::Current => Ok(Some(Self {
+                connection: Mutex::new(connection),
+                path: path.to_owned(),
+            })),
+            Schema::Pending => {
+                drop(connection);
+                Self::open_with(path, migrations).map(Some)
+            }
         }
-        Ok(Some(Self {
-            connection: Mutex::new(connection),
-        }))
     }
 
-    pub fn open(path: &Path) -> Result<Self, MmError> {
+    #[doc(hidden)]
+    pub fn open_with(path: &Path, migrations: &[Migration]) -> Result<Self, MmError> {
         let _phase = crate::app::timing::phase("state.open");
         ensure_no_symlink_components(path)?;
         #[cfg(unix)]
@@ -86,16 +108,17 @@ impl SqliteStateStore {
         connection
             .busy_timeout(Duration::from_secs(5))
             .map_err(state_error)?;
-        inspect_schema(&connection, path)?;
+        inspect_schema(&connection, path, migrations)?;
         connection
             .execute_batch("PRAGMA foreign_keys = ON;")
             .map_err(state_error)?;
         enable_wal(&connection)?;
-        initialize_schema(&mut connection)?;
+        initialize_schema(&mut connection, path, migrations)?;
         make_private_file(path)?;
 
         Ok(Self {
             connection: Mutex::new(connection),
+            path: path.to_owned(),
         })
     }
 
@@ -106,7 +129,17 @@ impl SqliteStateStore {
     }
 }
 
-fn inspect_schema(connection: &Connection, path: &Path) -> Result<bool, MmError> {
+enum Schema {
+    Missing,
+    Current,
+    Pending,
+}
+
+fn inspect_schema(
+    connection: &Connection,
+    path: &Path,
+    migrations: &[Migration],
+) -> Result<Schema, MmError> {
     // One snapshot for every question. Asked one by one, a database that
     // another process finishes creating in between has no migration table
     // for the first question and a `workspaces` table for the last, which
@@ -117,31 +150,13 @@ fn inspect_schema(connection: &Connection, path: &Path) -> Result<bool, MmError>
         [], |row| row.get(0),
     ).map_err(state_error)?;
     if has_migrations {
-        let unsupported = connection
-            .query_row(
-                "SELECT version FROM schema_migrations WHERE version <> '0001_initial' LIMIT 1",
-                [],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()
-            .map_err(state_error)?;
-        if let Some(version) = unsupported {
-            return Err(MmError::State {
-                message: format!(
-                    "unsupported SQLite migration '{version}' at {}; use a compatible mm version",
-                    path.display()
-                ),
+        let applied = applied_migrations(connection, path, migrations)?;
+        if !applied.is_empty() {
+            return Ok(if applied.len() == migrations.len() {
+                Schema::Current
+            } else {
+                Schema::Pending
             });
-        }
-        let applied: bool = connection
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = '0001_initial')",
-                [],
-                |row| row.get(0),
-            )
-            .map_err(state_error)?;
-        if applied {
-            return Ok(true);
         }
     }
     let legacy: bool = connection.query_row(
@@ -149,13 +164,45 @@ fn inspect_schema(connection: &Connection, path: &Path) -> Result<bool, MmError>
         [], |row| row.get(0),
     ).map_err(state_error)?;
     if legacy {
-        return Err(MmError::Setup {
-            issue: crate::domain::readiness::SetupIssue::LegacyState {
-                path: path.to_owned(),
-            },
-        });
+        return Err(legacy_state(path));
     }
-    Ok(false)
+    Ok(Schema::Missing)
+}
+
+/// The migrations a database has, refused when one is not in `migrations`:
+/// a newer release wrote it, and nothing here may reset it.
+fn applied_migrations(
+    connection: &Connection,
+    path: &Path,
+    migrations: &[Migration],
+) -> Result<Vec<String>, MmError> {
+    let applied = connection
+        .prepare("SELECT version FROM schema_migrations ORDER BY version")
+        .and_then(|mut statement| {
+            statement
+                .query_map([], |row| row.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .map_err(state_error)?;
+    if let Some(unknown) = applied
+        .iter()
+        .find(|version| !migrations.iter().any(|(known, _)| known == version))
+    {
+        return Err(written_by_newer_mm(
+            path,
+            &format!("state migration {unknown}"),
+            StoredOn::ThisMachine,
+        ));
+    }
+    Ok(applied)
+}
+
+fn legacy_state(path: &Path) -> MmError {
+    MmError::Setup {
+        issue: crate::domain::readiness::SetupIssue::LegacyState {
+            path: path.to_owned(),
+        },
+    }
 }
 
 fn enable_wal(connection: &Connection) -> Result<(), MmError> {
@@ -452,7 +499,11 @@ fn invalid_enum(column: usize, value: &str, kind: &str) -> rusqlite::Error {
     )
 }
 
-fn initialize_schema(connection: &mut Connection) -> Result<(), MmError> {
+fn initialize_schema(
+    connection: &mut Connection,
+    path: &Path,
+    migrations: &[Migration],
+) -> Result<(), MmError> {
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(state_error)?;
@@ -464,49 +515,30 @@ fn initialize_schema(connection: &mut Connection) -> Result<(), MmError> {
             );",
         )
         .map_err(state_error)?;
-    let unsupported = transaction
-        .query_row(
-            "SELECT version FROM schema_migrations WHERE version <> '0001_initial' LIMIT 1",
-            [],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()
-        .map_err(state_error)?;
-    if let Some(version) = unsupported {
-        return Err(MmError::State {
-            message: format!("unsupported pre-release SQLite migration '{version}'"),
-        });
-    }
-    for &(version, sql) in MIGRATIONS {
-        let applied = transaction
+    let applied = applied_migrations(&transaction, path, migrations)?;
+    if applied.is_empty() {
+        let existing_application_schema = transaction
             .query_row(
-                "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = ?1)",
-                [version],
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'workspaces')",
+                [],
                 |row| row.get::<_, bool>(0),
             )
             .map_err(state_error)?;
-        if !applied {
-            let existing_application_schema = transaction
-                .query_row(
-                    "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'workspaces')",
-                    [],
-                    |row| row.get::<_, bool>(0),
-                )
-                .map_err(state_error)?;
-            if existing_application_schema {
-                return Err(MmError::State {
-                    message: "unsupported pre-baseline SQLite schema; create fresh state"
-                        .to_owned(),
-                });
-            }
-            transaction.execute_batch(sql).map_err(state_error)?;
-            transaction
-                .execute(
-                    "INSERT INTO schema_migrations (version) VALUES (?1)",
-                    [version],
-                )
-                .map_err(state_error)?;
+        if existing_application_schema {
+            return Err(legacy_state(path));
         }
+    }
+    for &(version, sql) in migrations {
+        if applied.iter().any(|done| done == version) {
+            continue;
+        }
+        transaction.execute_batch(sql).map_err(state_error)?;
+        transaction
+            .execute(
+                "INSERT INTO schema_migrations (version) VALUES (?1)",
+                [version],
+            )
+            .map_err(state_error)?;
     }
     transaction.commit().map_err(state_error)
 }
@@ -541,15 +573,17 @@ fn insert_operation_event(
 /// A stored deployment plan. `None` for one made with the removed
 /// `docker-swarm` runtime: mm no longer manages those stacks, so such a plan
 /// is no previous deployment.
-fn parse_deployment_plan_snapshot(json: &str) -> Result<Option<DeploymentPlan>, MmError> {
-    let invalid = |error: serde_json::Error| MmError::Security {
-        message: format!("stored deployment plan snapshot is invalid: {error}"),
-    };
-    let value = serde_json::from_str::<serde_json::Value>(json).map_err(invalid)?;
+fn parse_deployment_plan_snapshot(
+    path: &Path,
+    json: &str,
+) -> Result<Option<DeploymentPlan>, MmError> {
+    let value = stored_json::<serde_json::Value>(path, json, "deployment plan")?;
     if value.get("runtime").and_then(serde_json::Value::as_str) == Some(REMOVED_RUNTIME) {
         return Ok(None);
     }
-    let plan: DeploymentPlan = serde_json::from_value(value).map_err(invalid)?;
+    known_schema(path, &value, "deployment plan", DEPLOYMENT_PLAN_SCHEMA)?;
+    let plan: DeploymentPlan = serde_json::from_value(value)
+        .map_err(|error| unreadable(path, "deployment plan", &error, StoredOn::ThisMachine))?;
     let canonical = plan
         .canonical_hash()
         .map_err(|message| MmError::Security { message })?;
@@ -557,8 +591,43 @@ fn parse_deployment_plan_snapshot(json: &str) -> Result<Option<DeploymentPlan>, 
         Ok(Some(plan))
     } else {
         Err(MmError::Security {
-            message: "stored deployment plan snapshot failed canonical verification".to_owned(),
+            message: format!(
+                "the deployment plan stored in {} failed canonical verification; if a newer mm wrote it, {}",
+                path.display(),
+                StoredOn::ThisMachine.next_step()
+            ),
         })
+    }
+}
+
+/// A JSON `what` stored in a row of the database at `path`.
+fn stored_json<T: serde::de::DeserializeOwned>(
+    path: &Path,
+    json: &str,
+    what: &str,
+) -> Result<T, MmError> {
+    serde_json::from_str(json)
+        .map_err(|error| unreadable(path, what, &error, StoredOn::ThisMachine))
+}
+
+/// Refuses a stored `what` whose `schema` is not `current`: only a newer
+/// release writes another.
+fn known_schema(
+    path: &Path,
+    value: &serde_json::Value,
+    what: &str,
+    current: &str,
+) -> Result<(), MmError> {
+    match value.get("schema").and_then(serde_json::Value::as_str) {
+        Some(schema) if schema == current => Ok(()),
+        Some(schema) => Err(written_by_newer_mm(
+            path,
+            &format!("{what} schema '{schema}'"),
+            StoredOn::ThisMachine,
+        )),
+        None => Err(MmError::State {
+            message: format!("{what} in {} has no schema", path.display()),
+        }),
     }
 }
 

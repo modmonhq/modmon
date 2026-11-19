@@ -30,6 +30,7 @@ use crate::domain::cluster_ingress::{
 };
 use crate::domain::error::MmError;
 use crate::domain::runtime::RuntimeKind;
+use crate::domain::stored_state::{StoredOn, unknown_in, written_by_newer_mm};
 
 #[path = "cluster_ingress/acme.rs"]
 mod acme;
@@ -485,6 +486,9 @@ fn read_tables(root: &Path) -> Result<Vec<(String, IngressTable)>, MmError> {
         match serde_json::from_slice::<IngressTable>(&bytes) {
             Ok(table) => read.push((name.trim_end_matches(".json").to_owned(), table)),
             Err(error) => {
+                if let Some(unknown) = unknown_in(&error) {
+                    return Err(written_by_newer_mm(&path, &unknown, StoredOn::Host));
+                }
                 tracing::warn!(file = %path.display(), %error, "an ingress table the keeper cannot read is left out");
             }
         }

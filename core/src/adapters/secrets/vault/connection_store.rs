@@ -13,6 +13,7 @@ use crate::adapters::private_fs::{
     ensure_safe_identity_parent, ensure_user_controlled_directory, read_regular_file,
 };
 use crate::domain::error::MmError;
+use crate::domain::stored_state::{StoredOn, newer_mm_message, stored_version};
 use crate::domain::workspace::ProjectId;
 
 const DOCUMENT_VERSION: u32 = 1;
@@ -36,7 +37,6 @@ impl From<crate::domain::secret_backend::ProviderMode> for VaultMode {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct VaultAppRoleCredential {
     pub role_id: Zeroizing<String>,
     pub secret_id: Zeroizing<String>,
@@ -53,7 +53,6 @@ impl std::fmt::Debug for VaultAppRoleCredential {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct VaultConnection {
     pub mode: VaultMode,
     pub address: String,
@@ -87,7 +86,6 @@ impl std::fmt::Debug for VaultConnection {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct VaultRecoveryMaterial {
     pub root_token: Zeroizing<String>,
     pub unseal_key: Zeroizing<String>,
@@ -104,7 +102,6 @@ impl std::fmt::Debug for VaultRecoveryMaterial {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct Document {
     version: u32,
     connections: BTreeMap<String, VaultConnection>,
@@ -275,6 +272,17 @@ impl VaultConnectionStore {
                 message: "could not decrypt Vault connection registry".to_owned(),
             },
         )?);
+        if let Some(version) = stored_version(&plaintext, "version")
+            && version > DOCUMENT_VERSION
+        {
+            return Err(MmError::Secret {
+                message: newer_mm_message(
+                    &self.store_path,
+                    &format!("version {version}"),
+                    StoredOn::MmHome,
+                ),
+            });
+        }
         let document: Document =
             serde_json::from_slice(&plaintext).map_err(|error| MmError::Secret {
                 message: format!(

@@ -200,6 +200,14 @@ fn read_archive(input: impl Read) -> Result<(StateManifest, Vec<Entry>), MmError
             None if name == MANIFEST => {
                 let read: StateManifest = serde_json::from_slice(&bytes)
                     .map_err(|error| refused(&format!("its manifest does not read: {error}")))?;
+                if read.format > STATE_FORMAT {
+                    return Err(refused(&format!(
+                        "it is format {} from mmd {}, and this mmd reads format {STATE_FORMAT}; {}",
+                        read.format,
+                        read.mmd_version,
+                        crate::domain::stored_state::StoredOn::Host.next_step()
+                    )));
+                }
                 if read.format != STATE_FORMAT {
                     return Err(refused(&format!(
                         "it is format {}, and this mmd reads format {STATE_FORMAT}",

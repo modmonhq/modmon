@@ -208,7 +208,6 @@ impl OnceRecord {
 /// The record every host of an environment keeps of a `once` job: which
 /// node started it, as part of which deployment, and its run there.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct OnceRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub node: Option<String>,

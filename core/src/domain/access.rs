@@ -64,7 +64,6 @@ pub enum AccessResourceKind {
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
 )]
-#[serde(deny_unknown_fields)]
 pub struct Capability {
     pub action: AccessAction,
     pub resource: AccessResourceKind,

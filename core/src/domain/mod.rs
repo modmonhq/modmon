@@ -61,6 +61,7 @@ pub mod service_stack;
 pub mod shared_storage;
 pub mod stack;
 pub mod staged;
+pub mod stored_state;
 pub mod target;
 pub mod target_ingress;
 pub mod traefik_dynamic;

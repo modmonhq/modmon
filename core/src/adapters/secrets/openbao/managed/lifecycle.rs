@@ -273,11 +273,11 @@ macro_rules! managed_openbao_lifecycle { () => {
         let bytes = read_regular_file(&path, 1024 * 1024)?.ok_or_else(|| MmError::State {
             message: "managed provider state disappeared".to_owned(),
         })?;
-        let state = serde_json::from_slice::<ManagedOpenBaoState>(&bytes).map_err(|error| {
-            MmError::State {
-                message: format!("managed provider state is invalid: {error}"),
-            }
-        })?;
+        if let Some(schema) = crate::domain::stored_state::stored_version(&bytes, "schema") {
+            check_schema(&path, schema, MANAGED_STATE_SCHEMA, StoredOn::ThisMachine)?;
+        }
+        let state = serde_json::from_slice::<ManagedOpenBaoState>(&bytes)
+            .map_err(|error| unreadable(&path, "managed provider state", &error, StoredOn::ThisMachine))?;
         if state.schema != MANAGED_STATE_SCHEMA || !supported_image(&state.image) {
             return Err(MmError::Security {
                 message: "managed provider state schema or image is unsupported".to_owned(),

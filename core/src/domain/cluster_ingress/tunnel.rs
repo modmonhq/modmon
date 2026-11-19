@@ -90,7 +90,7 @@ impl SealedTunnel {
 
 /// What an ingress node keeps of an environment's tunnel.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct TableTunnel {
     pub token: String,
     pub image: String,

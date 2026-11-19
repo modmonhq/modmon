@@ -64,7 +64,7 @@ fn is_false(value: &bool) -> bool {
 
 /// One node's part of a network.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct NodeAddresses {
     /// The node's slice of the network's block.
     pub slice: Ipv4Cidr,
@@ -75,7 +75,7 @@ pub struct NodeAddresses {
 
 /// The addresses of one network: its block and each node's slice of it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct NetworkAddresses {
     pub block: Ipv4Cidr,
     /// Containers on the network reach its members and nothing else.
@@ -145,7 +145,7 @@ pub fn environment_network(
 
 /// Who holds which addresses, by [`network_key`].
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct NetworkTable {
     #[serde(default)]
     pub networks: BTreeMap<String, NetworkAddresses>,

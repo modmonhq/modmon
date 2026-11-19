@@ -24,7 +24,6 @@ pub fn age_storage_descriptor() -> Result<StorageCapabilityDescriptor, MmError> 
 }
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct SecretDocument {
     version: u32,
     entries: BTreeMap<String, SecretEntry>,
@@ -51,7 +50,6 @@ struct CurrentSecretDocument<'a> {
 }
 
 #[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct SecretEntry {
     active: StoredSecret,
     candidate: Option<StoredSecret>,
@@ -60,7 +58,6 @@ struct SecretEntry {
 }
 
 #[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct StoredSecret {
     value: Zeroizing<String>,
     revision: String,
@@ -68,7 +65,6 @@ struct StoredSecret {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct RetiredSecret {
     revision: String,
     retired_at_unix_ms: i64,

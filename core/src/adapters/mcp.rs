@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::agents::{AgentsConfig, agents_policy_hash};
 use crate::domain::error::MmError;
-use crate::domain::mcp::McpServerConfig;
+use crate::domain::mcp::{MCP_CONFIG_SCHEMA_VERSION, McpServerConfig};
+use crate::domain::stored_state::{StoredOn, check_schema};
 use crate::domain::workspace::ProjectId;
 
 const MAX_CONFIG_BYTES: usize = 1024 * 1024;
@@ -66,6 +67,14 @@ impl McpPolicyStore {
                 ),
             });
         }
+        if let Some(version) = version.and_then(|version| u32::try_from(version).ok()) {
+            check_schema(
+                path,
+                version,
+                MCP_CONFIG_SCHEMA_VERSION,
+                StoredOn::ThisMachine,
+            )?;
+        }
         let config: McpServerConfig =
             serde_json::from_slice(&bytes).map_err(|error| MmError::ConfigParse {
                 path: path.to_path_buf(),
@@ -85,7 +94,6 @@ impl McpPolicyStore {
 
 /// The `agents:` block a user last accepted for one checkout.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct TrustedAgentsPolicy {
     pub project_id: ProjectId,
     pub policy_hash: String,

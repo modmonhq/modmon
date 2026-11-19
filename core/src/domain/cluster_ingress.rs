@@ -74,7 +74,7 @@ pub const ACME_FILE: &str = "acme.json";
 
 /// One route of an environment as the ingress serves it.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct IngressRoute {
     /// The proxy's name for the route, unique across projects.
     pub router: String,
@@ -245,7 +245,7 @@ impl SealedIngress {
 /// [`table_name`]. `mmd` turns it into the proxy's file together with the
 /// backends of the moment.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct IngressTable {
     /// The network the backends are reached on, by its name across the
     /// cluster.
