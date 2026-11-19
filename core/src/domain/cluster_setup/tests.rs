@@ -29,6 +29,7 @@ fn plan() -> Result<ClusterSetupPlan, Box<dyn std::error::Error>> {
         binaries: PathBuf::from("/opt/mm"),
         mm_digest: "a".repeat(64),
         mmd_digest: "b".repeat(64),
+        architecture: "x86_64".to_owned(),
         secrets: vec![ClusterSecretPlan {
             name: "app.key".to_owned(),
             reference: "age://local/app-key".to_owned(),

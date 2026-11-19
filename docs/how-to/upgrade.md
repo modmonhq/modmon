@@ -19,6 +19,13 @@ same release.
   installs the `mm` and `mmd` from the directory of the `mm` you run, so that
   directory needs `mmd`: run the installer with `--with-daemon` once, or pass
   `--host-binaries DIRECTORY` to install others.
+- Use `mm` and `mmd` built for the hosts' CPU. Setup reads which CPU they are
+  built for, names it in the plan (`built for: x86_64`, or
+  `installs: mm and mmd for x86_64 from …` for a cluster), and refuses a host of
+  another CPU before it installs anything. From macOS, or for hosts whose CPU
+  differs from this machine's, unpack the Linux archive for the hosts' CPU,
+  such as `mm-v0.1.1-aarch64-unknown-linux-gnu.tar.gz`, and pass its directory
+  with `--host-binaries`.
 - Check that no deployment runs: `mm deploy status`. A deployment that runs on
   a node while its `mmd` restarts fails at its current step and rolls back.
 - If the environment pins the release with

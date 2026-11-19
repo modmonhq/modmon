@@ -316,6 +316,9 @@ pub struct ClusterSetupPlan {
     pub binaries: PathBuf,
     pub mm_digest: String,
     pub mmd_digest: String,
+    /// The CPU `mm` and `mmd` are built for, as `uname -m` names it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub architecture: String,
     pub secrets: Vec<ClusterSecretPlan>,
     /// The environment's managed secret store, when it declares one.
     #[serde(default, skip_serializing_if = "Option::is_none")]

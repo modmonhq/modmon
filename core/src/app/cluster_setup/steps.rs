@@ -137,6 +137,7 @@ impl ClusterSetupService {
             binaries: plan.binaries.clone(),
             mm_digest: plan.mm_digest.clone(),
             mmd_digest: plan.mmd_digest.clone(),
+            architecture: plan.architecture.clone(),
             upgrade: false,
             downgrade: false,
             notices: Vec::new(),

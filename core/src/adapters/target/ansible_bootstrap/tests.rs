@@ -393,6 +393,7 @@ fn access_plan(
         mmd_digest: blake3::hash(&fs::read(binaries.join("mmd"))?)
             .to_hex()
             .to_string(),
+        architecture: "x86_64".to_owned(),
         upgrade: false,
         downgrade: false,
         notices: Vec::new(),

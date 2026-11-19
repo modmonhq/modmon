@@ -27,6 +27,7 @@ pub use development_units::{DevelopmentDocuments, DevelopmentUnitService};
 pub(crate) mod dockerfile;
 mod environment;
 mod gate;
+pub(crate) mod host_binaries;
 mod keys;
 pub use keys::{KeyOutcome, KeyService, KeyServiceDependencies, VaultPreference};
 mod metrics;

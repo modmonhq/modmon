@@ -14,6 +14,32 @@ use crate::domain::host_policy::{BreakGlassKey, parse_public_key, valid_user_nam
 /// At most this many break-glass keys per setup run.
 pub const MAX_BREAK_GLASS_KEYS: usize = 16;
 
+/// The CPUs a release builds `mm` and `mmd` for, as `uname -m` names them.
+pub const HOST_ARCHITECTURES: [&str; 2] = ["x86_64", "aarch64"];
+
+/// The CPU a Linux executable is built for, from the first bytes of its
+/// ELF header; why it is not one setup can install otherwise.
+pub fn linux_architecture(header: &[u8]) -> Result<&'static str, String> {
+    match header {
+        [0x7f, b'E', b'L', b'F', 2, 1, ..] if header.len() >= 20 => {
+            match u16::from_le_bytes([header[18], header[19]]) {
+                62 => Ok("x86_64"),
+                183 => Ok("aarch64"),
+                machine => Err(format!(
+                    "is a Linux executable for a CPU mm has no release for (ELF machine {machine})"
+                )),
+            }
+        }
+        [0x7f, b'E', b'L', b'F', ..] => {
+            Err("is not a 64-bit little-endian Linux executable".to_owned())
+        }
+        [0xcf, 0xfa, 0xed, 0xfe, ..] | [0xca, 0xfe, 0xba, 0xbe, ..] => {
+            Err("is built for macOS, not Linux".to_owned())
+        }
+        _ => Err("is not a Linux executable".to_owned()),
+    }
+}
+
 /// What the access step installs, as reviewed in the plan.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
@@ -36,6 +62,9 @@ pub struct BootstrapAccess {
     pub mm_digest: String,
     /// BLAKE3 of `<binaries>/mmd`.
     pub mmd_digest: String,
+    /// The CPU `mm` and `mmd` are built for, as `uname -m` names it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub architecture: String,
     /// `--upgrade`: install over another build or an older release.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub upgrade: bool,
@@ -106,6 +135,12 @@ impl BootstrapAccess {
                 return Err("host binary digest must be a lowercase BLAKE3 digest".to_owned());
             }
         }
+        if !HOST_ARCHITECTURES.contains(&self.architecture.as_str()) {
+            return Err(format!(
+                "host binaries must be built for x86_64 or aarch64, not '{}'",
+                self.architecture
+            ));
+        }
         Ok(())
     }
 
@@ -138,6 +173,7 @@ impl BootstrapAccess {
         );
         hash_field(hasher, &self.mm_digest);
         hash_field(hasher, &self.mmd_digest);
+        hash_field(hasher, &self.architecture);
         for (set, flag) in [(self.upgrade, "upgrade"), (self.downgrade, "downgrade")] {
             if set {
                 hash_field(hasher, flag);

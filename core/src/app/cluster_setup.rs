@@ -261,6 +261,7 @@ impl ClusterSetupService {
             input_files: local.input_files,
             mm_digest: local.mm_digest,
             mmd_digest: local.mmd_digest,
+            architecture: local.architecture,
             binaries: local.binaries,
             secrets: secrets.secrets,
             secret_store,

@@ -371,6 +371,7 @@ break-glass:
             binaries: PathBuf::from("/opt/mm"),
             mm_digest: "a".repeat(64),
             mmd_digest: "b".repeat(64),
+            architecture: "x86_64".to_owned(),
             secrets: Vec::new(),
             secret_store: None,
             unset_secrets: Vec::new(),

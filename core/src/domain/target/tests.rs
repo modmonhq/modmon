@@ -306,6 +306,7 @@ fn access_plan() -> Result<TargetBootstrapPlan, String> {
         binaries: PathBuf::from("/opt/mm release"),
         mm_digest: "d".repeat(64),
         mmd_digest: "e".repeat(64),
+        architecture: "aarch64".to_owned(),
         upgrade: false,
         downgrade: false,
         notices: Vec::new(),
@@ -324,12 +325,13 @@ fn bootstrap_access_binds_every_reviewed_input() -> Result<(), String> {
         plan.required_capabilities.last(),
         Some(&BootstrapCapability::RemoteAccess)
     );
-    let mutations: [fn(&mut BootstrapAccess); 5] = [
+    let mutations: [fn(&mut BootstrapAccess); 6] = [
         |access| access.origin = "ssh://git@github.com/acme/shop.git".to_owned(),
         |access| access.break_glass[0].name = "recovery".to_owned(),
         |access| access.binaries = PathBuf::from("/opt/other"),
         |access| access.mm_digest = "f".repeat(64),
         |access| access.mmd_digest = "f".repeat(64),
+        |access| access.architecture = "x86_64".to_owned(),
     ];
     for mutate in mutations {
         let mut candidate = plan.clone();
@@ -351,7 +353,9 @@ fn bootstrap_access_binds_every_reviewed_input() -> Result<(), String> {
 #[test]
 fn bootstrap_access_rejects_unsafe_inputs() -> Result<(), String> {
     let plan = access_plan()?;
-    let mutations: [fn(&mut BootstrapAccess); 8] = [
+    let mutations: [fn(&mut BootstrapAccess); 10] = [
+        |access| access.architecture = String::new(),
+        |access| access.architecture = "riscv64".to_owned(),
         |access| access.origin_host_key = None,
         |access| access.origin = "http://example.com/shop.git".to_owned(),
         |access| access.break_glass.clear(),

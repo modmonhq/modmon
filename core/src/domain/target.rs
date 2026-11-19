@@ -728,7 +728,8 @@ fn hash_optional_path(hasher: &mut blake3::Hasher, label: &str, value: Option<&s
 #[path = "target/bootstrap_access.rs"]
 mod bootstrap_access;
 pub use bootstrap_access::{
-    BootstrapAccess, BootstrapAccessReport, BootstrapExecution, MAX_BREAK_GLASS_KEYS,
+    BootstrapAccess, BootstrapAccessReport, BootstrapExecution, HOST_ARCHITECTURES,
+    MAX_BREAK_GLASS_KEYS, linux_architecture,
 };
 
 #[path = "target/nodes.rs"]

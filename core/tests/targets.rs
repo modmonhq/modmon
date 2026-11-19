@@ -612,8 +612,8 @@ fn bootstrap_plans_bind_the_remote_access_layer() -> Result<(), Box<dyn std::err
     let manager = TargetManager::new(Arc::new(ConfigLoader), store);
     let binaries = workspace.path().join("release");
     fs::create_dir(&binaries)?;
-    fs::write(binaries.join("mm"), b"mm 0.1.0")?;
-    fs::write(binaries.join("mmd"), b"mmd 0.1.0")?;
+    fs::write(binaries.join("mm"), linux_binary(b"mm 0.1.0"))?;
+    fs::write(binaries.join("mmd"), linux_binary(b"mmd 0.1.0"))?;
     let mut request = BootstrapAccessRequest {
         origin: "git@github.com:acme/shop.git".to_owned(),
         origin_host_key: Some(GITHUB_HOST_KEY.to_owned()),
@@ -648,15 +648,44 @@ fn bootstrap_plans_bind_the_remote_access_layer() -> Result<(), Box<dyn std::err
     let access = plan.access.as_ref().ok_or("access was not planned")?;
     assert_eq!(
         access.mmd_digest,
-        blake3::hash(b"mmd 0.1.0").to_hex().to_string()
+        blake3::hash(&linux_binary(b"mmd 0.1.0"))
+            .to_hex()
+            .to_string()
     );
     let command = plan.apply_command();
     assert!(command.contains(" --origin git@github.com:acme/shop.git "));
     assert!(command.contains(&format!(" --break-glass 'ops={OPS_KEY}' ")));
     assert!(command.ends_with(&format!(" --host-binaries {}", binaries.display())));
+    assert_eq!(access.architecture, "x86_64");
+
+    // Binaries for macOS, or for another CPU than each other, are refused.
+    fs::write(binaries.join("mm"), [0xcf, 0xfa, 0xed, 0xfe, 7, 0, 0, 1])?;
+    let macos = manager
+        .bootstrap_plan(&selection, None, Some(&request))
+        .err()
+        .ok_or("macOS binaries were planned")?
+        .to_string();
+    assert!(macos.contains("is built for macOS"), "{macos}");
+    assert!(
+        macos.contains("aarch64-unknown-linux-gnu.tar.gz"),
+        "{macos}"
+    );
+    let mut arm = linux_binary(b"mm 0.1.0");
+    arm[18..20].copy_from_slice(&183_u16.to_le_bytes());
+    fs::write(binaries.join("mm"), arm)?;
+    let mixed = manager
+        .bootstrap_plan(&selection, None, Some(&request))
+        .err()
+        .ok_or("mm and mmd for two CPUs were planned")?
+        .to_string();
+    assert!(
+        mixed.contains("mm for aarch64 and mmd for x86_64"),
+        "{mixed}"
+    );
+    fs::write(binaries.join("mm"), linux_binary(b"mm 0.1.0"))?;
 
     // A binary that changes after review changes the plan.
-    fs::write(binaries.join("mmd"), b"mmd 0.2.0")?;
+    fs::write(binaries.join("mmd"), linux_binary(b"mmd 0.2.0"))?;
     assert_ne!(
         manager
             .bootstrap_plan(&selection, None, Some(&request))?
@@ -672,7 +701,7 @@ fn bootstrap_plans_bind_the_remote_access_layer() -> Result<(), Box<dyn std::err
             .is_err()
     );
     fs::remove_file(binaries.join("mmd"))?;
-    fs::write(binaries.join("mmd"), b"mmd 0.1.0")?;
+    fs::write(binaries.join("mmd"), linux_binary(b"mmd 0.1.0"))?;
 
     // An SSH origin needs the git server's key so mmd can pin it.
     request.origin_host_key = None;
@@ -682,4 +711,14 @@ fn bootstrap_plans_bind_the_remote_access_layer() -> Result<(), Box<dyn std::err
             .is_err()
     );
     Ok(())
+}
+
+/// `payload` behind the ELF header of an x86-64 Linux executable.
+fn linux_binary(payload: &[u8]) -> Vec<u8> {
+    let mut bytes = vec![0x7f, b'E', b'L', b'F', 2, 1, 1, 0];
+    bytes.resize(18, 0);
+    bytes.extend_from_slice(&62_u16.to_le_bytes());
+    bytes.resize(64, 0);
+    bytes.extend_from_slice(payload);
+    bytes
 }

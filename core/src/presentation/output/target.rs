@@ -312,6 +312,12 @@ fn write_bootstrap_access(
         )
         .map_err(output_error)?;
     }
+    writeln!(
+        writer,
+        "    built for:       {}",
+        terminal_safe(&access.architecture)
+    )
+    .map_err(output_error)?;
     for notice in &access.notices {
         writeln!(writer, "    release:         {}", terminal_safe(notice)).map_err(output_error)?;
     }

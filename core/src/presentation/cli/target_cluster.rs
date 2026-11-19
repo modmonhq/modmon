@@ -276,7 +276,7 @@ fn write_deploy_key(
 fn write_plan(plan: &ClusterSetupPlan, format: OutputFormat) -> Result<(), MmError> {
     write_json_or_text(format, plan, || {
         let mut text = format!(
-            "Cluster setup plan {}\n  project:     {} ({})\n  environment: {}\n  target:      {}\n  runtime:     {}\n  mesh:        {}\n  storage:     {}\n  access sync: {}\n\nNodes:\n",
+            "Cluster setup plan {}\n  project:     {} ({})\n  environment: {}\n  target:      {}\n  runtime:     {}\n  mesh:        {}\n  storage:     {}\n  access sync: {}\n  installs:    mm and mmd for {} from {}\n\nNodes:\n",
             plan.plan_hash,
             plan.project_name,
             plan.project_id.0,
@@ -286,6 +286,8 @@ fn write_plan(plan: &ClusterSetupPlan, format: OutputFormat) -> Result<(), MmErr
             mesh_summary(&plan.cluster.mesh),
             storage_summary(plan),
             plan.access_commit,
+            plan.architecture,
+            plan.binaries.display(),
         );
         for node in &plan.nodes {
             text.push_str(&format!(

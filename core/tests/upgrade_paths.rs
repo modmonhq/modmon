@@ -293,8 +293,8 @@ impl SingleHost {
         )?;
         let binaries = workspace.path().join("release");
         std::fs::create_dir(&binaries)?;
-        std::fs::write(binaries.join("mm"), b"mm of this release")?;
-        std::fs::write(binaries.join("mmd"), b"mmd of this release")?;
+        std::fs::write(binaries.join("mm"), linux_binary(b"mm of this release"))?;
+        std::fs::write(binaries.join("mmd"), linux_binary(b"mmd of this release"))?;
         let mut selection = mm::app::WorkspaceSelection::new(&root, None);
         selection.target = Some("production".to_owned());
         Ok(Self {
@@ -308,7 +308,11 @@ impl SingleHost {
         HostRelease {
             version: THIS.to_owned(),
             protocol: PROTOCOL_VERSION,
-            build: Some(blake3::hash(b"mmd of this release").to_hex().to_string()),
+            build: Some(
+                blake3::hash(&linux_binary(b"mmd of this release"))
+                    .to_hex()
+                    .to_string(),
+            ),
         }
     }
 
@@ -417,4 +421,14 @@ async fn a_target_without_nodes_reads_its_host_release_as_a_cluster_reads_each_n
     );
     assert!(downgrade.apply_command().ends_with(" --downgrade"));
     Ok(())
+}
+
+/// `payload` behind the ELF header of an x86-64 Linux executable.
+fn linux_binary(payload: &[u8]) -> Vec<u8> {
+    let mut bytes = vec![0x7f, b'E', b'L', b'F', 2, 1, 1, 0];
+    bytes.resize(18, 0);
+    bytes.extend_from_slice(&62_u16.to_le_bytes());
+    bytes.resize(64, 0);
+    bytes.extend_from_slice(payload);
+    bytes
 }

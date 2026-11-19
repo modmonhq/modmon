@@ -21,6 +21,16 @@
           - ansible_service_mgr == 'systemd'
         fail_msg: Remote access needs a Linux host that runs systemd.
 
+    - name: Require mm and mmd built for this host's CPU
+      ansible.builtin.assert:
+        that:
+          - "{'amd64': 'x86_64', 'arm64': 'aarch64'}.get(ansible_architecture, ansible_architecture) == mm_access_architecture"
+        fail_msg: >-
+          This host's CPU is {{ ansible_architecture }}, and the mm and mmd that setup
+          would install are built for {{ mm_access_architecture }}. Nothing was installed.
+          Run setup again with --host-binaries DIR, where DIR holds mm and mmd from the
+          release archive for {{ ansible_architecture }}-unknown-linux-gnu.
+
     - name: Install git and the OpenSSH server
       ansible.builtin.apt:
         name: [git, openssh-server]

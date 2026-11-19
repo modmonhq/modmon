@@ -48,6 +48,7 @@ pub(super) struct LocalReading {
     pub input_files: Vec<BootstrapInputFile>,
     pub mm_digest: String,
     pub mmd_digest: String,
+    pub architecture: String,
 }
 
 /// The target as a plan reads it.
@@ -375,6 +376,7 @@ pub(super) async fn read_local(
             input_files: crate::app::targets::collect_bootstrap_inputs(&root)?,
             mm_digest: crate::app::targets::host_binary_digest(&binaries.join("mm"))?,
             mmd_digest: crate::app::targets::host_binary_digest(&binaries.join("mmd"))?,
+            architecture: crate::app::host_binaries::host_binaries_architecture(&binaries)?,
             binaries,
         })
     })

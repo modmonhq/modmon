@@ -66,6 +66,7 @@ pub(super) fn stage(
     let values = serde_json::json!({
         "mm_access_files": utf8(&directory)?,
         "mm_access_report": utf8(&report)?,
+        "mm_access_architecture": access.architecture,
         "mm_access_enroll_argv": enroll_arguments(plan, access),
     });
     reject_templating(&values)?;
