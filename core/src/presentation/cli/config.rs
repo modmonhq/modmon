@@ -59,6 +59,9 @@ pub enum ConfigCommand {
         /// With --for-remote: check against this copy of a host's host.yaml, its `allow` list and, without --environment, the environments it runs.
         #[arg(long, value_name = "FILE", requires = "for_remote")]
         host_policy: Option<PathBuf>,
+        /// Fail on keys this mm does not know, which it otherwise ignores with a warning; for CI.
+        #[arg(long)]
+        strict: bool,
     },
     /// Review typed module declarations.
     Module {
@@ -168,7 +171,8 @@ pub(super) fn run(
         ConfigCommand::Validate {
             for_remote,
             host_policy,
-        } => run_validate(invocation, for_remote, host_policy.as_deref()),
+            strict,
+        } => run_validate(invocation, for_remote, host_policy.as_deref(), strict),
         ConfigCommand::Schema { key: None } => {
             output::write_json(&composition::schema())?;
             Ok(0)
@@ -227,6 +231,7 @@ fn run_validate(
     invocation: &super::dispatch::Invocation,
     for_remote: bool,
     host_policy: Option<&std::path::Path>,
+    strict: bool,
 ) -> Result<u8, MmError> {
     let mut validation = crate::app::Application::read_only(
         composition::project_documents(),
@@ -247,6 +252,9 @@ fn run_validate(
         )? {
             validation.validation.push(diagnostic);
         }
+    }
+    if strict {
+        validation.validation.refuse_unknown_keys();
     }
     output::write_validation(&validation, invocation.format)?;
     Ok(if validation.validation.is_valid() {

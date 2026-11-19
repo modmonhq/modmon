@@ -447,6 +447,7 @@ fn document(two_modules: bool) -> Result<ConfigDocument, String> {
         path: PathBuf::from("/workspace/mm.yaml"),
         sources: Default::default(),
         source_hash: "a".repeat(64),
+        unknown_keys: Vec::new(),
     })
 }
 

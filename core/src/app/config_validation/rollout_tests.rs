@@ -40,6 +40,7 @@ fn findings(
         path: root.path().join(".config/mm.yaml"),
         sources: Default::default(),
         source_hash: "a".repeat(64),
+        unknown_keys: Vec::new(),
     };
     let mut report = ValidationReport::default();
     validate_rollout(

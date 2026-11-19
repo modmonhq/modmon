@@ -50,7 +50,8 @@ impl<'de> Visitor<'de> for BuildTargetVisitor {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct BuildVariantConfig {
     /// The Dockerfile stage; defaults to the target's name.
     #[serde(default, skip_serializing_if = "Option::is_none")]

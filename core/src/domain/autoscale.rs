@@ -61,7 +61,8 @@ pub const MOST_PER_NODE: u32 = 253;
 
 /// `autoscale:` on a service.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct AutoscaleConfig {
     /// How few and how many containers the service runs.
     pub scale: ScaleRange,
@@ -73,7 +74,8 @@ pub struct AutoscaleConfig {
 
 /// `autoscale.scale`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct ScaleRange {
     /// The fewest containers; defaults to the service's `replicas`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -84,7 +86,8 @@ pub struct ScaleRange {
 
 /// `autoscale.metric`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct ScaleMetricConfig {
     /// `cpu` (the default) or `memory`: a share of the container's limit,
     /// or of one core (CPU) or of the node's memory without one.
@@ -99,7 +102,8 @@ pub struct ScaleMetricConfig {
 /// `autoscale.metric.up`: add a container when the average is above
 /// `greater` for `for`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct UpRuleConfig {
     /// Such as `75%`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -112,7 +116,8 @@ pub struct UpRuleConfig {
 /// `autoscale.metric.down`: remove a container when the average is below
 /// `less` for `for`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct DownRuleConfig {
     /// Such as `40%`.
     #[serde(default, skip_serializing_if = "Option::is_none")]

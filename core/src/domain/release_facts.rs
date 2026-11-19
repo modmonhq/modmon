@@ -28,7 +28,8 @@ const MAX_INPUT_BYTES: usize = 4096;
 /// One value under `release-inputs:` that `mm deploy plan` takes with
 /// `--release-input NAME=VALUE`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct ReleaseInputConfig {
     /// A regular expression the whole value has to match, such as
     /// `^[A-Za-z0-9._-]+$`. Without one, any value of printable text is

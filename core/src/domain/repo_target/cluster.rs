@@ -19,7 +19,8 @@ pub use mesh::{MESH_INTERFACE, MeshConfig, WireguardMesh};
 /// One host of a cluster target. `mm target setup record` fills `host-key`,
 /// `daemon-fingerprint`, and `private-address`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct RepoTargetNode {
     /// The node's name and hostname: a lowercase hostname label.
     pub name: String,
@@ -45,7 +46,8 @@ pub struct RepoTargetNode {
 
 /// How the nodes of a cluster target work together. Every key has a default.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct RepoClusterConfig {
     /// The private network between the nodes: a WireGuard mesh mm creates
     /// (`subnet`, `port`, `mtu`) or an existing `interface`.
@@ -112,7 +114,8 @@ fn is_default_networks(networks: &Ipv4Cidr) -> bool {
 
 /// What setup installs on every node of a cluster target.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct RepoTargetSetup {
     /// The account setup connects as; the operator's mm key is authorized for it.
     #[serde(default = "default_setup_user")]
@@ -137,7 +140,8 @@ fn default_setup_user() -> String {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct RepoDeployKey {
     /// The age secret holding the private key (`mm target setup deploy-key`
     /// creates it).
@@ -147,7 +151,8 @@ pub struct RepoDeployKey {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct RepoBreakGlassKey {
     pub name: String,
     /// `ssh-ed25519 AAAA… comment`; keep the private half offline.

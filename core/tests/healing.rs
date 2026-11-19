@@ -78,8 +78,8 @@ fn every_problem_of_health_names_its_key() -> TestResult {
         "{problems:?}"
     );
     assert!(
-        config("{after: 3m, every: 1h}").is_err(),
-        "an unknown key is refused"
+        config("{after: 3m, every: 1h}").is_ok(),
+        "an unknown key is ignored"
     );
     Ok(())
 }

@@ -136,6 +136,11 @@ pub struct DeploymentPlan {
     /// Absent when nothing is released, such as for `mm dev`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub release: Option<crate::domain::release_facts::ReleaseFacts>,
+    /// Keys the configuration sets that the release that planned does not
+    /// read, and ignored. They say what the planner is, so they are not part
+    /// of the plan's hash.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unknown_config_keys: Vec<crate::domain::config::UnknownConfigKey>,
     pub plan_hash: String,
 }
 

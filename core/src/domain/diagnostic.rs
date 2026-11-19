@@ -115,4 +115,14 @@ impl ValidationReport {
     pub fn push(&mut self, diagnostic: Diagnostic) {
         self.diagnostics.push(diagnostic);
     }
+
+    /// Makes every warning about an unknown key an error, as `mm config
+    /// validate --strict` does.
+    pub fn refuse_unknown_keys(&mut self) {
+        for diagnostic in &mut self.diagnostics {
+            if diagnostic.code == crate::domain::config::unknown_keys::UNKNOWN_KEY_CODE {
+                diagnostic.severity = Severity::Error;
+            }
+        }
+    }
 }

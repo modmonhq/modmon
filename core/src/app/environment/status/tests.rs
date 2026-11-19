@@ -41,6 +41,7 @@ fn document() -> Result<ConfigDocument, serde_yaml_ng::Error> {
         path: PathBuf::from("/project/.config/mm.yaml"),
         sources: Default::default(),
         source_hash: "source".to_owned(),
+        unknown_keys: Vec::new(),
     })
 }
 

@@ -1,9 +1,12 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::domain::config::ConfigDocument;
+use crate::app::unknown_keys::{Ignored, deserialize_tracked};
+use crate::domain::config::unknown_keys::{dotted, suggestion};
+use crate::domain::config::{ConfigDocument, UnknownConfigKey};
 use crate::domain::error::MmError;
 use crate::domain::ingress::CanonicalMiddleware;
 use crate::domain::path_policy::{ensure_no_symlink_components, read_regular_file};
@@ -17,6 +20,8 @@ pub struct LoadedProjectMiddleware {
     pub inputs: Vec<StackMiddlewareInput>,
     pub definitions: BTreeMap<String, CanonicalMiddleware>,
     pub names: Vec<String>,
+    /// Keys the middleware files set that this release does not read.
+    pub unknown_keys: Vec<UnknownConfigKey>,
 }
 
 pub fn load_active_middlewares(
@@ -26,6 +31,7 @@ pub fn load_active_middlewares(
     let mut inputs = Vec::new();
     let mut definitions = BTreeMap::new();
     let mut names = Vec::new();
+    let mut unknown_keys = Vec::new();
     for (bundle_name, bundle) in &document.config.ingress.middlewares {
         if !bundle_is_active(bundle.environments.as_slice(), environment) {
             continue;
@@ -40,7 +46,8 @@ pub fn load_active_middlewares(
                 ),
             }
         })?;
-        let parsed = parse_middleware_file(&path, &bytes)?;
+        let (parsed, ignored) = read_middleware_file(&path, &bytes)?;
+        unknown_keys.extend(middleware_unknown_keys(&bundle.file, &ignored));
         if parsed.is_empty() {
             return Err(MmError::Environment {
                 message: format!("middleware bundle '{bundle_name}' defines no middlewares"),
@@ -62,10 +69,12 @@ pub fn load_active_middlewares(
         }
     }
     names.sort();
+    crate::app::unknown_keys::report(&unknown_keys);
     Ok(LoadedProjectMiddleware {
         inputs,
         definitions,
         names,
+        unknown_keys,
     })
 }
 
@@ -77,14 +86,25 @@ pub fn parse_middleware_file(
     path: &Path,
     bytes: &[u8],
 ) -> Result<BTreeMap<String, CanonicalMiddleware>, MmError> {
-    let document = serde_yaml_ng::from_slice::<MiddlewareFile>(bytes).map_err(|error| {
-        MmError::Environment {
-            message: format!(
-                "middleware file '{}' is not a bounded http.middlewares document: {error}",
-                path.display()
-            ),
-        }
-    })?;
+    read_middleware_file(path, bytes).map(|(definitions, _)| definitions)
+}
+
+/// The definitions of a middleware file, and the keys it sets that this
+/// release ignores.
+pub fn read_middleware_file(
+    path: &Path,
+    bytes: &[u8],
+) -> Result<(BTreeMap<String, CanonicalMiddleware>, Ignored), MmError> {
+    let invalid = |error: String| MmError::Environment {
+        message: format!(
+            "middleware file '{}' is not a bounded http.middlewares document: {error}",
+            path.display()
+        ),
+    };
+    let text = std::str::from_utf8(bytes).map_err(|error| invalid(error.to_string()))?;
+    let (document, ignored) =
+        deserialize_tracked::<MiddlewareFile, _>(serde_yaml_ng::Deserializer::from_str(text))
+            .map_err(|(error, _)| invalid(error.to_string()))?;
     let mut definitions = BTreeMap::new();
     for (name, raw) in document.http.middlewares {
         if !is_middleware_name(&name) {
@@ -98,7 +118,20 @@ pub fn parse_middleware_file(
         let definition = raw.into_canonical(path, &name)?;
         definitions.insert(name, definition);
     }
-    Ok(definitions)
+    Ok((definitions, ignored))
+}
+
+/// `ignored` of the middleware file `file`, relative to the project.
+pub fn middleware_unknown_keys(file: &Path, ignored: &Ignored) -> Vec<UnknownConfigKey> {
+    let schema = serde_json::to_value(schemars::schema_for!(MiddlewareFile)).unwrap_or_default();
+    ignored
+        .iter()
+        .map(|path| UnknownConfigKey {
+            file: file.to_string_lossy().into_owned(),
+            key: dotted(path),
+            suggestion: suggestion(&schema, path),
+        })
+        .collect()
 }
 
 pub fn bundle_is_active(environments: &[String], environment: &str) -> bool {
@@ -121,20 +154,20 @@ fn is_middleware_name(name: &str) -> bool {
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(deny_unknown_fields)]
 struct MiddlewareFile {
     http: MiddlewareHttp,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(deny_unknown_fields)]
 struct MiddlewareHttp {
     middlewares: BTreeMap<String, RawMiddleware>,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(deny_unknown_fields)]
 struct RawMiddleware {
     #[serde(rename = "replacePathRegex", default)]
     replace_path_regex: Option<RawReplacePathRegex>,
@@ -166,8 +199,8 @@ impl RawMiddleware {
     }
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(deny_unknown_fields)]
 struct RawReplacePathRegex {
     regex: String,
     replacement: String,

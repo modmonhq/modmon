@@ -50,6 +50,8 @@ pub struct ConfigDocument {
     /// any local override. This is an operation identity, not necessarily the
     /// hash of `path` alone.
     pub source_hash: String,
+    /// Keys the sources set that this release does not read and ignores.
+    pub unknown_keys: Vec<super::UnknownConfigKey>,
 }
 
 impl ConfigDocument {

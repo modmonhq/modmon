@@ -16,7 +16,8 @@ use crate::domain::secret_backend::{ProviderConfiguration, ProviderInstanceName}
 
 /// What a target changes about one of the project's `providers:`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct TargetProviderConfig {
     /// Where this target's hosts reach the store, for example
     /// `https://127.0.0.1:8200` when it runs on the host itself, or a mesh

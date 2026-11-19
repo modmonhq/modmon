@@ -95,9 +95,7 @@ fn a_flat_target_is_one_endpoint_and_round_trips() -> Result<(), Box<dyn std::er
     ))?;
     assert_eq!(default_port.port, 22);
     default_port.validate("prod")?;
-    assert!(
-        serde_yaml_ng::from_str::<RepoTargetConfig>("host: a.example.test\nuser: root\n").is_err(),
-        "a target always connects as the relay account"
-    );
+    let ignored: RepoTargetConfig = serde_yaml_ng::from_str("host: a.example.test\nuser: root\n")?;
+    assert_eq!(ignored.host.as_deref(), Some("a.example.test"));
     Ok(())
 }

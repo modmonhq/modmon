@@ -1822,6 +1822,7 @@ fn hardened_node_plan() -> mm::domain::deployment::DeploymentPlan {
             previous: None,
         }],
         runtime_changes: Vec::new(),
+        unknown_config_keys: Vec::new(),
         release: None,
         plan_hash: "f".repeat(64),
     }

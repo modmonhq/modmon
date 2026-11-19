@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::domain::agents::{AgentsConfig, agents_policy_hash};
 use crate::domain::error::MmError;
 use crate::domain::mcp::{MCP_CONFIG_SCHEMA_VERSION, McpServerConfig};
-use crate::domain::stored_state::{StoredOn, check_schema, stored_version, unknown_keys};
+use crate::domain::stored_state::{StoredOn, check_schema, stored_version};
 use crate::domain::workspace::ProjectId;
 
 const MAX_CONFIG_BYTES: usize = 1024 * 1024;
@@ -60,22 +60,26 @@ impl McpPolicyStore {
                 StoredOn::ThisMachine,
             )?;
         }
-        let value: serde_json::Value =
-            serde_json::from_slice(&bytes).map_err(|error| MmError::ConfigParse {
+        let mut deserializer = serde_json::Deserializer::from_slice(&bytes);
+        let (config, ignored) =
+            crate::app::unknown_keys::deserialize_tracked::<McpServerConfig, _>(&mut deserializer)
+                .map_err(|(error, _)| MmError::ConfigParse {
+                    path: path.to_path_buf(),
+                    message: error.to_string(),
+                })?;
+        deserializer.end().map_err(|error| MmError::ConfigParse {
+            path: path.to_path_buf(),
+            message: error.to_string(),
+        })?;
+        if let Some(key) = ignored.first() {
+            return Err(MmError::ConfigParse {
                 path: path.to_path_buf(),
-                message: error.to_string(),
-            })?;
-        for key in unknown_keys::<McpServerConfig>(&value) {
-            tracing::warn!(
-                "unknown key `{key}` in {}; this mm ignores it",
-                path.display()
-            );
+                message: format!(
+                    "unknown key `{}`; this file only narrows what agents may do, so mm refuses a key it does not read instead of ignoring it",
+                    crate::domain::config::unknown_keys::dotted(key)
+                ),
+            });
         }
-        let config: McpServerConfig =
-            serde_json::from_value(value).map_err(|error| MmError::ConfigParse {
-                path: path.to_path_buf(),
-                message: error.to_string(),
-            })?;
         config
             .validate()
             .map_err(|message| MmError::Security { message })?;

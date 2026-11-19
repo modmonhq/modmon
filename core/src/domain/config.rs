@@ -27,8 +27,20 @@ mod build_target;
 pub use build_target::{BuildTarget, BuildTargetSelection, BuildVariantConfig};
 #[path = "config/activity.rs"]
 mod activity;
+#[path = "config/binding.rs"]
+mod binding;
 #[path = "config/scalar.rs"]
 mod scalar;
+pub use binding::{
+    CastBinding, EnvironmentBinding, ReferenceBinding, SecretBinding, ValueBinding, ValueCast,
+};
+#[path = "config/generator.rs"]
+mod generator;
+#[path = "config/unknown_keys.rs"]
+pub mod unknown_keys;
+#[path = "config/word_or_mapping.rs"]
+pub(crate) mod word_or_mapping;
+pub use unknown_keys::UnknownConfigKey;
 #[path = "config/secret_usage.rs"]
 mod secret_usage;
 pub use scalar::EnvScalar;
@@ -64,7 +76,8 @@ pub use update::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct MmConfig {
     #[serde(deserialize_with = "deserialize_config_schema_version")]
     #[schemars(range(min = 1, max = 1))]
@@ -144,7 +157,8 @@ pub struct MmConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct GateConfig {
     pub provider: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -152,7 +166,8 @@ pub struct GateConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields, default)]
+#[serde(rename_all = "kebab-case", default)]
+#[schemars(deny_unknown_fields)]
 pub struct BuildConfig {
     pub platforms: Vec<String>,
     pub tag_strategy: BuildTagStrategy,
@@ -174,7 +189,8 @@ impl BuildConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct ProjectConfig {
     pub id: ProjectId,
     pub name: String,
@@ -183,7 +199,8 @@ pub struct ProjectConfig {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct RuntimeConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub driver: Option<RuntimeKind>,
@@ -259,7 +276,8 @@ impl<'de> Visitor<'de> for IngressConfigVisitor {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct ProjectIngressConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub automatic_local: Option<bool>,
@@ -275,7 +293,8 @@ impl ProjectIngressConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct MiddlewareBundleConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub environments: Vec<String>,
@@ -283,7 +302,8 @@ pub struct MiddlewareBundleConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct IngressRouteConfig {
     pub domain: String,
     #[serde(default = "default_route_path")]
@@ -330,7 +350,8 @@ const fn default_true() -> bool {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct ModuleConfig {
     pub path: PathBuf,
     #[serde(default)]
@@ -360,7 +381,8 @@ impl DevelopmentMountPolicy {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields, default)]
+#[serde(rename_all = "kebab-case", default)]
+#[schemars(deny_unknown_fields)]
 pub struct ModuleBuildConfig {
     pub enabled: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -404,13 +426,15 @@ impl Default for ModuleBuildConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct ModuleEnvConfig {
     pub template: PathBuf,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct ServiceConfig {
     pub stack: String,
     /// Environments in which this service runs; an empty list enables all.
@@ -535,7 +559,8 @@ impl ServiceRole {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct EnvironmentConfig {
     #[serde(default)]
     pub domains: BTreeMap<String, String>,
@@ -568,74 +593,8 @@ pub struct EnvironmentConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(untagged)]
-pub enum EnvironmentBinding {
-    Cast(CastBinding),
-    Secret(SecretBinding),
-    Value(ValueBinding),
-    Reference(ReferenceBinding),
-}
-
-/// A release fact under another key: `value-ref: MM.RELEASE`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub struct ReferenceBinding {
-    pub value_ref: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ValueBinding {
-    pub value: EnvScalar,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct SecretBinding {
-    pub secret: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub struct CastBinding {
-    pub cast: ValueCast,
-    pub value_ref: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
-pub enum ValueCast {
-    Url,
-}
-
-impl EnvironmentBinding {
-    #[must_use]
-    pub const fn value(&self) -> Option<&EnvScalar> {
-        match self {
-            Self::Value(binding) => Some(&binding.value),
-            Self::Secret(_) | Self::Cast(_) | Self::Reference(_) => None,
-        }
-    }
-
-    #[must_use]
-    pub fn secret_name(&self) -> Option<&str> {
-        match self {
-            Self::Secret(binding) => Some(&binding.secret),
-            Self::Value(_) | Self::Cast(_) | Self::Reference(_) => None,
-        }
-    }
-
-    #[must_use]
-    pub const fn cast(&self) -> Option<&CastBinding> {
-        match self {
-            Self::Cast(binding) => Some(binding),
-            Self::Value(_) | Self::Secret(_) | Self::Reference(_) => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[schemars(deny_unknown_fields)]
 pub struct SecretDeclaration {
     pub storage: SecretStorageConfig,
     /// Present for generated secrets created by `mm secret generate`. Omit for operator-supplied values.
@@ -649,7 +608,8 @@ pub struct SecretDeclaration {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct SecretStorageConfig {
     pub provider: StorageProviderId,
     pub location: String,
@@ -661,8 +621,9 @@ impl SecretStorageConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "preset", rename_all = "kebab-case", deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(tag = "preset", rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub enum SecretGeneratorConfig {
     Password {
         #[serde(default = "default_password_length")]
@@ -716,13 +677,15 @@ pub enum SecretEncoding {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct SecretInputConfig {
     pub prompt: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct SecretRotationConfig {
     #[serde(default)]
     pub strategy: SecretRotationStrategy,

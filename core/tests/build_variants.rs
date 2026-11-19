@@ -462,11 +462,13 @@ fn the_string_form_and_an_unknown_variant_key_read_clearly()
 -> Result<(), Box<dyn std::error::Error>> {
     let project =
         Project::new(&CONFIG.replace("          suffix: staging\n", "          sufix: staging\n"))?;
-    let error = ConfigLoader
-        .load_from(project.root.path())
-        .err()
-        .ok_or("an unknown key in a build target must be refused")?;
-    assert!(error.to_string().contains("sufix"), "{error}");
+    let document = ConfigLoader.load_from(project.root.path())?;
+    let unknown = document
+        .unknown_keys
+        .iter()
+        .find(|key| key.key.ends_with(".sufix"))
+        .ok_or("an unknown key in a build target is not reported")?;
+    assert_eq!(unknown.suggestion.as_deref(), Some("suffix"), "{unknown}");
 
     let project = Project::new(&CONFIG.replace(
         "        production-staging:\n          target: production\n          suffix: staging\n",

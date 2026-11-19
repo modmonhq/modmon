@@ -76,6 +76,7 @@ environments:
         path: PathBuf::from("/workspace/mm.yaml"),
         sources: Default::default(),
         source_hash: "a".repeat(64),
+        unknown_keys: Vec::new(),
     };
     let report = validate(&document, "bad env");
     let codes = report
@@ -148,6 +149,7 @@ environments:
         path: PathBuf::from("/workspace/mm.yaml"),
         sources: Default::default(),
         source_hash: "a".repeat(64),
+        unknown_keys: Vec::new(),
     };
     let report = validate(&document(serde_yaml_ng::from_str(source)?), "integration");
     let refused = report

@@ -33,13 +33,15 @@ impl DevelopmentMountPreset {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct PreservedContainerPath {
     pub path: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct DevelopmentBindMount {
     /// Relative to the module path, like the primary source.
     pub source: PathBuf,
@@ -47,7 +49,8 @@ pub struct DevelopmentBindMount {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct DevelopmentMountConfig {
     /// Relative to the module path, never the workstation root.
     pub source: PathBuf,
@@ -82,7 +85,8 @@ impl DevelopmentMountConfig {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct DevelopmentMountPolicy {
     /// Additional case-insensitive glob-like names (`*` matches any substring).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

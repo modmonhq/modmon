@@ -35,6 +35,7 @@ environments:
         path: root.join("mm.yaml"),
         sources: Default::default(),
         source_hash: "a".repeat(64),
+        unknown_keys: Vec::new(),
     })
 }
 

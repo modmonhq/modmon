@@ -783,6 +783,7 @@ Register-ArgumentCompleter -Native -CommandName 'mm' -ScriptBlock {
             [CompletionResult]::new('--mm-home', '--mm-home', [CompletionResultType]::ParameterName, 'Directory containing mm''s local state and target catalog')
             [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Human text or machine-readable JSON. JSON errors stay JSON')
             [CompletionResult]::new('--for-remote', '--for-remote', [CompletionResultType]::ParameterName, 'Also refuse Compose features a remote host blocks, in the services the environment runs; without --environment, in every environment whose target is not `local`')
+            [CompletionResult]::new('--strict', '--strict', [CompletionResultType]::ParameterName, 'Fail on keys this mm does not know, which it otherwise ignores with a warning; for CI')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('-V', '-V ', [CompletionResultType]::ParameterName, 'Print version')

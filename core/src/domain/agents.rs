@@ -13,7 +13,8 @@ use crate::domain::users::ALL_ENVIRONMENTS;
 
 /// What an agent may do in one environment.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct AgentAccess {
     /// `view`, `operate`, or `deploy`. Agents are never `admin`.
     pub level: AccessLevel,
@@ -36,11 +37,22 @@ impl Default for AgentAccess {
 }
 
 /// `production: view` or `local: { level: deploy, exec: true }`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(untagged)]
 pub enum AgentAccessConfig {
     Level(AccessLevel),
     Detailed(AgentAccess),
+}
+
+impl<'de> Deserialize<'de> for AgentAccessConfig {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        crate::domain::config::word_or_mapping::word_or_mapping(
+            deserializer,
+            "an access level, or a mapping with `level:`",
+            Self::Level,
+            Self::Detailed,
+        )
+    }
 }
 
 impl AgentAccessConfig {

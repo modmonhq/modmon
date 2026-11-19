@@ -10,42 +10,63 @@ fn parse_single_file(
     path: &Path,
     source: &str,
     overrides: Option<&[u8]>,
-) -> Result<(MmConfig, String), MmError> {
-    let base: MmConfig = serde_yaml_ng::from_str(source).map_err(|error| MmError::ConfigParse {
-        path: path.to_path_buf(),
-        message: error.to_string(),
-    })?;
+) -> Result<(MmConfig, String, Vec<UnknownConfigKey>), MmError> {
+    let (base, ignored) =
+        deserialize_tracked::<MmConfig, _>(serde_yaml_ng::Deserializer::from_str(source))
+            .map_err(|(error, ignored)| MmError::ConfigParse {
+                path: path.to_path_buf(),
+                message: with_unknown_keys(error.to_string(), &ignored),
+            })?;
     let Some(bytes) = overrides else {
-        return Ok((base, blake3::hash(source.as_bytes()).to_hex().to_string()));
+        return Ok((
+            base,
+            blake3::hash(source.as_bytes()).to_hex().to_string(),
+            unknown_keys_in(&ignored, &[], None),
+        ));
     };
     let override_path = path.with_file_name("mm.overrides.yaml");
-    let (overlay, local) = parse_overlay(&override_path, bytes)?;
+    let (overlay, local, unknown_development) = parse_overlay(&override_path, bytes)?;
     let mut merged: Value =
         serde_yaml_ng::from_str(source).map_err(|error| MmError::ConfigParse {
             path: path.to_path_buf(),
             message: error.to_string(),
         })?;
-    merge_configuration(&mut merged, overlay);
-    let mut config: MmConfig =
-        serde_yaml_ng::from_value(merged).map_err(|error| MmError::ConfigParse {
-            path: override_path,
-            message: format!("invalid configuration after applying local overrides: {error}"),
+    merge_configuration(&mut merged, overlay.clone());
+    let (mut config, ignored) =
+        deserialize_tracked::<MmConfig, _>(merged).map_err(|(error, ignored)| {
+            MmError::ConfigParse {
+                path: override_path,
+                message: format!(
+                    "invalid configuration after applying local overrides: {}",
+                    with_unknown_keys(error.to_string(), &ignored)
+                ),
+            }
         })?;
     config.development.enabled = local.enabled;
+    let mut unknown_keys = unknown_keys_in(&ignored, &[], Some(&overlay));
+    unknown_keys.extend(unknown_development);
     let mut hasher = blake3::Hasher::new();
     hasher.update(b"mm-config-overrides-v1\0");
     for input in [source.as_bytes(), bytes] {
         hasher.update(&(input.len() as u64).to_le_bytes());
         hasher.update(input);
     }
-    Ok((config, hasher.finalize().to_hex().to_string()))
+    Ok((config, hasher.finalize().to_hex().to_string(), unknown_keys))
 }
 
-/// The overlay to merge, and its `development:`, which only this file has.
+/// The overlay to merge, its `development:`, which only this file has, and
+/// the keys of `development:` this release does not read.
 fn parse_overlay(
     override_path: &Path,
     bytes: &[u8],
-) -> Result<(Value, crate::domain::development_units::LocalDevelopment), MmError> {
+) -> Result<
+    (
+        Value,
+        crate::domain::development_units::LocalDevelopment,
+        Vec<UnknownConfigKey>,
+    ),
+    MmError,
+> {
     let overrides = std::str::from_utf8(bytes).map_err(|_| MmError::ConfigParse {
         path: override_path.to_path_buf(),
         message: "configuration must be valid UTF-8".to_owned(),
@@ -70,17 +91,19 @@ fn parse_overlay(
             ),
         });
     }
-    let local = overlay
+    let (local, ignored) = match overlay
         .as_mapping_mut()
         .and_then(|mapping| mapping.remove(LOCAL_DEVELOPMENT_KEY))
-        .map(serde_yaml_ng::from_value)
-        .transpose()
-        .map_err(|error| MmError::ConfigParse {
-            path: override_path.to_path_buf(),
-            message: format!("{LOCAL_DEVELOPMENT_KEY}: {error}"),
-        })?
-        .unwrap_or_default();
-    Ok((overlay, local))
+    {
+        Some(development) => deserialize_tracked(development).map_err(|(error, _)| {
+            MmError::ConfigParse {
+                path: override_path.to_path_buf(),
+                message: format!("{LOCAL_DEVELOPMENT_KEY}: {error}"),
+            }
+        })?,
+        None => Default::default(),
+    };
+    Ok((overlay, local, unknown_development_keys(&ignored)))
 }
 
 const LOCAL_DEVELOPMENT_KEY: &str = "development";

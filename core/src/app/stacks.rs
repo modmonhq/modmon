@@ -158,6 +158,9 @@ pub(crate) struct DeploymentStackCompilation {
     pub rollout: crate::domain::rollout::RolloutPolicy,
     /// The release the deployment runs, with the images resolved here.
     pub release: Option<crate::domain::release_facts::ReleaseFacts>,
+    /// Keys the configuration and its middleware files set that this
+    /// release ignores.
+    pub unknown_keys: Vec<crate::domain::config::UnknownConfigKey>,
 }
 
 struct StackPreparation<'a> {
@@ -349,6 +352,7 @@ impl StackManager {
             })
             .collect();
         Ok(DeploymentStackCompilation {
+            unknown_keys: [document.unknown_keys.clone(), middlewares.unknown_keys].concat(),
             release: document.config.release.clone(),
             excluded_services: environment_excluded_services(&document, &environment),
             placement,

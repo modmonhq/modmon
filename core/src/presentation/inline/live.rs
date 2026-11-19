@@ -35,6 +35,11 @@ static ACTIVE: AtomicBool = AtomicBool::new(false);
 static ABANDONED: AtomicBool = AtomicBool::new(false);
 static PANIC_HOOK: Once = Once::new();
 
+/// Whether a live view is drawn on stderr now.
+pub fn painting() -> bool {
+    ACTIVE.load(Ordering::SeqCst)
+}
+
 type Screen = Terminal<CrosstermBackend<Stderr>>;
 
 /// The progress of one command.
@@ -157,6 +162,7 @@ impl Progress {
             Some(painter) => painter.stop(),
             None => self.flush_plain(),
         }
+        crate::presentation::notices::flush();
     }
 
     fn flush_plain(&self) {

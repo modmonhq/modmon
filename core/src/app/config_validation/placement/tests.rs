@@ -41,6 +41,7 @@ fn problems(placement: &str, environment: &str) -> Result<Vec<String>, serde_yam
         path: PathBuf::from("/workspace/mm.yaml"),
         sources: Default::default(),
         source_hash: "a".repeat(64),
+        unknown_keys: Vec::new(),
     };
     let mut report = ValidationReport::default();
     validate_placement(&ValidationContext::new(&document, environment), &mut report);

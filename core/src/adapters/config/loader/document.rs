@@ -135,6 +135,7 @@ impl ConfigLoader {
             config,
             source_hash,
             sources,
+            unknown_keys,
         } = parse_configuration_with(&path, &[(path.clone(), Some(source))])?;
         if config.schema_version != CONFIG_SCHEMA_VERSION {
             return Err(MmError::ConfigParse {
@@ -169,8 +170,10 @@ impl ConfigLoader {
             path,
             sources,
             source_hash,
+            unknown_keys,
         };
         crate::app::development_units::mark(&mut document);
+        crate::app::unknown_keys::report(&document.unknown_keys);
         Ok(document)
     }
 

@@ -622,6 +622,7 @@ async fn review_and_apply(
     (yes, format, surface): (bool, OutputFormat, inline::Surface),
     plan_only: bool,
 ) -> Result<u8, MmError> {
+    crate::presentation::notices::warn_hosts(preview);
     inline::print_card(
         surface,
         || output::remote_plan_card(preview, environment.is_cluster()),

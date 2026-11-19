@@ -9,7 +9,7 @@ mod tasks;
 mod text;
 
 pub use card::{Card, Mark, Value};
-pub use live::{Progress, ROLLOUT, step};
+pub use live::{Progress, ROLLOUT, painting, step};
 pub use print::{plain, write_lines};
 pub use style::Palette;
 pub use surface::Surface;

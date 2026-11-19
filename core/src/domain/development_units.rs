@@ -33,7 +33,8 @@ impl Development {
 
 /// `development:` of `.config/mm.overrides.yaml`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct LocalDevelopment {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub enabled: Vec<String>,

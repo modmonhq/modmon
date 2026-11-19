@@ -3,7 +3,6 @@ use super::*;
 #[test]
 fn every_splittable_key_has_a_type_check() {
     assert_eq!(CHECKED_CONFIG_KEYS, SPLITTABLE_CONFIG_KEYS);
-    assert_eq!(&ALL_CONFIG_KEYS[1..], SPLITTABLE_CONFIG_KEYS);
     for key in SPLITTABLE_CONFIG_KEYS {
         let result = check_split_source(key, "[not, any, config, value]");
         assert!(result.is_err_and(|message| !message.contains("cannot be split")), "{key}");
@@ -13,7 +12,7 @@ fn every_splittable_key_has_a_type_check() {
 
 #[test]
 fn split_type_errors_keep_their_line() {
-    let error = check_split_source("stacks", "app:\n  files: [compose.yaml]\n  unknown: true\n")
+    let error = check_split_source("stacks", "app:\n  unknown: true\n  files: {}\n")
         .err()
         .unwrap_or_default();
     assert!(error.contains("line 3"), "{error}");
@@ -29,7 +28,7 @@ fn anchors_are_type_checked_per_key() {
         .map(|error| error.to_string())
         .unwrap_or_default();
     assert!(wrong.contains("unsupported schema-version 2"), "{wrong}");
-    assert!(serde_yaml_ng::from_str::<AnchorCheck>("routes: {}\n").is_err());
+    assert!(serde_yaml_ng::from_str::<AnchorCheck>("routes: {}\n").is_ok());
     assert!(serde_yaml_ng::from_str::<AnchorCheck>("- not a mapping\n").is_err());
 }
 

@@ -103,7 +103,8 @@ impl ServiceSelection {
 
 /// One user's effective access in one environment.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct EnvironmentAccess {
     pub level: AccessLevel,
     #[serde(default, skip_serializing_if = "ServiceSelection::is_none")]

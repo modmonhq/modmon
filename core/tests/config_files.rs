@@ -171,13 +171,19 @@ fn a_file_that_is_a_symlink_is_refused() -> Result<(), Box<dyn std::error::Error
 }
 
 #[test]
-fn an_unknown_key_in_an_entry_fails_to_load() -> Result<(), Box<dyn std::error::Error>> {
+fn an_unknown_key_in_an_entry_is_ignored_and_reported() -> Result<(), Box<dyn std::error::Error>> {
     let project = project("          /etc/a: {file: motd, owner: root}\n")?;
-    let error = ConfigLoader
-        .load_from(project.path())
-        .err()
-        .ok_or("an unknown key loaded")?;
-    assert!(error.to_string().contains("owner"), "{error}");
+    let document = ConfigLoader.load_from(project.path())?;
+    let keys = document
+        .unknown_keys
+        .iter()
+        .map(|key| key.key.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(keys.len(), 1, "{keys:?}");
+    assert!(
+        keys[0].ends_with(r#"config-files."/etc/a".owner"#),
+        "{keys:?}"
+    );
     Ok(())
 }
 

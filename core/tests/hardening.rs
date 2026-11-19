@@ -274,17 +274,18 @@ fn an_exception_without_a_reason_is_refused() -> TestResult {
         // And nothing is planned from it.
         assert!(compile(project.path(), "production", None).is_err());
     }
-    // A key that is no default of the set says which ones are.
     let project = temp_dirs::tempdir()?;
     let services = "      web:\n        stack: app\n        hardening:\n          except:\n            readonly: typo\n";
     write_project(project.path(), COMPOSE, "hardening: strict\n", services, "")?;
-    let error = match ConfigLoader.load_from(project.path()) {
-        Ok(_) => return Err("an unknown exception was read".into()),
-        Err(error) => error.to_string(),
-    };
+    let document = ConfigLoader.load_from(project.path())?;
+    let unknown = document
+        .unknown_keys
+        .first()
+        .ok_or("an unknown exception was not reported")?;
     assert!(
-        error.contains("readonly") && error.contains("read-only"),
-        "{error}"
+        unknown.key.ends_with("hardening.except.readonly")
+            && unknown.suggestion.as_deref() == Some("read-only"),
+        "{unknown}"
     );
     Ok(())
 }

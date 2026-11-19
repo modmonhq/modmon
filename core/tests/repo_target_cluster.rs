@@ -219,8 +219,8 @@ fn a_mesh_is_either_an_interface_or_wireguard_settings() {
         assert!(error.contains("not both"), "{error}");
     }
     assert!(
-        parse("nodes: [{name: a, host: a.test}]\ncluster: {mesh: {wireguard: {}}}\n").is_err(),
-        "unknown mesh keys are refused"
+        parse("nodes: [{name: a, host: a.test}]\ncluster: {mesh: {wireguard: {}}}\n").is_ok(),
+        "unknown mesh keys are ignored"
     );
 }
 
@@ -706,8 +706,7 @@ fn removed_keys_fail_with_what_replaces_them() {
             "{error}"
         );
     }
-    let unknown = error_of(&format!("{NODES}quorum: 3\n"));
-    assert!(unknown.contains("unknown field"), "{unknown}");
+    assert!(parse(&format!("{NODES}quorum: 3\n")).is_ok());
 }
 
 #[test]

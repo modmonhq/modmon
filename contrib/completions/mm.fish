@@ -284,6 +284,7 @@ complete -c mm -n "__fish_mm_using_subcommand config; and __fish_seen_subcommand
 complete -c mm -n "__fish_mm_using_subcommand config; and __fish_seen_subcommand_from validate" -l output -d 'Human text or machine-readable JSON. JSON errors stay JSON' -r -f -a "human\t''
 json\t''"
 complete -c mm -n "__fish_mm_using_subcommand config; and __fish_seen_subcommand_from validate" -l for-remote -d 'Also refuse Compose features a remote host blocks, in the services the environment runs; without --environment, in every environment whose target is not `local`'
+complete -c mm -n "__fish_mm_using_subcommand config; and __fish_seen_subcommand_from validate" -l strict -d 'Fail on keys this mm does not know, which it otherwise ignores with a warning; for CI'
 complete -c mm -n "__fish_mm_using_subcommand config; and __fish_seen_subcommand_from validate" -s h -l help -d 'Print help'
 complete -c mm -n "__fish_mm_using_subcommand config; and __fish_seen_subcommand_from validate" -s V -l version -d 'Print version'
 complete -c mm -n "__fish_mm_using_subcommand config; and __fish_seen_subcommand_from module" -l root -d 'Project root or a path inside the project' -r -F

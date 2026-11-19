@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 
 /// A registry, keyed by its host (`ghcr.io`, `registry.example.com:5000`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct RegistryConfig {
     /// The account the token belongs to. GHCR accepts any name with a token.
     pub username: String,
@@ -14,7 +15,8 @@ pub struct RegistryConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct RegistryPassword {
     pub secret: String,
 }

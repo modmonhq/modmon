@@ -260,6 +260,7 @@ environments:
         path: temporary.path().join("mm.yaml"),
         sources: Default::default(),
         source_hash: "a".repeat(64),
+        unknown_keys: Vec::new(),
     };
     let report = crate::app::config_validation::validate(&document, "local");
     let codes = report

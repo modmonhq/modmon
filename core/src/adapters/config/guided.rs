@@ -70,10 +70,11 @@ impl GuidedConfigEditor for ConfigLoader {
             }
             after.push_str("{}\n");
         }
-        super::loader::parse_configuration_with(
+        let parsed = super::loader::parse_configuration_with(
             &document.path,
             &[(target.clone(), Some(after.clone()))],
         )?;
+        crate::app::unknown_keys::report(&parsed.unknown_keys);
         Ok(ConfigMutationPreview {
             config_path: target,
             source_hash: document.source_hash,

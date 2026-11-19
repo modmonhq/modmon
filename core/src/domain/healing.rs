@@ -38,7 +38,8 @@ pub const SHORTEST_AFTER: Duration = Duration::from_secs(10);
 
 /// `modules.<m>.services.<s>.health`. Every key has a default.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(deny_unknown_fields)]
 pub struct HealthConfig {
     /// `restart` (the default on a cluster target) restarts a container
     /// that stays unhealthy; `none` leaves it as it is.

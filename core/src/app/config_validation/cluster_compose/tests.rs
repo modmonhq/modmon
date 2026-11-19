@@ -50,6 +50,7 @@ fn findings_with(
         path: root.path().join(".config/mm.yaml"),
         sources: Default::default(),
         source_hash: "a".repeat(64),
+        unknown_keys: Vec::new(),
     };
     let mut report = ValidationReport::default();
     validate_cluster_compose(&ValidationContext::new(&document, environment), &mut report);
