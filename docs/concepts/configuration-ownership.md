@@ -6,11 +6,13 @@ description: Decide what goes in Compose, mm.yaml, and private workstation state
 ## Project settings
 
 Keep the project file at `.config/mm.yaml` and commit it. mm searches the current
-directory and its parents for that exact path. It requires `schema-version: 1`
-and rejects unknown keys, so typos are reported instead of ignored.
+directory and its parents for that exact path. It requires `schema-version: 1`.
+A key it does not read, a typo or one a newer release added, is ignored with a
+warning that names the file and the key; `--strict` makes it an error, for CI.
 
 ```sh
 mm config validate
+mm config validate --strict
 ```
 
 To select a project from elsewhere, use `mm --root PATH config validate`.

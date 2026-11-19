@@ -15,7 +15,8 @@ The current schema is **version 1**:
 schema-version: 1
 ```
 
-Unknown fields are errors throughout the typed schema. YAML must be valid UTF-8,
+A key mm does not read is ignored with a warning that names the file and the
+key (see [keys mm does not know](#keys-mm-does-not-know)). YAML must be valid UTF-8,
 each configuration file must be a regular file no larger than 1 MiB (4 MiB across
 all of them), and neither they nor configured project paths may contain symlink
 components. On Unix, files mm
@@ -89,9 +90,11 @@ You can also create or edit these files by hand. The rules:
 - Each key lives in exactly one place. A key in both `.config/mm.yaml` and its
   split file is an error that names both; nothing is merged.
 - File names are the exact key plus `.yaml`, such as
-  `.config/mm/environment-delivery.yaml`. Any other file, a `.yml` extension, a
-  subdirectory, or a symlink in `.config/mm/` is an error. Hidden files and names
-  ending in `~` are skipped, so editor swap files don't break loading.
+  `.config/mm/environment-delivery.yaml`. A `.yaml` file named after a key mm
+  does not read is ignored with a warning, as that key would be in
+  `.config/mm.yaml`. Any other file, a `.yml` extension, a subdirectory, or a
+  symlink in `.config/mm/` is an error. Hidden files and names ending in `~` are
+  skipped, so editor swap files don't break loading.
 - An empty split file is an error. Write `{}` for an empty map, or delete the
   file.
 - Paths inside a split file are relative to the project root, as in
@@ -999,7 +1002,37 @@ cross-resource behavior that JSON Schema alone cannot express.
 schema carries its source and generation command and must not be manually edited.
 
 Schema 1 is the complete current project contract. Missing or different schema
-versions are rejected rather than guessed or rewritten.
+versions are rejected rather than guessed or rewritten. A release that adds a
+key keeps schema 1: only a change an older mm would read wrongly raises it.
+
+### Keys mm does not know
+
+mm ignores a key it does not read, and every command that reads the
+configuration prints one warning for it on stderr, naming the file and the key:
+
+```text
+Warning: unknown key `modules.web.build.sufix` in .config/mm.yaml; this mm ignores it (did you mean `suffix`?)
+```
+
+A key that a later release added is ignored the same way, so a project that
+uses it still plans and deploys with an older `mm`, or on hosts whose `mmd` is
+older. A misspelled key gets the same warning, with the key it most likely
+meant. The rule covers `.config/mm.yaml`, split files, the local overrides,
+and middleware files.
+
+- `mm config validate` lists each key as a warning, `MM_CONFIG_UNKNOWN_KEY`,
+  and still succeeds. `mm config validate --strict` fails with exit code 2
+  instead: run it in CI so a typo never reaches a deployment.
+- A plan's JSON (`mm deploy plan --output json`, and `mm_deploy_plan` over
+  MCP) lists the keys under `unknown_config_keys`, each with `file`, `key`, and
+  `suggestion`. They are not part of the plan's hash.
+- A remote plan carries the keys each host's `mmd` ignores, since the host reads
+  the configuration from the commit it deploys. `mm deploy plan` prints them
+  with the nodes that ignore them, such as
+  ``Warning: unknown key `targets.production.newer` in .config/mm.yaml; mmd on app-1, app-2 ignores it``.
+  Upgrade those hosts with [`mm target setup plan --upgrade`](../how-to/upgrade.md).
+- Editors still flag unknown keys: the published JSON Schema allows only the
+  keys it lists.
 
 `mm config validate` resolves the selected environment and performs cross-resource,
 path, file, ingress, build, environment, and secret-reference checks without
