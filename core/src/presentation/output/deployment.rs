@@ -67,6 +67,9 @@ pub(crate) fn deployment_plan_text(
         .map_err(output_error)?;
     }
     write_excluded_services_to(writer, &plan.excluded_services, &plan.environment)?;
+    if let Some(line) = plan.adopted_routes_line() {
+        writeln!(writer, "  routes: {}", terminal_safe(&line)).map_err(output_error)?;
+    }
     // A cluster node's routes are the cluster plan's ingress section.
     if plan.node.is_some() {
         return Ok(());

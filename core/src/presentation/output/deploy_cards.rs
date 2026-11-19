@@ -143,6 +143,13 @@ fn remote_changes(card: &mut Card, plan: &ClusterDeploymentPlan, cluster: bool) 
         quiet.then(|| "no route, placement or security change".to_owned()),
     );
     let mut notes = Vec::new();
+    for section in &plan.nodes {
+        let name = section.node.as_deref().unwrap_or(&plan.target);
+        let deployment = section.plan.plan.as_ref();
+        if let Some(line) = deployment.and_then(DeploymentPlan::adopted_routes_line) {
+            notes.push((Tone::Warn, format!("{name} {line}")));
+        }
+    }
     for unfinished in &plan.unfinished {
         notes.push((
             Tone::Warn,
@@ -258,9 +265,13 @@ pub fn local_plan_card(plan: &DeploymentPlan, with: &[String]) -> Card {
         quiet.then(|| "no route or security change".to_owned()),
     );
     card.notes(
-        super::environment::off_locally_notes(&plan.excluded_services)
-            .into_iter()
-            .map(|note| (Tone::Idle, note))
+        (plan.adopted_routes_line().into_iter())
+            .map(|line| (Tone::Warn, format!("The plan {line}")))
+            .chain(
+                super::environment::off_locally_notes(&plan.excluded_services)
+                    .into_iter()
+                    .map(|note| (Tone::Idle, note)),
+            )
             .collect(),
     );
     let apply = if with.is_empty() {

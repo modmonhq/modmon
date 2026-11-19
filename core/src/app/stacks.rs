@@ -421,12 +421,13 @@ impl StackManager {
             if let Some(conflict) = conflicts.first() {
                 return Err(MmError::Environment {
                     message: format!(
-                        "route {}{} for stack '{}' conflicts with project '{}' route '{}' on target '{}'",
+                        "route {}{} for stack '{}' conflicts with project '{}' route '{}' of environment '{}' on target '{}'; give one of them another host or path in its project's configuration and deploy that project, then run `mm deploy plan` again",
                         conflict.proposed.host,
                         conflict.proposed.path_prefix,
                         conflict.proposed.stack,
                         conflict.existing.project_name,
                         conflict.existing.route,
+                        conflict.existing.environment,
                         conflict.proposed.target
                     ),
                 });

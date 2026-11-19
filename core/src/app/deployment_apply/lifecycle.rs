@@ -317,10 +317,12 @@ impl DeploymentService {
             &plan.environment,
             plan.target_id,
         )?;
-        if previous.is_none() && !plan.previous_owner_claims.is_empty() {
+        if previous.is_none() && plan.previous_owner_claims != plan.adopted_route_claims {
             return Err(MmError::State {
-                message: "existing route ownership has no successful deployment snapshot; recover the target before deploying"
-                    .to_owned(),
+                message: format!(
+                    "no finished deployment of environment '{}' records the routes it holds on target '{}', and the reviewed plan does not take them back; run `mm deploy plan` again and apply the new plan",
+                    plan.environment, plan.target_name
+                ),
             });
         }
         if previous.as_ref().is_some_and(|previous| {
@@ -339,7 +341,7 @@ impl DeploymentService {
             != plan.expected_previous_plan_hash.as_deref()
         {
             return Err(MmError::State {
-                message: "the successful deployment baseline changed after the reviewed plan"
+                message: "the last finished deployment changed after the reviewed plan; run `mm deploy plan` again and apply the new plan"
                     .to_owned(),
             });
         }

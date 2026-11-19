@@ -11,6 +11,7 @@ struct DeploymentPreparation {
 
 struct DeploymentRoutePlanning {
     previous_owner_claims: Vec<IngressRouteClaim>,
+    adopted_route_claims: Vec<IngressRouteClaim>,
     desired_route_claims: Vec<IngressRouteClaim>,
     complete_route_claims: Vec<IngressRouteClaim>,
     desired_middlewares: BTreeMap<String, crate::domain::ingress::CanonicalMiddleware>,
@@ -176,8 +177,10 @@ impl DeploymentManager {
             && expected_digest != &previous_rendered.manifest.digest
         {
             return Err(MmError::State {
-                message: "stored ingress route digest does not match the current claims; recover the target before deploying"
-                    .to_owned(),
+                message: format!(
+                    "the stored route digest of target '{}' does not match its stored routes: mm's state database was changed outside mm, or a release that writes routes differently deployed to the target last. Run `mm deploy plan` again with that release, or after restoring the database",
+                    target.name
+                ),
             });
         }
         let previous_dynamic_config = self
@@ -210,17 +213,10 @@ impl DeploymentManager {
             &desired_route_claims,
         )?;
 
-        let mut previous_owner_claims = Vec::new();
-        let mut complete_route_claims =
-            Vec::with_capacity(current.claims.len() + desired_route_claims.len());
-        for claim in current.claims.iter().cloned() {
-            if claim.project_id == compiled.project_id && claim.environment == compiled.environment
-            {
-                previous_owner_claims.push(claim);
-            } else {
-                complete_route_claims.push(claim);
-            }
-        }
+        let (mut previous_owner_claims, mut complete_route_claims): (Vec<_>, Vec<_>) =
+            current.claims.iter().cloned().partition(|claim| {
+                claim.project_id == compiled.project_id && claim.environment == compiled.environment
+            });
         preserve_gate_attachments(
             &previous_owner_claims,
             &current.middlewares,
@@ -230,7 +226,7 @@ impl DeploymentManager {
         complete_route_claims.extend(desired_route_claims.iter().cloned());
         complete_route_claims.sort_by(canonical_claim_order);
         previous_owner_claims.sort_by(canonical_claim_order);
-        let previous_deployment = self.previous_deployment(
+        let (previous_deployment, adopted_route_claims) = self.previous_deployment(
             compiled,
             current,
             &previous_owner_claims,
@@ -243,7 +239,8 @@ impl DeploymentManager {
         );
         let previous_owner_middlewares =
             owner_middlewares(&previous_owner_claims, &current.middlewares);
-        let route_state_changed = previous_owner_claims != desired_route_claims
+        let route_state_changed = !adopted_route_claims.is_empty()
+            || previous_owner_claims != desired_route_claims
             || previous_owner_middlewares != desired_middlewares;
         reject_route_conflicts(&complete_route_claims)?;
 
@@ -277,6 +274,7 @@ impl DeploymentManager {
 
         Ok(DeploymentRoutePlanning {
             previous_owner_claims,
+            adopted_route_claims,
             desired_route_claims,
             complete_route_claims,
             desired_middlewares,
@@ -303,6 +301,7 @@ impl DeploymentManager {
         } = preparation;
         let DeploymentRoutePlanning {
             previous_owner_claims,
+            adopted_route_claims,
             desired_route_claims,
             complete_route_claims,
             desired_middlewares,
@@ -322,12 +321,7 @@ impl DeploymentManager {
             compiled.stacks,
             compiled.project_directories,
         )?;
-        let DeploymentRemovals {
-            removed_stacks,
-            removed_ingress,
-            preserved_volumes,
-            removed_preserved_volumes,
-        } = deployment_removals(
+        let removals = deployment_removals(
             (&stacks, &compiled.excluded_services),
             previous_deployment.as_ref(),
             complete_route_claims.is_empty()
@@ -353,10 +347,11 @@ impl DeploymentManager {
                 .as_ref()
                 .map(|previous| previous.plan_hash.clone()),
             stacks,
-            removed_stacks,
-            preserved_volumes,
-            removed_preserved_volumes,
+            removed_stacks: removals.removed_stacks,
+            preserved_volumes: removals.preserved_volumes,
+            removed_preserved_volumes: removals.removed_preserved_volumes,
             previous_owner_claims,
+            adopted_route_claims,
             desired_route_claims,
             complete_route_claims,
             desired_middlewares,
@@ -368,7 +363,7 @@ impl DeploymentManager {
             dynamic_config,
             local_certificates,
             static_ingress,
-            removed_ingress,
+            removed_ingress: removals.removed_ingress,
             route_diff,
             ingress: compiled.ingress,
             route_state_changed,
@@ -388,44 +383,68 @@ impl DeploymentManager {
             .map_err(|message| MmError::Security { message })?;
         Ok(plan)
     }
+
+    /// The deployment the plan follows, and the environment's routes it did
+    /// not record, which the plan takes back.
     fn previous_deployment(
         &self,
         compiled: &crate::app::stacks::DeploymentStackCompilation,
         current: &crate::domain::ingress::IngressRouteSet,
         previous_owner_claims: &[IngressRouteClaim],
         runtime_secret_items: &mut [crate::domain::runtime_secret::RuntimeSecretPlanItem],
-    ) -> Result<Option<DeploymentPlan>, MmError> {
-        let target = &compiled.target;
-        let snapshot_owner_claims =
-            claims_without_gate_attachments(previous_owner_claims, &current.middlewares);
-        let candidates = self.state.deployment_candidates_for_owner(
-            compiled.project_id,
-            &compiled.environment,
-            target.definition.id,
-        )?;
-        let mut previous_deployment = None;
-        for (state, previous) in candidates {
-            let identity_matches = previous.project_id == compiled.project_id
-                && previous.target_id == target.definition.id
-                && previous.environment == compiled.environment;
+    ) -> Result<(Option<DeploymentPlan>, Vec<IngressRouteClaim>), MmError> {
+        let target_id = compiled.target.definition.id;
+        let owned = |previous: &DeploymentPlan| -> Result<bool, MmError> {
             let canonical = previous
                 .canonical_hash()
                 .map_err(|message| MmError::State { message })?;
-            let snapshot_is_canonical = canonical == previous.plan_hash;
-            let owner_matches = previous.desired_route_claims == snapshot_owner_claims;
-            let running_commit_matches = state == OperationState::Running
+            Ok(previous.project_id == compiled.project_id
+                && previous.target_id == target_id
+                && previous.environment == compiled.environment
+                && canonical == previous.plan_hash)
+        };
+        let mut previous_deployment = None;
+        for (state, previous) in self.state.deployment_candidates_for_owner(
+            compiled.project_id,
+            &compiled.environment,
+            target_id,
+        )? {
+            if state == OperationState::Running
                 && previous.route_state_changed
                 && previous.complete_route_claims == current.claims
                 && current.config_digest.as_deref()
-                    == Some(previous.dynamic_config.manifest.digest.as_str());
-            if identity_matches
-                && snapshot_is_canonical
-                && ((state == OperationState::Succeeded && owner_matches) || running_commit_matches)
+                    == Some(previous.dynamic_config.manifest.digest.as_str())
+                && owned(&previous)?
             {
                 previous_deployment = Some(previous);
                 break;
             }
         }
+        let recorded = if previous_deployment.is_some() {
+            true
+        } else {
+            previous_deployment = self.state.latest_successful_deployment_for_owner(
+                compiled.project_id,
+                &compiled.environment,
+                target_id,
+            )?;
+            if let Some(previous) = &previous_deployment
+                && !owned(previous)?
+            {
+                return Err(MmError::Security {
+                    message:
+                        "the last finished deployment snapshot does not match the planned owner"
+                            .to_owned(),
+                });
+            }
+            let recorded = previous_deployment
+                .as_ref()
+                .map(|previous| previous.desired_route_claims.as_slice())
+                .unwrap_or_default();
+            recorded
+                == claims_without_gate_attachments(previous_owner_claims, &current.middlewares)
+                    .as_slice()
+        };
         if let Some(previous) = &previous_deployment
             && let Some(previous_secrets) = &previous.runtime_secret_plan
         {
@@ -438,13 +457,12 @@ impl DeploymentManager {
                     .filter(|revision| revision != &item.source_revision);
             }
         }
-        if previous_deployment.is_none() && !previous_owner_claims.is_empty() {
-            return Err(MmError::State {
-                message: "existing route ownership has no successful deployment snapshot; recover the target before deploying"
-                    .to_owned(),
-            });
-        }
-        Ok(previous_deployment)
+        let adopted = if recorded {
+            Vec::new()
+        } else {
+            previous_owner_claims.to_vec()
+        };
+        Ok((previous_deployment, adopted))
     }
 }
 

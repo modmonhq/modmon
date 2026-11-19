@@ -403,7 +403,7 @@ fn reject_route_conflicts(claims: &[IngressRouteClaim]) -> Result<(), MmError> {
             if conflict {
                 return Err(MmError::Environment {
                     message: format!(
-                        "route {}{} for project '{}' conflicts with route {}{} for project '{}' on target '{}'",
+                        "route {}{} for project '{}' conflicts with route {}{} for project '{}' on target '{}'; give one of them another host or path in its project's configuration and deploy that project, then run `mm deploy plan` again",
                         left.host,
                         left.path_prefix,
                         left.project_name,

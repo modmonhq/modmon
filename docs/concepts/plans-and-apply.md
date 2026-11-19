@@ -45,6 +45,15 @@ An unsupported feature, missing required value, or conflicting resource stops
 the operation. mm will not take over another tool's resource merely because
 its name matches.
 
+A deployment plan can take back routes. When the routes the environment holds
+on its target are not the ones its last finished deployment recorded, such as
+after an apply that was cut off after it saved its routes, the plan says
+`takes back N routes this environment holds that the last finished deployment
+did not record` and replaces them with its own. `mm deploy plan --output json`
+and `mm_deploy_plan` list them under `adopted_route_claims`, and the plan hash
+covers them. A plan never takes back a route of another project or
+environment: an overlapping one stops the plan.
+
 ## If apply fails
 
 Deployment attempts to restore the last successful deployment when one is
