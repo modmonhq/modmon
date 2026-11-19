@@ -1,6 +1,6 @@
 ---
 title: Compatibility between releases
-description: Which releases of mm and mmd work together, what happens when one side is older, and what to run then.
+description: Which releases of mm and mmd work together, what happens when one side is older, what an update does with stored state, and what to run then.
 ---
 
 From 0.1.1 on, `mm` on your machine and `mmd` on your hosts do not have to run
@@ -90,6 +90,60 @@ A deployment plan records the protocol of the session that made it. Anyone
 whose `mm` shares a protocol with the host can apply it, whichever release
 made it. Plans expire after ten minutes, so an upgrade of the host between plan
 and apply means planning again.
+
+## Stored state
+
+`mm` keeps state on your machine in its home, `~/.mm` (or `MM_HOME`): the
+state database `state.sqlite3`, the target catalog `targets.yaml`, the local
+services, the secret stores, pinned host keys, and saved forwards. On a host,
+`mmd` keeps its configuration in `/etc/mm` (`mmd.json`, `host.yaml`) and its
+records in `/var/lib/mm`: access records, deployments and rollouts, the
+mesh, the cluster's networks, ingress routes, and what it restarts and
+scales.
+
+### After an update
+
+Every release from 0.1.1 on reads the state an earlier one wrote. `mm update`
+and `mm target setup --upgrade` replace the binaries and keep that state:
+the newer release fills in what the older one did not record and moves the
+state database forward with its migrations the first time it opens it.
+Nothing needs to be recreated or reset.
+
+### After a downgrade
+
+A newer release that only adds a key or a field keeps the file's schema
+number, and an older release reads the file: it ignores what it does not
+know. For the files people read and edit, `/etc/mm/mmd.json`,
+`/etc/mm/host.yaml`, and `MM_HOME/mcp.json`, it says so:
+
+```text
+WARN unknown key `example` in /etc/mm/mmd.json; this mmd ignores it
+```
+
+A newer release raises a schema number only for a change an older release
+cannot read, such as a field whose meaning changed, or a migration of the
+state database. The older release then refuses the file and changes
+nothing. The message names the file, what it does not know, and what to
+run:
+
+```text
+state store error: ~/.mm/state.sqlite3 was written by a newer mm (state migration 0002_example); update with `mm update`
+state store error: /etc/mm/mmd.json was written by a newer mm (schema 3); upgrade this host: run `mm update` on your machine, then `mm target setup plan --upgrade`
+```
+
+Run the command it names, or go back to the newer release.
+
+Plans and build receipts carry a hash of what was reviewed. An older release
+never acts on part of one: it refuses one with a field or schema it does not
+know, or whose hash no longer matches what it can read.
+
+Every schema number starts at 1 in 0.1.1. Files that builds before 0.1.1
+wrote with another number are not read: `mm target setup --upgrade` writes
+`mmd.json` again, and a `host.yaml` from such a build needs
+`schema-version: 1` by hand.
+
+How mm keeps these promises as it changes is in
+[stored state](../contribute/stored-state.md).
 
 ## How this is checked
 

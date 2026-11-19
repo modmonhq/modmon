@@ -21,7 +21,7 @@ pub fn service_key(
 
 /// One change of the count.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct ScaleChange {
     pub from: u32,
     pub to: u32,
@@ -33,7 +33,7 @@ pub struct ScaleChange {
 /// How many containers the decider wants a service to run over all its
 /// nodes. Every node keeps the newest one it heard of, on disk.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct Want {
     pub count: u32,
     /// One more with each change: the highest wins.
@@ -49,7 +49,7 @@ pub struct Want {
 /// What a node tells the other nodes about one scaled service, with every
 /// exchange of its records.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct ScaleReport {
     /// [`service_key`].
     pub service: String,
@@ -68,7 +68,7 @@ pub struct ScaleReport {
 /// A service whose number of containers is not one per node: it sets
 /// `replicas` or `autoscale`. Part of each node's section of a plan.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct ScaledService {
     /// [`service_key`].
     pub key: String,

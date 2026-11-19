@@ -324,7 +324,7 @@ macro_rules! sqlite_workspaces { () => {
             .optional()
             .map_err(state_error)?;
         Ok(json
-            .map(|json| parse_deployment_plan_snapshot(&json))
+            .map(|json| parse_deployment_plan_snapshot(&self.path, &json))
             .transpose()?
             .flatten())
     }

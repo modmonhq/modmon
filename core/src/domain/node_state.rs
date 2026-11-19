@@ -25,7 +25,7 @@ pub const STATE_PREFIX: &str = "state/";
 
 /// The archive's first entry.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct StateManifest {
     pub format: u32,
     /// The node's name, when the host is a cluster node.

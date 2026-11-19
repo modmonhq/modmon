@@ -253,9 +253,9 @@ fn validation_rejects_ambiguous_or_dangling_policy() {
     no_environment.grants[0].scope.environments.clear();
     assert!(no_environment.validate().is_err());
 
-    let mut old = policy();
-    old.schema_version = 1;
-    assert!(old.validate().is_err());
+    let mut newer = policy();
+    newer.schema_version = 2;
+    assert!(newer.validate().is_err());
 }
 
 #[test]

@@ -488,7 +488,7 @@ fn a_node_records_the_engine_setup_installed_and_hosts_before_it_run_docker() ->
     let temporary = temp_dirs::tempdir()?;
     let config = |node_env: &Path| -> Result<DaemonConfig, Box<dyn std::error::Error>> {
         let config: DaemonConfig = serde_json::from_value(serde_json::json!({
-            "schema_version": 2,
+            "schema_version": 1,
             "socket_path": "/run/mm/mm.sock",
             "state_root": temporary.path().join("state"),
             "mm_home": temporary.path().join("home"),

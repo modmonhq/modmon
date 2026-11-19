@@ -304,6 +304,9 @@ macro_rules! managed_vault_planning { () => {
                 message: "managed Vault backup does not exist".to_owned(),
             })?;
         let plaintext = self.connections.decrypt_integrity_checked(&encrypted)?;
+        if let Some(schema) = crate::domain::stored_state::stored_version(&plaintext, "schema") {
+            check_schema(source, schema, BACKUP_SCHEMA, StoredOn::ThisMachine)?;
+        }
         let backup: ManagedBackup =
             serde_json::from_slice(&plaintext).map_err(|_| MmError::Security {
                 message: "managed Vault backup envelope is invalid".to_owned(),

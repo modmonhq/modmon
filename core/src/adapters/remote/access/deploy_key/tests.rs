@@ -14,7 +14,7 @@ fn project() -> ProjectId {
 fn store(root: &Path) -> Result<HostAccessStore, Box<dyn std::error::Error>> {
     let config: crate::adapters::remote::DaemonConfig =
         serde_json::from_value(serde_json::json!({
-            "schema_version": 2,
+            "schema_version": 1,
             "socket_path": root.join("run/mm.sock"),
             "state_root": root.join("state"),
             "mm_home": root.join("home"),

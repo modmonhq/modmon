@@ -90,6 +90,7 @@ export const docsNav: DocsNavGroup[] = [
       "project/security",
       "contribute/releases",
       "contribute/remote-protocol",
+      "contribute/stored-state",
       "project/license",
     ],
   },

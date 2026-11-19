@@ -155,7 +155,9 @@ It keeps:
 - **Containers.** They keep running; the container engine is not restarted.
 - **State.** `/var/lib/mm` stays: the daemon identity (nothing needs to be
   recorded again), deployment history, the audit log, the addresses of the
-  cluster's networks, and the mesh key.
+  cluster's networks, and the mesh key. The new `mmd` reads it as the old one
+  left it; [stored state](../reference/compatibility.md#stored-state) says
+  what an older release does with it after a downgrade.
 - **The mesh.** Each node keeps its WireGuard key and its peers; the plan shows
   every existing link as kept. A node that still runs the `wg0` interface of
   an early cluster build moves to `mm0` with the same key, and the plan marks
@@ -205,10 +207,6 @@ While the releases differ, `mm doctor` warns with `MM_HOST_RELEASE_OLDER`
 
 ## Upgrades that need more than setup
 
-- **Hosts set up with `access.yaml`.** Builds that gave each developer an
-  account on the host kept access in `/etc/mm/access.yaml`, which `mmd` now
-  refuses. Move them first: see
-  [hosts set up with access.yaml](../remote-daemon.md#hosts-set-up-with-accessyaml).
 - **A rebuilt node.** It has a new SSH host key: plan with
   `--trust-new-host-keys` and check the fingerprints the plan prints. To bring
   back its records, see

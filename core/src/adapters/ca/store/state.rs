@@ -467,6 +467,14 @@ impl FilesystemLocalCaStore {
                     message: "local CA state file is missing".to_owned(),
                 }
             })?;
+        if let Some(version) = crate::domain::stored_state::stored_version(&bytes, "version") {
+            crate::domain::stored_state::check_schema(
+                &self.root.join(STATE_FILE),
+                version,
+                STATE_VERSION,
+                crate::domain::stored_state::StoredOn::ThisMachine,
+            )?;
+        }
         let state: PersistedCaState =
             serde_json::from_slice(&bytes).map_err(|error| MmError::State {
                 message: format!("local CA state is invalid: {error}"),

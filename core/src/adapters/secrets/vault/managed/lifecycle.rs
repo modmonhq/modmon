@@ -218,10 +218,11 @@ macro_rules! managed_vault_lifecycle { () => {
         let bytes = read_regular_file(&path, 1024 * 1024)?.ok_or_else(|| MmError::State {
             message: "managed Vault state disappeared".to_owned(),
         })?;
-        let state: ManagedVaultState =
-            serde_json::from_slice(&bytes).map_err(|error| MmError::State {
-                message: format!("managed Vault state is invalid: {error}"),
-            })?;
+        if let Some(schema) = crate::domain::stored_state::stored_version(&bytes, "schema") {
+            check_schema(&path, schema, STATE_SCHEMA, StoredOn::ThisMachine)?;
+        }
+        let state = serde_json::from_slice::<ManagedVaultState>(&bytes)
+            .map_err(|error| unreadable(&path, "managed Vault state", &error, StoredOn::ThisMachine))?;
         if state.schema != STATE_SCHEMA || !supported_image(&state.image) {
             return Err(MmError::Security {
                 message: "managed Vault state schema or image is unsupported".to_owned(),

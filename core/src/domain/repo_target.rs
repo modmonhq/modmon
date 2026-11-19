@@ -94,7 +94,7 @@ const fn is_default_port(port: &u16) -> bool {
 /// host key and daemon identity for a target that names one host, or one
 /// pair per node of a cluster target.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct TargetPin {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host_key: Option<String>,
@@ -110,14 +110,14 @@ pub struct TargetPin {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 struct UnnamedPin {
     host_key: String,
     daemon_fingerprint: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct NodePin {
     pub name: String,
     pub host_key: String,

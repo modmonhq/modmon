@@ -9,7 +9,11 @@ use crate::adapters::private_fs::{
 };
 use crate::app::ports::{ServiceStackArtifactInput, ServiceStackStore};
 use crate::domain::error::MmError;
-use crate::domain::service_stack::{PreparedServiceStackArtifact, ServiceStackState};
+use crate::domain::service_stack::{
+    PreparedServiceStackArtifact, SERVICE_STACK_SCHEMA, ServiceStackState, newer_stack,
+};
+use crate::domain::stored_state::StoredOn::ThisMachine;
+use crate::domain::stored_state::{check_schema, stored_version, unreadable, written_by_newer_mm};
 
 #[derive(Debug, Clone)]
 pub struct FilesystemServiceStackStore {
@@ -88,24 +92,22 @@ impl ServiceStackStore for FilesystemServiceStackStore {
             context: format!("reading service stack state {}", path.display()),
             source,
         })?;
-        let state = serde_json::from_slice::<ServiceStackState>(&bytes).map_err(|error| {
-            MmError::State {
-                message: format!("service stack state is invalid: {error}"),
-            }
-        })?;
-        if state.schema != crate::domain::service_stack::SERVICE_STACK_SCHEMA {
+        if let Some(schema) = stored_version(&bytes, "schema") {
+            check_schema(&path, schema, SERVICE_STACK_SCHEMA, ThisMachine)?;
+        }
+        let state = serde_json::from_slice::<ServiceStackState>(&bytes)
+            .map_err(|error| unreadable(&path, "service stack state", &error, ThisMachine))?;
+        if state.schema != SERVICE_STACK_SCHEMA {
             return Err(MmError::State {
                 message: format!("unsupported service stack state schema {}", state.schema),
             });
         }
-        if state.stack_version != crate::domain::service_stack::SERVICE_STACK_VERSION {
-            return Err(MmError::State {
-                message: format!(
-                    "unsupported service stack release {}; expected {}",
-                    state.stack_version,
-                    crate::domain::service_stack::SERVICE_STACK_VERSION
-                ),
-            });
+        if newer_stack(&state.stack_version).map_err(|message| MmError::State { message })? {
+            return Err(written_by_newer_mm(
+                &path,
+                &format!("service stack {}", state.stack_version),
+                ThisMachine,
+            ));
         }
         state
             .applied_plan

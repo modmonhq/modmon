@@ -17,7 +17,7 @@ const WANTS: &str = "wants";
 /// and where that deployment is: the autoscaler starts containers as it
 /// runs them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct DeployedScaling {
     pub scope: RemoteScope,
     /// The checkout of the deployed commit.

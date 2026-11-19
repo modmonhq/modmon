@@ -214,10 +214,8 @@ impl HostAccessStore {
         let Some(bytes) = read_optional(&path)? else {
             return Ok(StoredDeployments::default());
         };
-        serde_json::from_slice(&bytes).map_err(|error| MmError::ConfigParse {
-            path,
-            message: error.to_string(),
-        })
+        serde_json::from_slice(&bytes)
+            .map_err(|error| unreadable(&path, "deployment record", &error, StoredOn::Host))
     }
 
     /// Changes what the host remembers of one environment's deployments.

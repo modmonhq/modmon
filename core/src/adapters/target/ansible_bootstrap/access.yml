@@ -155,7 +155,7 @@
         group: root
         mode: '0600'
         content: >-
-          {{ {'schema_version': 2,
+          {{ {'schema_version': 1,
               'socket_path': '/run/mm/mm.sock',
               'state_root': '/var/lib/mm',
               'mm_home': '/var/lib/mm-home',

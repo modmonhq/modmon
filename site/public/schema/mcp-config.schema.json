@@ -42,7 +42,6 @@
     }
   },
   "$comment": "Generated from McpServerConfig; run ./scripts/generate-artifacts.sh. Do not edit.",
-  "additionalProperties": false,
   "required": [
     "schema_version"
   ],

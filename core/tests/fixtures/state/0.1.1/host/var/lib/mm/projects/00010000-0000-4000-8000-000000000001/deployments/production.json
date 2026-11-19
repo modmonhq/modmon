@@ -1,0 +1,37 @@
+{
+  "current": {
+    "commit": "3f9a1c2e7b4d5a6f8091a2b3c4d5e6f708192a3b",
+    "deployed_at_unix_ms": 6200,
+    "deployed_by": "ana",
+    "runs_services": true,
+    "plan_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "release": {
+      "commit": "3f9a1c2e7b4d5a6f8091a2b3c4d5e6f708192a3b",
+      "name": "1.4.0"
+    }
+  },
+  "previous": null,
+  "rollout": {
+    "plan-hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "commit": "3f9a1c2e7b4d5a6f8091a2b3c4d5e6f708192a3b",
+    "principal-id": "00000000-0000-0000-0000-000000000029",
+    "started-by": "ana",
+    "started-at-unix-ms": 6000,
+    "heard-at-unix-ms": 6150,
+    "expires-at-unix-ms": 9000,
+    "state": "finished",
+    "stacks": [
+      "app"
+    ],
+    "failure": null,
+    "interrupted": null
+  },
+  "once": {
+    "migrate": {
+      "node": "app-1",
+      "run": "00000000-0000-0000-0000-00000000001f",
+      "plan_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "at_unix_ms": 6300
+    }
+  }
+}

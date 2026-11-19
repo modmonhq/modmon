@@ -130,7 +130,6 @@ impl RolloutChanges {
 
 /// Why a stack did not become healthy on a host.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct StepFailure {
     pub stack: String,
     /// The service that failed, when the host could tell.

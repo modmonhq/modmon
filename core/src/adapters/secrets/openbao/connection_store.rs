@@ -14,6 +14,7 @@ use crate::adapters::private_fs::{
     ensure_safe_identity_parent, ensure_user_controlled_directory, read_regular_file,
 };
 use crate::domain::error::MmError;
+use crate::domain::stored_state::{StoredOn, newer_mm_message, stored_version};
 use crate::domain::workspace::ProjectId;
 
 const CONNECTION_DOCUMENT_VERSION: u32 = 1;
@@ -37,7 +38,6 @@ impl From<crate::domain::secret_backend::ProviderMode> for OpenBaoMode {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct AppRoleCredential {
     pub role_id: Zeroizing<String>,
     pub secret_id: Zeroizing<String>,
@@ -54,7 +54,6 @@ impl std::fmt::Debug for AppRoleCredential {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct OpenBaoConnection {
     pub mode: OpenBaoMode,
     pub address: String,
@@ -92,7 +91,6 @@ impl std::fmt::Debug for OpenBaoConnection {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct ManagedRecoveryMaterial {
     pub root_token: Zeroizing<String>,
     pub unseal_key: Zeroizing<String>,
@@ -109,7 +107,6 @@ impl std::fmt::Debug for ManagedRecoveryMaterial {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct ConnectionDocument {
     version: u32,
     connections: BTreeMap<String, OpenBaoConnection>,
@@ -328,6 +325,17 @@ impl OpenBaoConnectionStore {
                 message: format!("could not decrypt provider connection registry: {error}"),
             }
         })?);
+        if let Some(version) = stored_version(&plaintext, "version")
+            && version > CONNECTION_DOCUMENT_VERSION
+        {
+            return Err(MmError::Secret {
+                message: newer_mm_message(
+                    &self.store_path,
+                    &format!("version {version}"),
+                    StoredOn::MmHome,
+                ),
+            });
+        }
         let document =
             serde_json::from_slice::<ConnectionDocument>(&plaintext).map_err(|error| {
                 MmError::Secret {

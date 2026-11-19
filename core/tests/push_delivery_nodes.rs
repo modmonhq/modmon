@@ -497,7 +497,7 @@ fn delivery_push_is_the_whole_configuration() -> TestResult {
 fn a_host_policy_has_a_pushed_project_without_an_origin() -> TestResult {
     let policy = |project: &str| -> TestResult<HostPolicy> {
         Ok(serde_yaml_ng::from_str(&format!(
-            "schema-version: 2\nbreak-glass:\n  - name: ops\n    key: {HOST_KEY}\nprojects:\n  00000000-0000-0000-0000-000000000004:\n    name: shop\n    environments: [production]\n{project}"
+            "schema-version: 1\nbreak-glass:\n  - name: ops\n    key: {HOST_KEY}\nprojects:\n  00000000-0000-0000-0000-000000000004:\n    name: shop\n    environments: [production]\n{project}"
         ))?)
     };
     let pushed = policy("    delivery: push\n")?;

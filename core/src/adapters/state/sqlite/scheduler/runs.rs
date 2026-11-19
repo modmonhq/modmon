@@ -55,7 +55,7 @@ macro_rules! scheduler_runs { () => {
             transaction.commit().map_err(state_error)?;
             return Ok(None);
         }
-        let (run, job, schedule) = load_claim(&transaction, id)?;
+        let (run, job, schedule) = load_claim(&transaction, &self.path, id)?;
         transaction.commit().map_err(state_error)?;
         Ok(Some(ClaimedJobRun {
             run,
@@ -93,7 +93,7 @@ macro_rules! scheduler_runs { () => {
             transaction.commit().map_err(state_error)?;
             return Ok(None);
         }
-        let (run, job, schedule) = load_claim(&transaction, run_id)?;
+        let (run, job, schedule) = load_claim(&transaction, &self.path, run_id)?;
         transaction.commit().map_err(state_error)?;
         Ok(Some(ClaimedJobRun {
             run,

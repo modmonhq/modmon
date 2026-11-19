@@ -1,0 +1,11 @@
+{
+  "commit": "3f9a1c2e7b4d5a6f8091a2b3c4d5e6f708192a3b",
+  "bundle-hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "bytes": 4096,
+  "files": 12,
+  "branches": [
+    "main"
+  ],
+  "delivered-by": "ana",
+  "delivered-at-unix-ms": 6050
+}

@@ -1,0 +1,41 @@
+{
+  "scope": {
+    "project_id": "00010000-0000-4000-8000-000000000001",
+    "environment": "production",
+    "target": "production",
+    "target_fingerprint": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "runtime": "docker-compose",
+    "node": "app-1"
+  },
+  "root": "/srv/mm/projects/web/production/3f9a1c2e7b4d",
+  "plan-hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "services": [
+    {
+      "key": "app/web",
+      "stack": "app",
+      "service": "web",
+      "compose-project": "web-production-app",
+      "nodes": [
+        "app-1",
+        "app-2"
+      ],
+      "replicas": 2,
+      "autoscale": {
+        "min": 2,
+        "max": 6,
+        "initial": 2,
+        "metric": "cpu",
+        "up": {
+          "threshold": 75.0,
+          "hold-seconds": 30
+        },
+        "down": {
+          "threshold": 25.0,
+          "hold-seconds": 300
+        }
+      },
+      "drain-ms": 10000,
+      "now": 3
+    }
+  ]
+}

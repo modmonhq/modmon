@@ -526,7 +526,7 @@ pub(super) fn config(
     std::fs::write(
         &host_policy_path,
         format!(
-            "schema-version: 2\nbreak-glass:\n  - name: ops\n    key: {OPS_KEY}\nprojects:\n  {}:\n    name: example\n    origin: {}\n    environments: [production]\n",
+            "schema-version: 1\nbreak-glass:\n  - name: ops\n    key: {OPS_KEY}\nprojects:\n  {}:\n    name: example\n    origin: {}\n    environments: [production]\n",
             uuid::Uuid::from_u128(4),
             origin.display()
         ),
@@ -552,7 +552,7 @@ pub(super) fn config(
         })?,
     )?;
     Ok(DaemonConfig {
-        schema_version: 2,
+        schema_version: 1,
         socket_path: path.join("daemon.sock"),
         state_root,
         mm_home: path.join(format!("home-{uid}")),

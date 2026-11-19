@@ -1,0 +1,12 @@
+{
+  "00010000-0000-4000-8000-000000000001": {
+    "db": {
+      "environment": "production",
+      "service": "db",
+      "port": 5432,
+      "local-port": 15432,
+      "bind": "127.0.0.1",
+      "auto": true
+    }
+  }
+}

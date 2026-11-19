@@ -125,7 +125,7 @@ fn host_policy_requires_break_glass_and_known_environments() {
     }
     assert!(policy.validate().is_err());
     let mut policy = host();
-    policy.schema_version = 1;
+    policy.schema_version = 2;
     assert!(policy.validate().is_err());
 }
 

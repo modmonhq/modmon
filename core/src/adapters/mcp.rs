@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::agents::{AgentsConfig, agents_policy_hash};
 use crate::domain::error::MmError;
-use crate::domain::mcp::McpServerConfig;
+use crate::domain::mcp::{MCP_CONFIG_SCHEMA_VERSION, McpServerConfig};
+use crate::domain::stored_state::{StoredOn, check_schema, stored_version, unknown_keys};
 use crate::domain::workspace::ProjectId;
 
 const MAX_CONFIG_BYTES: usize = 1024 * 1024;
@@ -51,23 +52,27 @@ impl McpPolicyStore {
         if bytes.len() > MAX_CONFIG_BYTES {
             return Err(security("MCP policy exceeds 1 MiB"));
         }
-        let version = serde_json::from_slice::<serde_json::Value>(&bytes)
-            .ok()
-            .and_then(|value| {
-                value
-                    .get("schema_version")
-                    .and_then(serde_json::Value::as_u64)
-            });
-        if version == Some(1) {
-            return Err(MmError::Security {
-                message: format!(
-                    "{} uses MCP policy schema 1, which listed environments and capabilities privately. They now come from the project's `agents:` block: delete the file, or keep only schema_version 2 with `principal`, `ceiling`, and the bounds",
-                    path.display()
-                ),
-            });
+        if let Some(version) = stored_version(&bytes, "schema_version") {
+            check_schema(
+                path,
+                version,
+                MCP_CONFIG_SCHEMA_VERSION,
+                StoredOn::ThisMachine,
+            )?;
+        }
+        let value: serde_json::Value =
+            serde_json::from_slice(&bytes).map_err(|error| MmError::ConfigParse {
+                path: path.to_path_buf(),
+                message: error.to_string(),
+            })?;
+        for key in unknown_keys::<McpServerConfig>(&value) {
+            tracing::warn!(
+                "unknown key `{key}` in {}; this mm ignores it",
+                path.display()
+            );
         }
         let config: McpServerConfig =
-            serde_json::from_slice(&bytes).map_err(|error| MmError::ConfigParse {
+            serde_json::from_value(value).map_err(|error| MmError::ConfigParse {
                 path: path.to_path_buf(),
                 message: error.to_string(),
             })?;
@@ -85,7 +90,6 @@ impl McpPolicyStore {
 
 /// The `agents:` block a user last accepted for one checkout.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct TrustedAgentsPolicy {
     pub project_id: ProjectId,
     pub policy_hash: String,

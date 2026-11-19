@@ -999,7 +999,7 @@ fn daemon_config(path: &Path, root: &Path) -> TestResult<DaemonConfig> {
     std::fs::write(
         &host_policy_path,
         format!(
-            "schema-version: 2\nbreak-glass:\n  - name: ops\n    key: {OPS}\nprojects:\n  {}:\n    name: example\n    origin: {}\n    environments: [production]\n",
+            "schema-version: 1\nbreak-glass:\n  - name: ops\n    key: {OPS}\nprojects:\n  {}:\n    name: example\n    origin: {}\n    environments: [production]\n",
             project().0,
             path.join("origin.git").display()
         ),
@@ -1024,7 +1024,7 @@ fn daemon_config(path: &Path, root: &Path) -> TestResult<DaemonConfig> {
         })?,
     )?;
     Ok(DaemonConfig {
-        schema_version: 2,
+        schema_version: 1,
         socket_path: path.join("daemon.sock"),
         state_root,
         mm_home: path.join("home"),

@@ -354,7 +354,7 @@ your mm home (normally `~/.mm`), owned by you with mode `0600`:
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 1,
   "ceiling": { "*": "operate", "production": "view" }
 }
 ```
@@ -367,8 +367,6 @@ The file is optional and can only narrow the project's block. It also accepts
 a deployment, a build, or a job runs until it ends, because one stopped half
 way is left unfinished (a build or a job run cut off is killed and builds
 nothing).
-A version 1 file, which listed environments and capabilities, is rejected:
-delete it or replace it with the form above.
 
 ## Tools
 

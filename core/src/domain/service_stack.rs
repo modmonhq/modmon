@@ -180,9 +180,9 @@ impl ServiceStackPlan {
                 "service stack plans must not mount an engine socket into a component".to_owned(),
             );
         }
-        if self.stack_version != SERVICE_STACK_VERSION {
+        if newer_stack(&self.stack_version)? {
             return Err(format!(
-                "unsupported service stack release '{}'; expected {SERVICE_STACK_VERSION}",
+                "unsupported service stack release '{}'; expected {SERVICE_STACK_VERSION} or earlier",
                 self.stack_version
             ));
         }
@@ -280,6 +280,15 @@ impl ServiceStackPlan {
         }
         Ok(())
     }
+}
+
+/// Whether `version` is a later service stack than this release installs.
+pub fn newer_stack(version: &str) -> Result<bool, String> {
+    let parse = |value: &str| {
+        semver::Version::parse(value)
+            .map_err(|error| format!("service stack release '{value}' is invalid: {error}"))
+    };
+    Ok(parse(version)? > parse(SERVICE_STACK_VERSION)?)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::adapters::node_files::{read_whole, write_whole};
 use crate::app::ports::ServiceUserIds;
 use crate::domain::error::MmError;
+use crate::domain::stored_state::{StoredOn, check_schema, stored_version};
 use crate::domain::user_namespace::{
     HostIdRange, RANGE_OWNER, RangeExhausted, SERVICE_IDS, ServiceIds, ServiceIdsChoice,
     ServiceIdsOwner, allocate,
@@ -31,7 +32,6 @@ pub struct FilesystemServiceUserIds {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct Registry {
     schema: u32,
     services: Vec<Entry>,
@@ -95,6 +95,9 @@ impl FilesystemServiceUserIds {
         let Some(bytes) = read_whole(&self.registry)? else {
             return Ok(BTreeMap::new());
         };
+        if let Some(schema) = stored_version(&bytes, "schema") {
+            check_schema(&self.registry, schema, SCHEMA, StoredOn::Host)?;
+        }
         let registry: Registry = serde_json::from_slice(&bytes)
             .ok()
             .filter(|registry: &Registry| registry.schema == SCHEMA)

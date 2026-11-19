@@ -10,6 +10,7 @@ use crate::adapters::private_fs::{
 };
 use crate::app::ports::TargetStore;
 use crate::domain::error::MmError;
+use crate::domain::stored_state::{StoredOn, newer_mm_message};
 use crate::domain::target::{
     NamedTarget, TargetCatalog, TargetDefinition, TargetIngress, TargetTransport,
     validate_target_catalog, validate_target_definition, validate_target_name,
@@ -47,11 +48,16 @@ impl FilesystemTargetStore {
             return Ok((TargetCatalog::default(), None));
         };
         let catalog = serde_yaml_ng::from_slice::<TargetCatalog>(&bytes).map_err(|error| {
+            let message = error.to_string();
             MmError::Target {
-                message: format!(
-                    "could not parse target catalog '{}': {error}",
-                    self.path.display()
-                ),
+                message: if message.contains("unknown variant") {
+                    newer_mm_message(&self.path, &message, StoredOn::MmHome)
+                } else {
+                    format!(
+                        "could not parse target catalog '{}': {message}",
+                        self.path.display()
+                    )
+                },
             }
         })?;
         validate_target_catalog(&catalog).map_err(|message| MmError::Target { message })?;

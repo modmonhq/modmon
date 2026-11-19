@@ -1000,12 +1000,12 @@ fn tool_schema_snapshot_is_versioned_and_has_no_shell_surface() {
             "mm_stage_value",
         ]
     );
-    assert_eq!(snapshot["schema_version"], "mm-mcp-tools-v2");
+    assert_eq!(snapshot["schema_version"], "mm-mcp-tools-v1");
     assert_eq!(snapshot["project_schema_version"], "mm-project-v1");
     let canonical = serde_json::to_vec(&snapshot).unwrap_or_default();
     let digest = blake3::hash(&canonical).to_hex().to_string();
     assert_eq!(
-        digest, "c1122daa5c3e47171520c74c58a2f2d6339aed20864c2f054c6efc11856bf8ba",
+        digest, "6ab0aeb5407d7adb413e6d4a7ac83aea0fb8b8a1987a43ecdc574b65de14dc29",
         "the tool contract changed; bump MCP_TOOL_SCHEMA_VERSION if it is incompatible"
     );
     let text = String::from_utf8_lossy(&canonical).to_ascii_lowercase();
@@ -1044,7 +1044,7 @@ async fn sdk_transport_handshake_resources_validation_and_disconnect_are_live() 
         .ok()
         .and_then(|value| serde_json::to_string(value).ok())
         .unwrap_or_default();
-    assert!(resource_text.contains("mm-mcp-tools-v2"));
+    assert!(resource_text.contains("mm-mcp-tools-v1"));
     assert!(resource_text.contains("stdio"));
 
     let arguments = serde_json::json!({"scope": scope(), "kind": "project", "unknown": true})

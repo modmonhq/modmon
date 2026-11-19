@@ -11,7 +11,6 @@ use crate::domain::release_facts::{ReleaseFacts, ReleaseRequest};
 
 /// A deployment a host finished.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct DeploymentRecord {
     pub commit: String,
     pub deployed_at_unix_ms: i64,

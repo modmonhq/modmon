@@ -24,6 +24,7 @@ use crate::domain::error::MmError;
 use crate::domain::managed_service::{
     ManagedServiceFile, ManagedServicePlan, ManagedServicePlanRequest,
 };
+use crate::domain::stored_state::{StoredOn, check_schema, unreadable};
 use crate::domain::workspace::ProjectId;
 
 use super::admin::{OpenBaoConnectionAdministrator, OpenBaoSetupRequest};
@@ -119,7 +120,6 @@ impl ManagedOpenBaoPlan {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct ManagedOpenBaoState {
     schema: u32,
     installation: String,

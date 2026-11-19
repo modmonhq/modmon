@@ -29,7 +29,7 @@ const ABANDONED_AFTER: Duration = Duration::from_secs(2 * 60 * 60);
 
 /// What a host keeps about the bundle a commit's checkout was made from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct BundleRecord {
     pub commit: String,
     /// BLAKE3 of the bundle's bytes.

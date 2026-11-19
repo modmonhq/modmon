@@ -1,0 +1,11 @@
+{
+  "count": 3,
+  "generation": 4,
+  "by": "app-1",
+  "change": {
+    "from": 2,
+    "to": 3,
+    "reason": "cpu 82% above 75% for 30s",
+    "at-unix-ms": 7100
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "network": "web-production-default",
+  "routes": [
+    {
+      "router": "mm-web",
+      "host": "web.example.test",
+      "path": "/",
+      "priority": 1,
+      "stack": "app",
+      "service": "web",
+      "port": 8080,
+      "tls": true
+    }
+  ],
+  "engine-network": "mm-web-production-default"
+}

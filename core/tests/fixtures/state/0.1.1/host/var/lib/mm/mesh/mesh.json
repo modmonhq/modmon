@@ -1,0 +1,17 @@
+{
+  "interface": "mm0",
+  "address": "10.90.0.1",
+  "prefix": 24,
+  "port": 51820,
+  "mtu": 1420,
+  "peers": [
+    {
+      "name": "app-2",
+      "public-key": "Zm9vYmFyYmF6cXV4cXV1eGNvcmdlZ3JhdWx0Z2FycGx5Zj0=",
+      "endpoint": "app-2.example.test:51820",
+      "allowed-ips": [
+        "10.90.0.2/32"
+      ]
+    }
+  ]
+}

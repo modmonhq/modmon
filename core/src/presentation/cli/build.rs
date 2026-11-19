@@ -284,6 +284,9 @@ const MAX_RECEIPT_BYTES: u64 = 4 * 1024 * 1024;
 pub(super) fn read_receipt(
     path: &std::path::Path,
 ) -> Result<crate::domain::build::BuildReceipt, MmError> {
+    use crate::domain::build::RECEIPT_SCHEMA;
+    use crate::domain::stored_state::{StoredOn, newer_mm_message, unknown_in};
+
     let io = |source| MmError::Io {
         context: format!("read build receipt {}", path.display()),
         source,
@@ -294,9 +297,21 @@ pub(super) fn read_receipt(
         });
     }
     let bytes = std::fs::read(path).map_err(io)?;
+    let newer = |version: &str| MmError::Build {
+        message: newer_mm_message(path, version, StoredOn::ThisMachine),
+    };
+    let schema = serde_json::from_slice::<serde_json::Value>(&bytes)
+        .ok()
+        .and_then(|value| value.get("schema")?.as_str().map(str::to_owned));
+    if let Some(schema) = schema.filter(|schema| schema != RECEIPT_SCHEMA) {
+        return Err(newer(&format!("build receipt schema '{schema}'")));
+    }
     let receipt: crate::domain::build::BuildReceipt =
-        serde_json::from_slice(&bytes).map_err(|error| MmError::Build {
-            message: format!("{} is not a build receipt: {error}", path.display()),
+        serde_json::from_slice(&bytes).map_err(|error| match unknown_in(&error) {
+            Some(unknown) => newer(&format!("build receipt with {unknown}")),
+            None => MmError::Build {
+                message: format!("{} is not a build receipt: {error}", path.display()),
+            },
         })?;
     receipt.validate().map_err(|message| MmError::Build {
         message: format!("{}: {message}", path.display()),

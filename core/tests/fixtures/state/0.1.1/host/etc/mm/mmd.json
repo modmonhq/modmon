@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "socket_path": "/run/mm/mm.sock",
+  "state_root": "/var/lib/mm",
+  "mm_home": "/var/lib/mm-home",
+  "socket_uid": 0,
+  "socket_gid": 0,
+  "idle_timeout_ms": 30000,
+  "host_policy_path": "/etc/mm/host.yaml",
+  "relay_uid": 991,
+  "authorized_keys_path": "/etc/ssh/mm_authorized_keys",
+  "relay_command": "/usr/bin/mm relay serve --stdio --socket /run/mm/mm.sock --daemon-uid 0",
+  "projects_root": "/srv/mm/projects",
+  "node_env_path": "/etc/mm/node.env"
+}

@@ -245,7 +245,7 @@ impl SealedIngress {
 /// [`table_name`]. `mmd` turns it into the proxy's file together with the
 /// backends of the moment.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct IngressTable {
     /// The network the backends are reached on, by its name across the
     /// cluster.

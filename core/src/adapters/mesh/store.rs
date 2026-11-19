@@ -9,6 +9,7 @@ use zeroize::Zeroizing;
 
 use crate::domain::error::MmError;
 use crate::domain::mesh::MeshState;
+use crate::domain::stored_state::{StoredOn, unknown_in, written_by_newer_mm};
 
 const STATE: &str = "mesh.json";
 const PRIVATE_KEY: &str = "private.key";
@@ -100,14 +101,17 @@ impl MeshStore {
         let Some(text) = read_optional(&path)? else {
             return Ok(None);
         };
-        serde_json::from_str(&text)
-            .map(Some)
-            .map_err(|error| MmError::State {
+        serde_json::from_str(&text).map(Some).map_err(|error| {
+            if let Some(unknown) = unknown_in(&error) {
+                return written_by_newer_mm(&path, &unknown, StoredOn::Host);
+            }
+            MmError::State {
                 message: format!(
                     "{} is not a mesh state mmd wrote ({error}); run `mm target setup plan` and apply it to write it again",
                     path.display()
                 ),
-            })
+            }
+        })
     }
 
     /// Stores `state` unless the file already holds exactly it. Returns

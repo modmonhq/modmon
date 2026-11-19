@@ -16,6 +16,7 @@ use crate::adapters::secrets::AgeSecretStore;
 use crate::app::ports::{ClusterStoreKeeper, StoreScope};
 use crate::domain::error::MmError;
 use crate::domain::secret_store::StoreRecovery;
+use crate::domain::stored_state::{StoredOn, newer_mm_message, stored_version};
 use crate::domain::workspace::ProjectId;
 
 const DOCUMENT_VERSION: u32 = 1;
@@ -25,14 +26,12 @@ const AUTHORITY_DAYS: i64 = 3650;
 const MEMBER_DAYS: i64 = 825;
 
 #[derive(Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct KeptStores {
     version: u32,
     stores: BTreeMap<String, KeptStore>,
 }
 
 #[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct ExportedStore {
     version: u32,
     authority_pem: String,
@@ -41,7 +40,6 @@ struct ExportedStore {
 }
 
 #[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct KeptStore {
     authority_pem: String,
     authority_key_pem: Zeroizing<String>,
@@ -98,6 +96,17 @@ impl FileStoreKeeper {
         let opened = self
             .age_store(project)
             .open_sealed(&sealed, MAX_DOCUMENT_BYTES)?;
+        if let Some(version) = stored_version(&opened, "version")
+            && version > DOCUMENT_VERSION
+        {
+            return Err(MmError::Secret {
+                message: newer_mm_message(
+                    &self.path(project),
+                    &format!("version {version}"),
+                    StoredOn::ThisMachine,
+                ),
+            });
+        }
         let kept: KeptStores = serde_json::from_slice(&opened).map_err(|_| MmError::Secret {
             message: format!(
                 "{} is not a document of managed secret stores",
@@ -220,6 +229,16 @@ impl FileStoreKeeper {
         let opened = self
             .age_store(scope.project)
             .open_sealed(sealed.as_bytes(), MAX_DOCUMENT_BYTES)?;
+        if let Some(version) = stored_version(&opened, "version")
+            && version > DOCUMENT_VERSION
+        {
+            return Err(MmError::Secret {
+                message: format!(
+                    "that recovery copy was written by a newer mm (version {version}); {}",
+                    StoredOn::ThisMachine.next_step()
+                ),
+            });
+        }
         let exported: ExportedStore =
             serde_json::from_slice(&opened).map_err(|_| MmError::Secret {
                 message: "that file is not a recovery copy of a managed secret store".to_owned(),

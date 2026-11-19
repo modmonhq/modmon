@@ -612,7 +612,7 @@ fn small_findings_name_the_place_and_the_next_step() -> TestResult {
     use mm::domain::diagnostic::Diagnostic;
     use mm::domain::remote::{NodeReport, NodeState, node_diagnostics, refused_handshake};
 
-    let text = "# Host policy for mmd.\nschema-version: 2\nbreak-glass: []\nprojects:\n  a: {}\nprojects:\n  b: {}\n";
+    let text = "# Host policy for mmd.\nschema-version: 1\nbreak-glass: []\nprojects:\n  a: {}\nprojects:\n  b: {}\n";
     let parsed = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(text)
         .err()
         .ok_or("a duplicate key was accepted")?;

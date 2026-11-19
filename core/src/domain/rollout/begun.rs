@@ -19,7 +19,7 @@ use crate::domain::access::{Authorization, PrincipalId};
 /// access to the environment right after the Begin applied the plan's
 /// access change.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct BegunUnder {
     pub authorization: Authorization,
     pub environment_access: String,

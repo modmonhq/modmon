@@ -103,11 +103,8 @@ macro_rules! sqlite_deployments { () => {
             .optional()
             .map_err(state_error)?;
         json.map(|json| {
-            let plan = serde_json::from_str::<TargetBootstrapPlan>(&json).map_err(|error| {
-                MmError::State {
-                    message: format!("target bootstrap snapshot is invalid: {error}"),
-                }
-            })?;
+            let plan =
+                stored_json::<TargetBootstrapPlan>(&self.path, &json, "target bootstrap plan")?;
             plan.validate()
                 .map_err(|message| MmError::Security { message })?;
             Ok(plan)
@@ -141,7 +138,7 @@ macro_rules! sqlite_deployments { () => {
             .map_err(state_error)?;
         for row in rows {
             let json = row.map_err(state_error)?;
-            if let Some(plan) = parse_deployment_plan_snapshot(&json)?
+            if let Some(plan) = parse_deployment_plan_snapshot(&self.path, &json)?
                 && plan.target_id == target_id
             {
                 return Ok(Some(plan));
@@ -177,7 +174,7 @@ macro_rules! sqlite_deployments { () => {
             .map_err(state_error)?;
         for row in rows {
             let json = row.map_err(state_error)?;
-            if let Some(plan) = parse_deployment_plan_snapshot(&json)?
+            if let Some(plan) = parse_deployment_plan_snapshot(&self.path, &json)?
                 && plan.target_id == target_id
             {
                 return Ok(Some(plan));
@@ -215,7 +212,7 @@ macro_rules! sqlite_deployments { () => {
         let mut candidates = Vec::new();
         for row in rows {
             let (state, json) = row.map_err(state_error)?;
-            if let Some(plan) = parse_deployment_plan_snapshot(&json)?
+            if let Some(plan) = parse_deployment_plan_snapshot(&self.path, &json)?
                 && plan.target_id == target_id
             {
                 candidates.push((state, plan));
@@ -255,7 +252,7 @@ macro_rules! sqlite_deployments { () => {
             let id = uuid::Uuid::parse_str(&id).map_err(|error| MmError::State {
                 message: format!("the operation journal holds an invalid operation id: {error}"),
             })?;
-            if let Some(plan) = parse_deployment_plan_snapshot(&json)?
+            if let Some(plan) = parse_deployment_plan_snapshot(&self.path, &json)?
                 && plan.target_id == target_id
             {
                 running.push((OperationId(id), plan));

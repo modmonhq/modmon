@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 /// A forward a developer saved for quick reuse. Private to this machine.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct ForwardShortcut {
     pub environment: String,
     pub service: String,

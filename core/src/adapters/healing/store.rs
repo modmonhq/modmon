@@ -19,7 +19,7 @@ const HISTORY: &str = "history";
 /// One environment's services on this node, as its last finished
 /// deployment runs them, and where that deployment is.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct WatchedEnvironment {
     pub scope: RemoteScope,
     /// The checkout of the deployed commit.
@@ -28,7 +28,7 @@ pub struct WatchedEnvironment {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct WatchedService {
     pub stack: String,
     pub service: String,
@@ -39,14 +39,14 @@ pub struct WatchedService {
 
 /// What was done to one container, by the engine's whole id.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct History {
     #[serde(default)]
     pub containers: BTreeMap<String, ContainerHistory>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct ContainerHistory {
     pub stack: String,
     pub service: String,

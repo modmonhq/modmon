@@ -303,6 +303,9 @@ macro_rules! managed_openbao_planning { () => {
                 message: "managed provider backup does not exist".to_owned(),
             })?;
         let plaintext = self.connections.decrypt_integrity_checked(&encrypted)?;
+        if let Some(schema) = crate::domain::stored_state::stored_version(&plaintext, "schema") {
+            check_schema(source, schema, MANAGED_BACKUP_SCHEMA, StoredOn::ThisMachine)?;
+        }
         let backup =
             serde_json::from_slice::<ManagedBackup>(&plaintext).map_err(|_| MmError::Security {
                 message: "managed provider backup envelope is invalid".to_owned(),

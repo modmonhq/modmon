@@ -26,12 +26,12 @@ fn config(root: &Path) -> Result<DaemonConfig, Box<dyn std::error::Error>> {
     fs::write(
         &host,
         format!(
-            "schema-version: 2\nbreak-glass:\n  - name: ops\n    key: {BREAK_GLASS}\nprojects:\n  {PROJECT}:\n    name: shop\n    origin: /srv/git/shop.git\n    environments: [integration]\n"
+            "schema-version: 1\nbreak-glass:\n  - name: ops\n    key: {BREAK_GLASS}\nprojects:\n  {PROJECT}:\n    name: shop\n    origin: /srv/git/shop.git\n    environments: [integration]\n"
         ),
     )?;
     fs::set_permissions(&host, fs::Permissions::from_mode(0o600))?;
     Ok(serde_json::from_value(serde_json::json!({
-        "schema_version": 2,
+        "schema_version": 1,
         "socket_path": root.join("run/mm.sock"),
         "state_root": root.join("state"),
         "mm_home": root.join("home"),

@@ -82,7 +82,7 @@ impl LocalNetwork {
 /// Everything a node stores about the cluster's networks. The firewall
 /// rules, the routes, and the bridges all follow from it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct NodeNetworks {
     /// This node's name.
     pub node: String,

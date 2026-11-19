@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "services": [
+    {
+      "project": "00010000-0000-4000-8000-000000000001",
+      "environment": "production",
+      "stack": "app",
+      "service": "web",
+      "first": 4047568896
+    }
+  ]
+}

@@ -4,11 +4,12 @@ use crate::domain::target::TargetBootstrapResult;
 
 #[test]
 fn snapshot_parsers_reject_corrupt_missing_unsupported_and_incomplete_documents() {
-    assert!(parse_image_build_plan("not-json").is_err());
-    assert!(parse_image_build_plan(r#"{"project_id":"missing-schema"}"#).is_err());
-    assert!(parse_image_build_plan(r#"{"schema":"pre-release-v0"}"#).is_err());
-    assert!(parse_image_build_plan(&format!(r#"{{"schema":"{PLAN_SCHEMA}"}}"#)).is_err());
-    assert!(parse_deployment_plan_snapshot("not-json").is_err());
+    let path = Path::new("/srv/web/.mm/state.sqlite3");
+    assert!(parse_image_build_plan(path, "not-json").is_err());
+    assert!(parse_image_build_plan(path, r#"{"project_id":"missing-schema"}"#).is_err());
+    assert!(parse_image_build_plan(path, r#"{"schema":"pre-release-v0"}"#).is_err());
+    assert!(parse_image_build_plan(path, &format!(r#"{{"schema":"{PLAN_SCHEMA}"}}"#)).is_err());
+    assert!(parse_deployment_plan_snapshot(path, "not-json").is_err());
 }
 
 #[cfg(unix)]
@@ -263,7 +264,10 @@ fn a_deployment_snapshot_of_the_removed_runtime_is_no_previous_deployment() {
         r#"{"schema":"anything","runtime":"docker-swarm","swarm":{"cluster_id":"c"},"provided_tls":null,"plan_hash":"stale"}"#,
     ] {
         assert!(
-            matches!(parse_deployment_plan_snapshot(snapshot), Ok(None)),
+            matches!(
+                parse_deployment_plan_snapshot(Path::new("state.sqlite3"), snapshot),
+                Ok(None)
+            ),
             "{snapshot}"
         );
     }
@@ -276,7 +280,7 @@ fn a_deployment_snapshot_of_the_removed_runtime_is_no_previous_deployment() {
         r#""docker-swarm""#,
     ] {
         assert!(
-            parse_deployment_plan_snapshot(snapshot).is_err(),
+            parse_deployment_plan_snapshot(Path::new("state.sqlite3"), snapshot).is_err(),
             "{snapshot}"
         );
     }

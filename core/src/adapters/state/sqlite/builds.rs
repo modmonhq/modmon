@@ -75,10 +75,7 @@ macro_rules! sqlite_builds { () => {
             .ok_or_else(|| MmError::State {
                 message: "image build result has no reviewed plan snapshot".to_owned(),
             })?;
-        let plan =
-            serde_json::from_str::<ImageBuildPlan>(&plan_json).map_err(|error| MmError::State {
-                message: format!("image build plan snapshot is invalid: {error}"),
-            })?;
+        let plan = parse_image_build_plan(&self.path, &plan_json)?;
         result
             .validate_against(&plan)
             .map_err(|message| MmError::Security { message })?;
@@ -173,13 +170,9 @@ macro_rules! sqlite_builds { () => {
                         message: format!("stored image build operation ID is invalid: {error}"),
                     })?,
                 );
-            let plan = parse_image_build_plan(&plan_json)?;
+            let plan = parse_image_build_plan(&self.path, &plan_json)?;
             let result =
-                serde_json::from_str::<ImageBuildResult>(&result_json).map_err(|error| {
-                    MmError::State {
-                        message: format!("image build result snapshot is invalid: {error}"),
-                    }
-                })?;
+                stored_json::<ImageBuildResult>(&self.path, &result_json, "image build result")?;
             result
                 .validate_against(&plan)
                 .map_err(|message| MmError::Security { message })?;
@@ -265,28 +258,8 @@ macro_rules! sqlite_builds { () => {
     }
 } }
 
-fn parse_image_build_plan(plan_json: &str) -> Result<ImageBuildPlan, MmError> {
-    let stored = serde_json::from_str::<serde_json::Value>(plan_json).map_err(|error| {
-        MmError::State {
-            message: format!("stored image build plan is corrupt: {error}"),
-        }
-    })?;
-    match stored.get("schema").and_then(serde_json::Value::as_str) {
-        Some(PLAN_SCHEMA) => {}
-        Some(schema) => {
-            return Err(MmError::State {
-                message: format!(
-                    "image build plan snapshot uses unsupported schema '{schema}'"
-                ),
-            });
-        }
-        None => {
-            return Err(MmError::State {
-                message: "image build plan snapshot has no schema".to_owned(),
-            });
-        }
-    }
-    serde_json::from_str(plan_json).map_err(|error| MmError::State {
-        message: format!("image build plan snapshot is invalid: {error}"),
-    })
+fn parse_image_build_plan(path: &Path, plan_json: &str) -> Result<ImageBuildPlan, MmError> {
+    let stored = stored_json::<serde_json::Value>(path, plan_json, "image build plan")?;
+    known_schema(path, &stored, "image build plan", PLAN_SCHEMA)?;
+    stored_json(path, plan_json, "image build plan")
 }

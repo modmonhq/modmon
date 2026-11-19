@@ -66,7 +66,7 @@ pub enum OnFailure {
 
 /// What a node does with a service's unhealthy containers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct RestartPolicy {
     pub after_ms: u64,
     pub max_restarts: u32,
@@ -231,7 +231,7 @@ pub struct ServiceHealth {
 
 /// One restart mm made, or the moment it stopped restarting a container.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct RestartEvent {
     /// The node the container runs on; set once nodes are put together.
     #[serde(default, skip_serializing_if = "Option::is_none")]

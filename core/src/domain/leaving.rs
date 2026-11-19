@@ -56,7 +56,7 @@ pub fn drain_of(spec: Option<&crate::domain::config::DurationSpec>) -> Result<Du
 
 /// One container that is leaving its node, as the node keeps it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct LeaveRecord {
     /// The engine's id of the container, whole.
     pub id: String,

@@ -202,7 +202,7 @@ fn a_feature_a_service_inherits_through_extends_is_found_under_its_own_name() ->
 
 fn host_policy(environments: &str, allow: &str) -> String {
     format!(
-        "schema-version: 2
+        "schema-version: 1
 break-glass:
   - name: ops
     key: {OPS}

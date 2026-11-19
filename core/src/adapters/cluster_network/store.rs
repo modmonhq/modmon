@@ -8,6 +8,7 @@ use std::path::PathBuf;
 
 use crate::domain::cluster_network::NodeNetworks;
 use crate::domain::error::MmError;
+use crate::domain::stored_state::{StoredOn, unknown_in, written_by_newer_mm};
 
 const STATE: &str = "networks.json";
 
@@ -39,11 +40,16 @@ impl NetworkStore {
                 });
             }
         };
-        let state: NodeNetworks = serde_json::from_str(&text).map_err(|error| MmError::State {
-            message: format!(
-                "{} is not a network state mmd wrote ({error}); `mm deploy plan` and its apply write it again",
-                path.display()
-            ),
+        let state: NodeNetworks = serde_json::from_str(&text).map_err(|error| {
+            if let Some(unknown) = unknown_in(&error) {
+                return written_by_newer_mm(&path, &unknown, StoredOn::Host);
+            }
+            MmError::State {
+                message: format!(
+                    "{} is not a network state mmd wrote ({error}); `mm deploy plan` and its apply write it again",
+                    path.display()
+                ),
+            }
         })?;
         state.table.validate().map_err(|message| MmError::State {
             message: format!("{}: {message}", path.display()),

@@ -359,9 +359,9 @@ hosts up again with `mm target setup plan --upgrade`. See
   command except `mm mcp serve` exits with code 3. Run `mm` from your own
   terminal.
 - The MCP server takes its limits from the project's `agents:` block. The
-  private `mcp.json` is now optional, uses `schema_version` 2, and can only
-  narrow the block with `ceiling`; a version 1 file is rejected. Tool and
-  resource contracts are `mm-mcp-tools-v2` and `mm-mcp-resources-v2`: a
+  private `mcp.json` is now optional, uses `schema_version` 1, and can only
+  narrow the block with `ceiling`. Tool and resource contracts are
+  `mm-mcp-tools-v1` and `mm-mcp-resources-v1`: a
   `scope` needs only `environment`, and plans report `applied_by`.
 - The MCP server reaches remote environments only with the agent key. It no
   longer uses `MM_SSH_KEY`, a target's key file, or the device key.
@@ -1081,6 +1081,23 @@ hosts up again with `mm target setup plan --upgrade`. See
 - `mm doctor`'s `MM_HOST_RELEASE_OLDER` said to run `mm target setup plan`
   without `--upgrade`, which setup refuses for hosts on an older release;
   `MM_HOST_RELEASE_NEWER` now says `mm update`.
+- State that another release wrote no longer stops an update. A newer `mm`
+  or `mmd` reads what an older one stored and moves the state database
+  forward; an older one ignores fields a newer one added, and refuses a file
+  or database whose format changed with a message that names it and says to
+  run `mm update` (or, on a host, `mm target setup plan --upgrade`), without
+  changing it. Before, records refused any field they did not know, a newer
+  migration said to use a compatible mm, and an `mmd` whose deployment
+  record it could not read did not start. See
+  [compatibility](docs/reference/compatibility.md#stored-state).
+- Every stored schema number starts at 1: `schema-version` in
+  `/etc/mm/host.yaml`, `schema_version` in `/etc/mm/mmd.json` and
+  `MM_HOME/mcp.json`, and the access policy. Adding a key no longer raises
+  one: `mmd.json`, `host.yaml` and `mcp.json` take keys they do not know with
+  a warning that names them, and the messages about earlier formats
+  (`access.yaml`, version 1 of `mcp.json`) are gone. A host set up by an
+  earlier build gets `mmd.json` again from `mm target setup --upgrade`; set
+  `schema-version: 1` in its `host.yaml` by hand.
 - Job output, `mm service logs` and MCP `mm_logs` are redacted against the
   secrets the environment hands out (its services' variables and secret
   files, registry logins, tunnel token and certificate) and the other

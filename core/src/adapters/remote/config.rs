@@ -4,8 +4,13 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::domain::error::MmError;
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+use crate::domain::stored_state::{
+    StoredOn, check_schema, stored_version, unknown_keys, unreadable,
+};
+
+pub const DAEMON_CONFIG_SCHEMA: u32 = 1;
+
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct DaemonConfig {
     pub schema_version: u32,
     pub socket_path: PathBuf,
@@ -55,20 +60,34 @@ impl DaemonConfig {
         if bytes.len() > 1024 * 1024 {
             return Err(security("daemon configuration exceeds 1 MiB"));
         }
-        let config: Self =
-            serde_json::from_slice(&bytes).map_err(|error| MmError::ConfigParse {
-                path: path.to_path_buf(),
-                message: error.to_string(),
-            })?;
+        Self::parse(path, &bytes)
+    }
+
+    /// The configuration in `bytes`, read from `path`.
+    pub fn parse(path: &Path, bytes: &[u8]) -> Result<Self, MmError> {
+        if let Some(schema) = stored_version(bytes, "schema_version") {
+            check_schema(path, schema, DAEMON_CONFIG_SCHEMA, StoredOn::Host)?;
+        }
+        let value: serde_json::Value = serde_json::from_slice(bytes)
+            .map_err(|error| unreadable(path, "mmd configuration", &error, StoredOn::Host))?;
+        for key in unknown_keys::<Self>(&value) {
+            tracing::warn!(
+                "unknown key `{key}` in {}; this mmd ignores it",
+                path.display()
+            );
+        }
+        let config: Self = serde_json::from_value(value)
+            .map_err(|error| unreadable(path, "mmd configuration", &error, StoredOn::Host))?;
         config.validate()?;
         Ok(config)
     }
 
     pub fn validate(&self) -> Result<(), MmError> {
-        if self.schema_version != 2 {
-            return Err(security(
-                "unsupported mmd configuration schema; expected 2 (host_policy_path and relay_uid replace access_policy_path)",
-            ));
+        if self.schema_version != DAEMON_CONFIG_SCHEMA {
+            return Err(security(&format!(
+                "unsupported mmd configuration schema {}; expected {DAEMON_CONFIG_SCHEMA}",
+                self.schema_version
+            )));
         }
         if !self.socket_path.is_absolute()
             || !self.state_root.is_absolute()

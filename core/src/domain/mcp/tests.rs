@@ -32,13 +32,9 @@ fn private_limits_validate_and_fail_closed() {
         mutation(&mut candidate);
         assert!(candidate.validate().is_err());
     }
-    // Version 1 is rejected with what to do about it.
-    let mut old = valid.clone();
-    old.schema_version = 1;
-    assert!(
-        old.validate()
-            .is_err_and(|message| message.contains("agents:"))
-    );
+    let mut newer = valid.clone();
+    newer.schema_version = 2;
+    assert!(newer.validate().is_err());
 }
 
 #[test]

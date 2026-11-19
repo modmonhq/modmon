@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::workspace::ProjectId;
 
-pub const HOST_POLICY_SCHEMA_VERSION: u32 = 2;
+pub const HOST_POLICY_SCHEMA_VERSION: u32 = 1;
 
 /// Access levels a repo grants per environment. Each includes the previous.
 #[derive(
@@ -189,7 +189,7 @@ impl EnvironmentAccess {
 /// A key that is admin on every enrolled project, for recovery. Keep the
 /// private half offline.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct BreakGlassKey {
     pub name: String,
     pub key: String,
@@ -197,7 +197,7 @@ pub struct BreakGlassKey {
 
 /// A Compose feature that would escape to the host, allowed for one service.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct GuardrailException {
     /// `<stack>/<service>`.
     pub service: String,
@@ -205,7 +205,7 @@ pub struct GuardrailException {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct EnrolledProject {
     pub name: String,
     /// Git URL `mmd` fetches from with its own read-only deploy key. Not
@@ -247,7 +247,7 @@ impl EnrolledProject {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct HostPolicy {
     pub schema_version: u32,
     pub break_glass: Vec<BreakGlassKey>,
@@ -268,7 +268,7 @@ impl HostPolicy {
     pub fn validate(&self) -> Result<(), String> {
         if self.schema_version != HOST_POLICY_SCHEMA_VERSION {
             return Err(format!(
-                "host policy schema-version {} is not supported; expected {HOST_POLICY_SCHEMA_VERSION} (see the migration guide for access.yaml)",
+                "host policy schema-version {} is not supported; expected {HOST_POLICY_SCHEMA_VERSION}",
                 self.schema_version
             ));
         }
@@ -343,7 +343,7 @@ pub const ACCESS_RECORD_SCHEMA_VERSION: u32 = 1;
 
 /// One user's reconciled access in one environment, with checked keys.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct ReconciledUser {
     #[serde(default)]
     pub machine: bool,
@@ -357,14 +357,14 @@ pub struct ReconciledUser {
 /// A user's agent keys and what they may do: the user's access limited by
 /// the `agents:` block of the same commit.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct ReconciledAgent {
     pub keys: Vec<ReconciledKey>,
     pub access: EnvironmentAccess,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct ReconciledKey {
     /// `<type> <base64>`, without the comment.
     pub public_key: String,
@@ -376,7 +376,7 @@ pub struct ReconciledKey {
 /// The users file of the commit last deployed or synced to one environment,
 /// already limited by the host ceiling. `mmd` stores one per environment.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct EnvironmentAccessRecord {
     pub schema_version: u32,
     pub project_id: ProjectId,
@@ -428,7 +428,7 @@ fn agent_access(
 
 /// A server-side block that takes effect at once, before the repo catches up.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct EmergencyBlock {
     pub project_id: ProjectId,
     pub environment: String,

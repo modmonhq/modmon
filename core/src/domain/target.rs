@@ -18,14 +18,14 @@ pub const DEFAULT_TRAEFIK_IMAGE: &str = "docker.io/library/traefik@sha256:16acb8
 pub struct TargetId(pub Uuid);
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct TargetCatalog {
     #[serde(default)]
     pub targets: BTreeMap<String, TargetDefinition>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct TargetDefinition {
     pub id: TargetId,
     pub transport: TargetTransport,
@@ -47,7 +47,7 @@ pub struct TargetDefinition {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "kebab-case")]
 pub struct TargetRuntimeEndpoint {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub socket: Option<PathBuf>,
@@ -214,7 +214,7 @@ const fn runtime_kind_name(kind: crate::domain::runtime::RuntimeKind) -> &'stati
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum TargetTransport {
     Local,
     Ssh {
@@ -239,13 +239,13 @@ const fn default_ssh_port() -> u16 {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "provider", rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(tag = "provider", rename_all = "kebab-case")]
 pub enum TargetBootstrap {
     Ansible,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "provider", rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(tag = "provider", rename_all = "kebab-case")]
 pub enum TargetIngress {
     Traefik {
         image: String,

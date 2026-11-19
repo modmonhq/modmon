@@ -55,9 +55,16 @@ impl RemoteDaemon {
             }
         };
         for (project, environment) in enrolled {
-            let interrupted = self
+            let interrupted = match self
                 .access
-                .update_deployments(project, &environment, |stored| Ok(stored.interrupt(now)))?;
+                .update_deployments(project, &environment, |stored| Ok(stored.interrupt(now)))
+            {
+                Ok(interrupted) => interrupted,
+                Err(error) => {
+                    tracing::warn!(%environment, %error, "the rollout of an environment is not looked at after the start");
+                    continue;
+                }
+            };
             let Some((plan_hash, state)) = interrupted else {
                 continue;
             };

@@ -535,7 +535,7 @@ fn push_policy(host: &Host, deploy_from: Option<&str>) -> TestResult {
     std::fs::write(
         &host.config.host_policy_path,
         format!(
-            "schema-version: 2\nbreak-glass:\n  - name: ops\n    key: {OPS}\nprojects:\n  {}:\n    name: example\n    delivery: push\n    environments: [production]\n{limit}",
+            "schema-version: 1\nbreak-glass:\n  - name: ops\n    key: {OPS}\nprojects:\n  {}:\n    name: example\n    delivery: push\n    environments: [production]\n{limit}",
             project().0
         ),
     )?;

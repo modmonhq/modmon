@@ -83,11 +83,11 @@ macro_rules! scheduler_definitions { () => {
             .map_err(state_error)?;
         for row in rows {
             let (name, json) = row.map_err(state_error)?;
-            jobs.insert(name, deserialize_definition(&json, "job")?);
+            jobs.insert(name, deserialize_definition(&self.path, &json, "job")?);
         }
         Ok(DesiredDefinitions {
             jobs,
-            schedules: load_schedule_definitions(&connection, project_id, environment)?,
+            schedules: load_schedule_definitions(&connection, &self.path, project_id, environment)?,
         })
     }
 
