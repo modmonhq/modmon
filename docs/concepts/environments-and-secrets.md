@@ -53,7 +53,8 @@ APP_COMMIT=dev # mm:from=MM.COMMIT
 `mm deploy plan --release v26.6.0` names the release; without it,
 `MM.RELEASE` is `sha-` and the commit's first 12 characters. Values that CI
 supplies per deployment are declared under `release-inputs:` and given with
-`--release-input NAME=VALUE`. The
+`--release-input NAME=VALUE`; a plan needs those that the environment's
+templates read. The
 [release facts](../reference/configuration.md#release-facts) reference lists
 every key. `mm deploy rollback` returns to the name and inputs of the
 deployment it goes back to, and `mm deploy redeploy` keeps the ones the

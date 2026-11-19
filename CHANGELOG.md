@@ -363,6 +363,10 @@ installations `mm target setup` upgrades in place and what it refuses.
   first-party images they build FROM; `mm build --all` builds every module,
   as before. A build receipt promotes to an environment that runs fewer
   modules than the one it was built for.
+- A deployment plan needs only the `release-inputs:` that a template of the
+  planned environment reads, and names every missing one with the template
+  line that reads it, so a development environment plans without the values
+  CI supplies for staging, from the command line and through MCP alike.
 - A failed MCP call returns the message the command line prints for its
   error, redacted as the command log is, with the command line's help in
   `next_action`; what another program printed stays out, and a failed

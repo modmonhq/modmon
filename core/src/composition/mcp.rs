@@ -524,7 +524,7 @@ impl McpUseCases for McpApplicationAdapter {
             }
             .in_own_words())
         } else {
-            let selection = released(&selection, release);
+            let selection = super::released(&selection, Some(release.clone()));
             json_value(
                 runtime
                     .deployment_service(&selection, Some(&self.mm_home))?
@@ -544,7 +544,7 @@ impl McpUseCases for McpApplicationAdapter {
         let runtime = self.runtime();
         let selection = self.selection(context);
         let Some(environment) = self.remote(&selection, context)? else {
-            let selection = released(&selection, release);
+            let selection = super::released(&selection, Some(release.clone()));
             return json_value(
                 runtime
                     .deployment_service(&selection, Some(&self.mm_home))?
@@ -724,7 +724,6 @@ mod plans;
 mod reads;
 #[path = "mcp/values.rs"]
 mod values;
-use plans::released;
 
 #[cfg(test)]
 #[path = "mcp_tests.rs"]

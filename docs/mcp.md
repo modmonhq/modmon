@@ -402,7 +402,9 @@ plan has a `redeploy` object with the `commit` and the `nodes`.
 `mm_deploy_plan` takes the release's name and inputs as
 `"release": {"name": "v26.6.0", "inputs": {"BUILD_ID": "4757"}}`, the
 `--release` and `--release-input` of `mm deploy plan`; a rollback returns to
-the ones it ran with, and a redeploy keeps the ones the hosts run. For an
+the ones it ran with, and a redeploy keeps the ones the hosts run. Without
+`release`, a plan deploys this checkout's commit as `mm deploy plan` does,
+and needs only the inputs the environment's templates read. For an
 environment on this machine, `mm_deploy_apply` plans again, so give it the
 same `release`; a remote plan carries its own.
 

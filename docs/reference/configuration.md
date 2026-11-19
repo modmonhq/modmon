@@ -781,9 +781,13 @@ mm -e production deploy plan --receipt build-receipt.json \
   --release-input NODE_IMAGE=registry.example.com/platform@sha256:...
 ```
 
-Each declared input has to be given, and nothing else may be: the plan fails
-with `MM_RELEASE_INPUT` and names the inputs missing, the one not declared,
-or the value that does not match its `pattern`. A pattern is a regular
+Each input that a template of the planned environment reads has to be
+given, and nothing undeclared may be: the plan fails with `MM_RELEASE_INPUT`
+and names the inputs missing with the template line that reads each, the one
+not declared, or the value that does not match its `pattern`. An input that
+only another environment's templates read may be left out, so `mm deploy
+plan` of a development environment needs none of the values CI supplies for
+staging. A pattern is a regular
 expression that the whole value must match; without one, any single line of
 text is accepted. Input names are one upper-case word, such as `BUILD_ID`.
 

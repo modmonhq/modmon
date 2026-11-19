@@ -138,7 +138,7 @@ pub(crate) use cluster_setup::{
     export_store_recovery, import_store_recovery, pushed_commit,
 };
 pub(crate) use config::*;
-pub(crate) use daemon_checkout::{local_release, resolve_commit};
+pub(crate) use daemon_checkout::{released, resolve_commit};
 pub(crate) use environment::*;
 pub(crate) use forwards::{declared_service_ports, forward_shortcuts};
 pub(crate) use host_platform::public_ingress_control;

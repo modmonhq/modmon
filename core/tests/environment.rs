@@ -1059,6 +1059,18 @@ environments:
         matches!(&refused, Err(MmError::ReleaseInput { message }) if message.contains("MM.IMAGE.api")),
         "{refused:?}"
     );
+    let without_input = selection.with_release(Some(ReleaseFacts::new(
+        Some(commit.to_owned()),
+        ReleaseRequest::default(),
+    )));
+    let refused = manager.review(&without_input).await;
+    assert!(
+        matches!(&refused, Err(MmError::ReleaseInput { message })
+            if message.starts_with("environment 'production' reads release inputs the plan was not given: BUILD (")
+                && message.contains(".env.example line 3)")
+                && message.ends_with("Plan with --release-input BUILD=VALUE")),
+        "{refused:?}"
+    );
 
     let released = selection.with_release(Some(
         ReleaseFacts::new(Some(commit.to_owned()), request).with_images(BTreeMap::from([(

@@ -158,17 +158,17 @@ fn facts_and_value_refs_resolve_from_the_release() -> TestResult {
 }
 
 #[test]
-fn the_plan_refuses_missing_undeclared_and_malformed_inputs() -> TestResult {
+fn the_plan_refuses_undeclared_and_malformed_inputs() -> TestResult {
     let declared = serde_yaml_ng::from_str::<
         BTreeMap<String, mm::domain::release_facts::ReleaseInputConfig>,
     >("BUILD_ID: {pattern: \"[0-9]+\"}\nNOTE: {}\n")?;
     let check = |inputs: &[(&str, &str)]| released(inputs).check(&declared);
 
     assert_eq!(check(&[("BUILD_ID", "12"), ("NOTE", "any text")]), Ok(()));
-    let missing = check(&[("BUILD_ID", "12")]).err().unwrap_or_default();
-    assert!(
-        missing.contains("NOTE") && missing.contains("--release-input NOTE=VALUE"),
-        "{missing}"
+    assert_eq!(
+        check(&[("BUILD_ID", "12")]),
+        Ok(()),
+        "an input is required where a template reads it, which the environment review checks"
     );
     let undeclared = check(&[("BUILD_ID", "1"), ("NOTE", "n"), ("OTHER", "x")])
         .err()

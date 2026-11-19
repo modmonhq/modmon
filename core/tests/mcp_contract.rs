@@ -1011,8 +1011,105 @@ fn an_agent_reads_the_cli_message_without_secrets_or_provider_output() {
     );
 }
 
+/// The project of the release tests: `web` runs everywhere, `worker` only
+/// in production, and only `worker`'s template reads a release input.
+fn release_project() -> Result<Project, Box<dyn std::error::Error>> {
+    let project = Project::new()?;
+    let root = project.root.path();
+    fs::write(
+        root.join("compose.yaml"),
+        "services:\n  web:\n    image: example/web\n  worker:\n    image: example/worker\n",
+    )?;
+    for module in ["web", "worker"] {
+        fs::create_dir(root.join(module))?;
+    }
+    fs::write(
+        root.join("worker/.env.example"),
+        "BUILD=0 # mm:from=RELEASE.BUILD_ID\n",
+    )?;
+    project.edit(|config| {
+        config["modules"] = serde_yaml_ng::from_str(
+            "web: {path: web, services: {web: {stack: app}}}\nworker: {path: worker, env: {template: .env.example}, services: {worker: {stack: app, environments: [production]}}}",
+        )
+        .unwrap_or_default();
+        config["release-inputs"] =
+            serde_yaml_ng::from_str("BUILD_ID: {pattern: \"^[0-9]+$\"}").unwrap_or_default();
+    })?;
+    Ok(project)
+}
+
 fn engine_off() -> [(&'static str, String); 1] {
     [("MM_ENGINE_API", "off".to_owned())]
+}
+
+/// A local plan needs only the release inputs its own templates read, and
+/// plans through MCP as `mm deploy plan` plans; the inputs it is given
+/// become part of the plan. An environment whose template reads an input
+/// names it, where it is read, and the option that gives it.
+#[test]
+fn a_plan_needs_only_the_release_inputs_its_environment_reads()
+-> Result<(), Box<dyn std::error::Error>> {
+    let project = release_project()?;
+    let printed = project
+        .mm()
+        .args(["--runtime", "docker-compose", "--environment", "local"])
+        .args(["--output", "json", "deploy", "plan"])
+        .output()?;
+    assert!(
+        printed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&printed.stderr)
+    );
+    let printed: serde_json::Value = serde_json::from_slice(&printed.stdout)?;
+
+    let mut session = Session::start_with(&project, &engine_off())?;
+    let scope = serde_json::json!({"environment": "local", "runtime": "docker-compose"});
+    let planned = session.call("mm_deploy_plan", serde_json::json!({"scope": scope}))?;
+    assert!(planned["error"].is_null(), "{planned}");
+    assert_eq!(planned["plan_hash"], printed["plan_hash"], "{planned}");
+    assert!(planned["plan"]["release"]["inputs"].is_null(), "{planned}");
+
+    let released = session.call(
+        "mm_deploy_plan",
+        serde_json::json!({
+            "scope": scope,
+            "release": {"name": "v7", "inputs": {"BUILD_ID": "7"}},
+        }),
+    )?;
+    assert_eq!(released["plan"]["release"]["name"], "v7", "{released}");
+    assert_eq!(
+        released["plan"]["release"]["inputs"]["BUILD_ID"], "7",
+        "{released}"
+    );
+    assert_ne!(released["plan_hash"], planned["plan_hash"]);
+
+    let refused = session.call(
+        "mm_deploy_plan",
+        serde_json::json!({"scope": {"environment": "production", "runtime": "docker-compose"}}),
+    )?;
+    assert_eq!(refused["error"]["code"], "MM_RELEASE_INPUT", "{refused}");
+    let message = refused["error"]["message"].as_str().unwrap_or_default();
+    for named in [
+        "BUILD_ID (",
+        "worker/.env.example line 1",
+        "--release-input BUILD_ID=VALUE",
+    ] {
+        assert!(message.contains(named), "{named}: {message}");
+    }
+    let cli = project
+        .mm()
+        .args(["--runtime", "docker-compose", "--environment", "production"])
+        .args(["deploy", "plan"])
+        .output()?;
+    let said = String::from_utf8_lossy(&cli.stderr);
+    assert!(
+        said.contains(&format!(
+            "error[MM_RELEASE_INPUT]: {}",
+            message.trim_end_matches('.')
+        )),
+        "{said}"
+    );
+    Ok(())
 }
 
 /// A configuration that does not validate is named finding by finding,

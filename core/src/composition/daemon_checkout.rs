@@ -41,6 +41,16 @@ pub(crate) fn local_release(
     crate::domain::release_facts::ReleaseFacts::new(resolve_commit(start, None).ok(), request)
 }
 
+/// `selection` as a deployment planned on this machine runs it, from the
+/// command line, the terminal UI and MCP alike: this checkout's release
+/// with the name and inputs `request` gives, or none for `mm dev up`.
+pub(crate) fn released(
+    selection: &crate::app::WorkspaceSelection,
+    request: Option<crate::domain::release_facts::ReleaseRequest>,
+) -> crate::app::WorkspaceSelection {
+    selection.with_release(request.map(|request| local_release(&selection.start, request)))
+}
+
 /// The full commit SHA a remote plan deploys: `explicit` resolved in this
 /// checkout, or HEAD. The host fetches it from the origin itself, or, on a
 /// target with `delivery: push`, takes its files from this checkout.
