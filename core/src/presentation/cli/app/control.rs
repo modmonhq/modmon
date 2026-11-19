@@ -18,11 +18,7 @@ impl WorkspaceControl {
     /// The selection a deployment from the TUI plans and applies: this
     /// checkout's commit, with no name or inputs given.
     fn released(&self) -> crate::app::WorkspaceSelection {
-        let selection = &self.invocation.selection;
-        selection.with_release(Some(composition::local_release(
-            &selection.start,
-            Default::default(),
-        )))
+        composition::released(&self.invocation.selection, Some(Default::default()))
     }
 
     fn deployment(&self) -> Result<crate::app::DeploymentService, MmError> {

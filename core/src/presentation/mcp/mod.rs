@@ -21,7 +21,8 @@ use crate::domain::mcp::{
     McpAuditRecord, McpAuthorizationError, McpAuthorizationRequest, McpConfigApplyRequest,
     McpConfigPlanRequest, McpDeployPlanRequest, McpExecRequest, McpJobAction, McpJobApplyRequest,
     McpJobPlanRequest, McpLogRequest, McpPlanRequest, McpRequestContext, McpReviewedPlan, McpScope,
-    McpServerConfig, reject_model_visible_sensitive_fields,
+    McpServerConfig, McpSetupApplyRequest, McpSetupPlanRequest,
+    reject_model_visible_sensitive_fields,
 };
 use crate::domain::observability::OperationCancellation;
 
@@ -41,6 +42,7 @@ enum ReviewKind {
     Build,
     Deployment,
     Job,
+    Setup,
 }
 
 #[derive(Debug, Clone)]

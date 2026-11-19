@@ -383,7 +383,10 @@
         assert!(write_private(&directory.path().join("missing/value"), b"value").is_err());
 
         assert_eq!(bounded_detail(""), "no diagnostic output");
-        assert_eq!(bounded_detail(&"x".repeat(600)).len(), 512);
+        assert_eq!(
+            crate::domain::error::shown(&bounded_detail(&"x".repeat(600))).len(),
+            512
+        );
         assert!(format!("{}", trust_error("failure")).contains("failure"));
         assert!(format!("{}", unsupported_error()).contains("no implemented"));
         assert!(private_key_paths_unix(Path::new("/")).is_err());

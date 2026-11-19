@@ -228,7 +228,7 @@ impl DeploymentManager {
                 })
                 .count();
             if errors > 0 {
-                return Err(MmError::Validation { errors });
+                return Err(MmError::invalid(&diagnostics));
             }
         }
         Ok(())

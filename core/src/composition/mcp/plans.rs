@@ -1,17 +1,6 @@
-//! `mm_read` kind `plans`, and the release a deployment on this machine
-//! plans: this checkout's commit, with the name and inputs asked for.
+//! `mm_read` kind `plans`.
 
 use super::*;
-
-pub(super) fn released(
-    selection: &WorkspaceSelection,
-    release: &crate::domain::release_facts::ReleaseRequest,
-) -> WorkspaceSelection {
-    selection.with_release(Some(crate::composition::local_release(
-        &selection.start,
-        release.clone(),
-    )))
-}
 
 impl McpApplicationAdapter {
     pub(super) async fn read_plans(
@@ -22,7 +11,10 @@ impl McpApplicationAdapter {
     ) -> Result<serde_json::Value, MmError> {
         let deployment = runtime
             .deployment_service(selection, Some(&self.mm_home))?
-            .plan(&released(selection, &Default::default()))
+            .plan(&crate::composition::released(
+                selection,
+                Some(Default::default()),
+            ))
             .await?;
         let scheduler = job_scheduler_service(
             &context.project_root,

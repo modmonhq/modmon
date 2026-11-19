@@ -123,7 +123,8 @@ impl HostReleaseReader for SshHostReleaseReader {
         let facts: MeshFacts =
             serde_json::from_str(output.stdout.trim()).map_err(|error| MmError::Target {
                 message: format!(
-                    "{host} did not say which release of mm its mmd is ({error}); run `mm target setup plan` again, or check `/usr/libexec/mmd mesh show` on the host"
+                    "{host} did not say which release of mm its mmd is ({}); run `mm target setup plan` again, or check `/usr/libexec/mmd mesh show` on the host",
+                    crate::domain::error::printed(&error.to_string())
                 ),
             })?;
         Ok(facts.release)

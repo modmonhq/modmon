@@ -754,11 +754,17 @@ fn applying_a_deployment_runs_to_its_end_and_every_other_call_keeps_its_bound() 
     // Found integrating: `mm_build_apply` on a local environment ended
     // MM_TIMEOUT after the bound and the build it had begun was dropped, so no
     // image was ever built and the operation stayed recorded as running.
-    for operation in ["deploy_apply", "build_apply", "job_apply"] {
+    for operation in ["deploy_apply", "build_apply", "job_apply", "setup_apply"] {
         assert_eq!(config.call_bound(operation), None, "{operation}");
     }
     let bound = Some(std::time::Duration::from_millis(config.request_timeout_ms));
-    for operation in ["deploy_plan", "build_plan", "config_apply", "read"] {
+    for operation in [
+        "deploy_plan",
+        "build_plan",
+        "config_apply",
+        "read",
+        "setup_plan",
+    ] {
         assert_eq!(config.call_bound(operation), bound, "{operation}");
     }
 }
@@ -871,14 +877,426 @@ fn mms_own_refusals_reach_the_agent_as_mm_says_them() -> Result<(), Box<dyn std:
             .starts_with("the schedules of 'production' are reconciled by its deployment")),
         "{schedules}"
     );
-    // Any other error keeps its fixed text: nothing it carries is shown.
+    // Only an error in mm's own words is a refusal; any other reaches the
+    // agent as the command line prints it, with what to do next.
+    let other = mm::domain::error::MmError::Environment {
+        message: "provider said: something".to_owned(),
+    };
+    assert_eq!(other.refusal(), None);
+    assert_eq!(other.agent_message(), other.to_string());
+    Ok(())
+}
+
+/// An agent reads an error as the command line prints it, with secrets
+/// redacted as the command log redacts them; what another program printed
+/// never reaches it, and an error made of that names the step instead.
+#[test]
+fn an_agent_reads_the_cli_message_without_secrets_or_provider_output() {
+    use mm::domain::diagnostic::Diagnostic;
+    use mm::domain::error::{MmError, MutationStatus, printed};
+
+    let leaky = MmError::Environment {
+        message: "could not log in with password=SENTINEL-VALUE-4471 as ops".to_owned(),
+    };
     assert_eq!(
-        mm::domain::error::MmError::Environment {
-            message: "provider said: something".to_owned()
-        }
-        .refusal(),
-        None
+        leaky.agent_message(),
+        "environment error: could not log in with password=[REDACTED] as ops"
     );
+    let key = MmError::Build {
+        message: concat!(
+            "-----BEGIN ",
+            "OPENSSH PRIVATE KEY-----\nSENTINEL-KEY\n-----END ",
+            "OPENSSH PRIVATE KEY-----\n"
+        )
+        .to_owned(),
+    };
+    assert!(
+        !key.agent_message().contains("SENTINEL"),
+        "{}",
+        key.agent_message()
+    );
+
+    let failed = MmError::ProcessFailed {
+        program: "docker".to_owned(),
+        code: Some(1),
+        stderr: "Error response from daemon: SENTINEL-STDERR".to_owned(),
+    };
+    assert!(failed.to_string().contains("SENTINEL-STDERR"));
+    assert_eq!(
+        failed.agent_message(),
+        "docker failed with exit code 1; what it printed is left out here"
+    );
+    for withheld in [
+        MmError::RuntimeResponse {
+            message: "SENTINEL-ENGINE-ANSWER".to_owned(),
+        },
+        MmError::Remote {
+            code: "MM_PROCESS_FAILED",
+            message: "podman failed with exit code 125: SENTINEL-HOST-STDERR".to_owned(),
+        },
+        MmError::operation_failure(
+            "op-1",
+            MutationStatus::Unknown,
+            failed,
+            vec!["rm: SENTINEL-CLEANUP".to_owned()],
+            "run `mm deploy` again",
+        ),
+    ] {
+        let message = withheld.agent_message();
+        assert!(!message.contains("SENTINEL"), "{message}");
+        assert!(message.contains("left out here"), "{message}");
+    }
+
+    // What a program printed stays out wherever its text goes: quoted in
+    // mm's message, in another error's message, or in the message a host
+    // sent.
+    let quoted = MmError::Environment {
+        message: format!(
+            "git merge-base failed: {}",
+            printed("fatal: unable to access 'https://ci:SENTINEL-GIT@git.example.test/x.git/'")
+        ),
+    };
+    let nested = MmError::Target {
+        message: format!(
+            "node app-2 could not be read ({})",
+            MmError::ProcessFailed {
+                program: "ssh".to_owned(),
+                code: Some(255),
+                stderr: "SENTINEL-SSH".to_owned(),
+            }
+        ),
+    };
+    let provider = MmError::Secret {
+        message: format!(
+            "the store did not start: {}",
+            MmError::RuntimeResponse {
+                message: "the engine answered with 500: SENTINEL-BODY".to_owned(),
+            }
+        ),
+    };
+    let hosted = MmError::Security {
+        message: MmError::Build {
+            message: format!("buildx said {}", printed("SENTINEL-HOST")),
+        }
+        .to_string(),
+    };
+    for error in [quoted, nested, provider, hosted] {
+        let message = error.agent_message();
+        assert!(!message.contains("SENTINEL"), "{message}");
+        assert!(
+            message.contains("[what it printed is left out]"),
+            "{message}"
+        );
+        assert!(error.to_string().contains("SENTINEL"), "{error}");
+    }
+    let unmarked = MmError::Environment {
+        message: "could not fetch https://ci:SENTINEL-URL@git.example.test/x.git with Bearer SENTINEL-BEARER as ghp_SENTINELTOKEN0000".to_owned(),
+    };
+    let message = unmarked.agent_message();
+    assert!(!message.contains("SENTINEL"), "{message}");
+    assert!(
+        message.contains("https://[REDACTED]@git.example.test/x.git"),
+        "{message}"
+    );
+
+    let invalid = MmError::invalid(&[
+        Diagnostic::error("MM_FIRST", "modules.web.path does not exist").at_location(
+            "/work/.config/mm.yaml",
+            7,
+            3,
+        ),
+        Diagnostic::warning("MM_ADVICE", "not an error"),
+        Diagnostic::error("MM_SECOND", "second"),
+        Diagnostic::error("MM_THIRD", "third"),
+        Diagnostic::error("MM_FOURTH", "fourth"),
+    ]);
+    assert_eq!(invalid.code(), "MM_CONFIG_INVALID");
+    assert_eq!(
+        invalid.agent_message(),
+        "configuration validation failed with 4 error(s): MM_FIRST at /work/.config/mm.yaml:7: modules.web.path does not exist; MM_SECOND: second; MM_THIRD: third; `mm config validate` lists the other 1"
+    );
+}
+
+/// The project of the release tests: `web` runs everywhere, `worker` only
+/// in production, and only `worker`'s template reads a release input.
+fn release_project() -> Result<Project, Box<dyn std::error::Error>> {
+    let project = Project::new()?;
+    let root = project.root.path();
+    fs::write(
+        root.join("compose.yaml"),
+        "services:\n  web:\n    image: example/web\n  worker:\n    image: example/worker\n",
+    )?;
+    for module in ["web", "worker"] {
+        fs::create_dir(root.join(module))?;
+    }
+    fs::write(
+        root.join("worker/.env.example"),
+        "BUILD=0 # mm:from=RELEASE.BUILD_ID\n",
+    )?;
+    project.edit(|config| {
+        config["modules"] = serde_yaml_ng::from_str(
+            "web: {path: web, services: {web: {stack: app}}}\nworker: {path: worker, env: {template: .env.example}, services: {worker: {stack: app, environments: [production]}}}",
+        )
+        .unwrap_or_default();
+        config["release-inputs"] =
+            serde_yaml_ng::from_str("BUILD_ID: {pattern: \"^[0-9]+$\"}").unwrap_or_default();
+    })?;
+    Ok(project)
+}
+
+fn engine_off() -> [(&'static str, String); 1] {
+    [("MM_ENGINE_API", "off".to_owned())]
+}
+
+/// A local plan needs only the release inputs its own templates read, and
+/// plans through MCP as `mm deploy plan` plans; the inputs it is given
+/// become part of the plan. An environment whose template reads an input
+/// names it, where it is read, and the option that gives it.
+#[test]
+fn a_plan_needs_only_the_release_inputs_its_environment_reads()
+-> Result<(), Box<dyn std::error::Error>> {
+    let project = release_project()?;
+    let printed = project
+        .mm()
+        .args(["--runtime", "docker-compose", "--environment", "local"])
+        .args(["--output", "json", "deploy", "plan"])
+        .output()?;
+    assert!(
+        printed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&printed.stderr)
+    );
+    let printed: serde_json::Value = serde_json::from_slice(&printed.stdout)?;
+
+    let mut session = Session::start_with(&project, &engine_off())?;
+    let scope = serde_json::json!({"environment": "local", "runtime": "docker-compose"});
+    let planned = session.call("mm_deploy_plan", serde_json::json!({"scope": scope}))?;
+    assert!(planned["error"].is_null(), "{planned}");
+    assert_eq!(planned["plan_hash"], printed["plan_hash"], "{planned}");
+    assert!(planned["plan"]["release"]["inputs"].is_null(), "{planned}");
+
+    let released = session.call(
+        "mm_deploy_plan",
+        serde_json::json!({
+            "scope": scope,
+            "release": {"name": "v7", "inputs": {"BUILD_ID": "7"}},
+        }),
+    )?;
+    assert_eq!(released["plan"]["release"]["name"], "v7", "{released}");
+    assert_eq!(
+        released["plan"]["release"]["inputs"]["BUILD_ID"], "7",
+        "{released}"
+    );
+    assert_ne!(released["plan_hash"], planned["plan_hash"]);
+
+    let refused = session.call(
+        "mm_deploy_plan",
+        serde_json::json!({"scope": {"environment": "production", "runtime": "docker-compose"}}),
+    )?;
+    assert_eq!(refused["error"]["code"], "MM_RELEASE_INPUT", "{refused}");
+    let message = refused["error"]["message"].as_str().unwrap_or_default();
+    for named in [
+        "BUILD_ID (",
+        "worker/.env.example line 1",
+        "--release-input BUILD_ID=VALUE",
+    ] {
+        assert!(message.contains(named), "{named}: {message}");
+    }
+    let cli = project
+        .mm()
+        .args(["--runtime", "docker-compose", "--environment", "production"])
+        .args(["deploy", "plan"])
+        .output()?;
+    let said = String::from_utf8_lossy(&cli.stderr);
+    assert!(
+        said.contains(&format!(
+            "error[MM_RELEASE_INPUT]: {}",
+            message.trim_end_matches('.')
+        )),
+        "{said}"
+    );
+    Ok(())
+}
+
+/// A configuration that does not validate is named finding by finding,
+/// in the words and with the code the command line prints.
+#[test]
+fn a_validation_failure_names_the_finding_over_mcp_as_on_the_command_line()
+-> Result<(), Box<dyn std::error::Error>> {
+    let project = Project::new()?;
+    project.edit(|config| {
+        config["targets"] =
+            serde_yaml_ng::from_str("lab: {host: 203.0.113.20}").unwrap_or_default();
+    })?;
+    let mut session = Session::start_with(&project, &engine_off())?;
+    let refused = session.call(
+        "mm_deploy_plan",
+        serde_json::json!({"scope": {"environment": "local", "runtime": "docker-compose"}}),
+    )?;
+    assert_eq!(refused["error"]["code"], "MM_CONFIG_INVALID", "{refused}");
+    let message = refused["error"]["message"].as_str().unwrap_or_default();
+    for named in [
+        "MM_REPO_TARGET_INVALID at ",
+        ".config/mm.yaml",
+        "target 'lab'",
+    ] {
+        assert!(message.contains(named), "{named}: {message}");
+    }
+    assert!(!message.contains("provider output"), "{message}");
+    let cli = project
+        .mm()
+        .args(["--runtime", "docker-compose", "--environment", "local"])
+        .args(["deploy", "plan"])
+        .output()?;
+    let said = String::from_utf8_lossy(&cli.stderr);
+    assert!(
+        said.contains(&format!(
+            "error[MM_CONFIG_INVALID]: {}",
+            message.trim_end_matches('.')
+        )),
+        "{said}"
+    );
+    Ok(())
+}
+
+/// A `git` that fails the way it does outside a repository, with a line of
+/// its own that must not reach the agent.
+#[cfg(unix)]
+const FAILING_GIT: &str = "#!/bin/sh\necho 'fatal: SENTINEL-GIT-STDERR' >&2\nexit 128\n";
+
+#[cfg(unix)]
+fn git(root: &Path, arguments: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
+    let output = std::process::Command::new("git")
+        .current_dir(root)
+        .args([
+            "-c",
+            "user.name=mm-test",
+            "-c",
+            "user.email=mm@example.test",
+        ])
+        .args(["-c", "commit.gpgsign=false"])
+        .args(arguments)
+        .output()?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).into_owned().into())
+    }
+}
+
+/// A build context that would ship a sensitive file is refused over MCP
+/// naming the file; a program that fails is named with its exit code, and
+/// what it printed stays out.
+#[cfg(unix)]
+#[test]
+fn a_build_refusal_names_the_file_and_a_failed_program_keeps_its_output()
+-> Result<(), Box<dyn std::error::Error>> {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let project = Project::new()?;
+    let root = project.root.path();
+    fs::write(
+        root.join("compose.yaml"),
+        "services:\n  web:\n    image: example/web\n",
+    )?;
+    fs::create_dir(root.join("web"))?;
+    fs::write(root.join("web/Dockerfile"), "FROM scratch\n")?;
+    fs::write(root.join("web/.env"), "EXAMPLE=1\n")?;
+    project.edit(|config| {
+        config["modules"] = serde_yaml_ng::from_str(
+            "web: {path: web, build: {image: example/web}, services: {web: {stack: app}}}",
+        )
+        .unwrap_or_default();
+    })?;
+    let scope = serde_json::json!({"environment": "local", "runtime": "docker-compose"});
+
+    let tools = temp_dirs::tempdir()?;
+    fs::write(tools.path().join("git"), FAILING_GIT)?;
+    fs::set_permissions(tools.path().join("git"), fs::Permissions::from_mode(0o755))?;
+    let path = format!(
+        "{}:{}",
+        tools.path().display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let mut session = Session::start_with(
+        &project,
+        &[("PATH", path), ("MM_ENGINE_API", "off".to_owned())],
+    )?;
+    let failed = session.call("mm_build_plan", serde_json::json!({"scope": scope}))?;
+    assert_eq!(failed["error"]["code"], "MM_PROCESS_FAILED", "{failed}");
+    assert_eq!(
+        failed["error"]["message"],
+        "git failed with exit code 128; what it printed is left out here.",
+        "{failed}"
+    );
+    assert!(!failed.to_string().contains("SENTINEL"), "{failed}");
+    drop(session);
+
+    git(root, &["init", "--quiet", "--initial-branch=main"])?;
+    git(root, &["add", "--all"])?;
+    git(root, &["commit", "--quiet", "--message", "fixture"])?;
+    let mut session = Session::start_with(&project, &engine_off())?;
+    let refused = session.call("mm_build_plan", serde_json::json!({"scope": scope}))?;
+    assert_eq!(refused["error"]["code"], "MM_SECURITY", "{refused}");
+    let message = refused["error"]["message"].as_str().unwrap_or_default();
+    assert!(
+        message.contains(".env") && message.contains("build context"),
+        "{refused}"
+    );
+    assert!(!message.contains("authorization"), "{refused}");
+    Ok(())
+}
+
+/// `mm_read` of `health` on an environment whose status cannot be read
+/// returns what `mm config validate` finds and the error that stopped the
+/// status, rather than failing with it.
+#[test]
+fn health_of_a_broken_environment_returns_its_findings() -> Result<(), Box<dyn std::error::Error>> {
+    let project = Project::new()?;
+    let root = project.root.path();
+    fs::write(
+        root.join("compose.yaml"),
+        "services:\n  web:\n    image: example/web\n",
+    )?;
+    fs::create_dir(root.join("web"))?;
+    project.edit(|config| {
+        config["modules"] = serde_yaml_ng::from_str(
+            "web: {path: web, env: {template: .env.example}, services: {web: {stack: app}}}",
+        )
+        .unwrap_or_default();
+        config["environments"]["production"]["target"] = "lab".into();
+    })?;
+    FilesystemTargetStore::new(project.home.path().join("targets.yaml")).insert_target(
+        "lab",
+        TargetDefinition {
+            available_runtimes: vec![RuntimeKind::PodmanCompose],
+            ..TargetDefinition::local(TargetId(Uuid::from_u128(93)))
+        },
+    )?;
+    let mut session = Session::start_with(&project, &engine_off())?;
+    let health = session.call(
+        "mm_read",
+        serde_json::json!({
+            "scope": {"environment": "production", "runtime": "docker-compose"},
+            "kind": "health",
+        }),
+    )?;
+    assert!(health["error"].is_null(), "{health}");
+    assert!(health["runtime"].is_null(), "{health}");
+    let findings = health["validation"]["diagnostics"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let found = |code: &str, text: &str| {
+        findings.iter().any(|finding| {
+            finding["code"] == code
+                && finding["message"]
+                    .as_str()
+                    .is_some_and(|message| message.contains(text))
+        })
+    };
+    assert!(found("MM_TARGET", "does not offer runtime"), "{health}");
+    assert!(found("MM_ENV_TEMPLATE_READ", ""), "{health}");
     Ok(())
 }
 
@@ -1054,5 +1472,211 @@ fn an_agent_reads_the_managed_store_as_provider_status_prints_it()
         codes(&read),
         [serde_json::json!("MM_SECRET_STORE_DEGRADED")]
     );
+    Ok(())
+}
+
+/// The project of the setup tests: `local` keeps a generated password in
+/// the project's age store, and agents have `secrets: true` there when
+/// `secrets` is set.
+fn setup_project(secrets: bool) -> Result<Project, Box<dyn std::error::Error>> {
+    let project = Project::new()?;
+    project.edit(|config| {
+        config["secrets"] = serde_yaml_ng::from_str(
+            "database.password: {storage: {provider: age, location: local/database-password}, generate: {preset: password, length: 40}}",
+        )
+        .unwrap_or_default();
+        config["bindings"]["DATABASE.PASSWORD"] =
+            serde_yaml_ng::from_str("{secret: database.password}").unwrap_or_default();
+        if secrets {
+            config["agents"]["local"]["secrets"] = true.into();
+        }
+    })?;
+    project.trust()?;
+    Ok(project)
+}
+
+fn apply_setup(
+    session: &mut Session,
+    step: &serde_json::Value,
+    plan: &serde_json::Value,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    let hash = plan["plan_hash"].as_str().unwrap_or_default();
+    session.call(
+        "mm_setup_apply",
+        serde_json::json!({
+            "scope": {"environment": "local"},
+            "step": step,
+            "plan_hash": hash,
+            "approval_token": plan["approval_token"],
+            "confirmation": format!("apply:{hash}"),
+        }),
+    )
+}
+
+/// With `secrets: true` an agent creates the project's local secret store
+/// and generates what is missing, each from a reviewed plan; a plan the
+/// store moved past is refused, and no result holds a value.
+#[test]
+fn an_agent_sets_up_the_local_secret_store_within_its_grant()
+-> Result<(), Box<dyn std::error::Error>> {
+    use mm::app::ports::SecretMaterialResolver as _;
+
+    let project = setup_project(true)?;
+    let mut session = Session::start_with(&project, &engine_off())?;
+    let scope = serde_json::json!({"environment": "local"});
+    let mut results = Vec::new();
+
+    let init = serde_json::json!({"kind": "secret_init"});
+    let planned = session.call(
+        "mm_setup_plan",
+        serde_json::json!({"scope": scope, "step": init}),
+    )?;
+    assert_eq!(planned["applied_by"], "agent", "{planned}");
+    assert_eq!(planned["plan"]["store_initialized"], false, "{planned}");
+    let initialized = apply_setup(&mut session, &init, &planned)?;
+    assert!(
+        initialized["recipient"]
+            .as_str()
+            .is_some_and(|recipient| recipient.starts_with("age1")),
+        "{initialized}"
+    );
+    results.extend([planned, initialized.clone()]);
+
+    let generate = serde_json::json!({"kind": "secret_generate"});
+    let planned = session.call(
+        "mm_setup_plan",
+        serde_json::json!({"scope": scope, "step": generate}),
+    )?;
+    assert_eq!(planned["plan"]["store_initialized"], true, "{planned}");
+    assert_eq!(
+        planned["plan"]["current"][0]["key"], "database.password",
+        "{planned}"
+    );
+    let generated = apply_setup(&mut session, &generate, &planned)?;
+    assert_eq!(
+        generated["generated"][0]["name"], "database.password",
+        "{generated}"
+    );
+    assert_eq!(
+        generated["generated"][0]["status"], "generated",
+        "{generated}"
+    );
+    results.extend([planned, generated]);
+
+    let path = |key: &str| PathBuf::from(initialized[key].as_str().unwrap_or_default());
+    let identity = fs::read_to_string(path("identity_path"))?;
+    let store =
+        mm::adapters::secrets::AgeSecretStore::new(path("identity_path"), path("store_path"));
+    let reference = mm::domain::secret::SecretReference::new(
+        mm::domain::secret_contract::StorageProviderId::new("age")?,
+        "local/database-password",
+    )?;
+    let resolved = tokio::runtime::Builder::new_current_thread()
+        .build()?
+        .block_on(store.resolve(&mm::domain::secret::SecretScope::new("local"), &reference))?;
+    let value = resolved
+        .material
+        .map(|material| material.expose(str::to_owned))
+        .unwrap_or_default();
+    assert_eq!(value.len(), 40);
+    for result in &results {
+        let text = result.to_string();
+        assert!(!text.contains(&value), "{text}");
+        assert!(!text.contains(identity.trim()), "{text}");
+    }
+
+    let replanned = session.call(
+        "mm_setup_plan",
+        serde_json::json!({"scope": scope, "step": generate}),
+    )?;
+    project
+        .mm()
+        .args([
+            "--environment",
+            "local",
+            "secret",
+            "unset",
+            "database.password",
+            "--yes",
+        ])
+        .assert()
+        .success();
+    let stale = apply_setup(&mut session, &generate, &replanned)?;
+    assert_eq!(stale["error"]["code"], "MM_STATE", "{stale}");
+    assert!(
+        stale["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("setup plan changed")),
+        "{stale}"
+    );
+    Ok(())
+}
+
+/// Without the grant, a setup plan is the user's to apply, and applying it
+/// hands the user the command line's commands for the step.
+#[test]
+fn setup_outside_the_grant_is_handed_to_the_user() -> Result<(), Box<dyn std::error::Error>> {
+    let project = setup_project(false)?;
+    let mut session = Session::start_with(&project, &engine_off())?;
+    let scope = serde_json::json!({"environment": "local"});
+    let init = serde_json::json!({"kind": "secret_init"});
+    let planned = session.call(
+        "mm_setup_plan",
+        serde_json::json!({"scope": scope, "step": init}),
+    )?;
+    assert_eq!(planned["applied_by"], "user", "{planned}");
+    assert!(planned["approval_token"].is_null(), "{planned}");
+    assert_eq!(
+        planned["user_commands"],
+        serde_json::json!(["mm --environment local secret init age"])
+    );
+
+    for (environment, step, commands) in [
+        (
+            "local",
+            init,
+            serde_json::json!(["mm --environment local secret init age"]),
+        ),
+        (
+            "local",
+            serde_json::json!({"kind": "secret_generate", "name": "database.password"}),
+            serde_json::json!(["mm --environment local secret generate database.password"]),
+        ),
+        (
+            "production",
+            serde_json::json!({"kind": "dev_services"}),
+            serde_json::json!(["mm --environment production dev setup --services"]),
+        ),
+        (
+            "local",
+            serde_json::json!({"kind": "secret_provider", "name": "vault"}),
+            serde_json::json!([
+                "mm --environment local secret provider plan vault --operation install",
+                "mm --environment local secret provider apply vault --operation install --plan HASH --yes",
+            ]),
+        ),
+    ] {
+        let refused = session.call(
+            "mm_setup_apply",
+            serde_json::json!({
+                "scope": {"environment": environment},
+                "step": step,
+                "plan_hash": "0".repeat(64),
+                "approval_token": "none",
+                "confirmation": format!("apply:{}", "0".repeat(64)),
+            }),
+        )?;
+        assert_eq!(refused["error"]["code"], "MM_AGENT_HANDOFF", "{refused}");
+        assert_eq!(
+            refused["error"]["handoff"]["user_commands"], commands,
+            "{refused}"
+        );
+        if environment == "local" {
+            assert_eq!(
+                refused["error"]["handoff"]["requires"], "level deploy and secrets: true",
+                "{refused}"
+            );
+        }
+    }
     Ok(())
 }

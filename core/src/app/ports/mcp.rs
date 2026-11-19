@@ -144,4 +144,27 @@ pub trait McpUseCases: Send + Sync {
         action: McpJobAction,
         plan_hash: &str,
     ) -> Result<serde_json::Value, MmError>;
+
+    /// The plan of a step that sets up this machine, with its `plan_hash`.
+    async fn plan_setup(
+        &self,
+        _context: &McpRequestContext,
+        _step: &crate::domain::mcp::McpSetupStep,
+    ) -> Result<serde_json::Value, MmError> {
+        Err(MmError::Environment {
+            message: "this server cannot set up this machine".to_owned(),
+        })
+    }
+
+    /// Applies a reviewed setup step when its plan is still `plan_hash`.
+    async fn apply_setup(
+        &self,
+        _context: &McpRequestContext,
+        _step: &crate::domain::mcp::McpSetupStep,
+        _plan_hash: &str,
+    ) -> Result<serde_json::Value, MmError> {
+        Err(MmError::Environment {
+            message: "this server cannot set up this machine".to_owned(),
+        })
+    }
 }

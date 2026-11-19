@@ -127,7 +127,7 @@ fn active_docker_endpoint(docker: &Path) -> Result<String, String> {
     if !output.status.success() {
         return Err(format!(
             "could not inspect the active Docker context: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
+            crate::domain::error::printed(String::from_utf8_lossy(&output.stderr).trim())
         ));
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())

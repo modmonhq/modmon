@@ -566,13 +566,10 @@ fn write_private(path: &Path, bytes: &[u8]) -> Result<(), MmError> {
 }
 
 fn bounded_detail(value: &str) -> String {
-    value
-        .lines()
-        .next()
-        .unwrap_or("no diagnostic output")
-        .chars()
-        .take(512)
-        .collect()
+    match value.lines().next() {
+        Some(line) => crate::domain::error::printed(&line.chars().take(512).collect::<String>()),
+        None => "no diagnostic output".to_owned(),
+    }
 }
 
 fn trust_error(error: impl std::fmt::Display) -> MmError {

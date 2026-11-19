@@ -206,8 +206,9 @@ pub fn redact_arguments(arguments: &[String]) -> Vec<String> {
     redacted
 }
 
-/// `text` with private key blocks and `name=value` pairs of secret-bearing
-/// names redacted.
+/// `text` with private key blocks, `name=value` pairs of secret-bearing
+/// names, the user and password of URLs, `Bearer` and `Basic` credentials,
+/// and access tokens of known forms redacted.
 #[must_use]
 pub fn redact_text(text: &str) -> String {
     let mut redacted = String::with_capacity(text.len());
@@ -230,23 +231,91 @@ pub fn redact_text(text: &str) -> String {
 
 fn redact_pairs(line: &str) -> String {
     let mut out = String::with_capacity(line.len());
+    let mut credential_follows = false;
     for (index, word) in line.split(' ').enumerate() {
         if index > 0 {
             out.push(' ');
         }
-        match word.split_once('=') {
+        let (body, newline) = word
+            .strip_suffix('\n')
+            .map_or((word, ""), |body| (body, "\n"));
+        match body.split_once('=') {
+            _ if credential_follows && !body.is_empty() => out.push_str(REDACTED),
             Some((name, value)) if sensitive_name(name) && !value.trim().is_empty() => {
                 out.push_str(name);
                 out.push('=');
                 out.push_str(REDACTED);
-                if value.ends_with('\n') {
-                    out.push('\n');
-                }
             }
-            _ => out.push_str(word),
+            _ => out.push_str(&redact_token(&redact_userinfo(body))),
+        }
+        out.push_str(newline);
+        if !body.is_empty() {
+            credential_follows = matches!(body.to_ascii_lowercase().as_str(), "bearer" | "basic");
         }
     }
     out
+}
+
+/// The prefixes of access tokens that services hand out.
+const TOKEN_PREFIXES: [&str; 16] = [
+    "ghp_",
+    "gho_",
+    "ghu_",
+    "ghs_",
+    "ghr_",
+    "github_pat_",
+    "glpat-",
+    "xoxb-",
+    "xoxp-",
+    "xoxa-",
+    "xoxr-",
+    "hvs.",
+    "hvb.",
+    "hvr.",
+    "eyJ",
+    "AKIA",
+];
+
+/// `word` without the user and password of a URL in it.
+fn redact_userinfo(word: &str) -> String {
+    let Some(scheme) = word.find("://") else {
+        return word.to_owned();
+    };
+    let authority = scheme + 3;
+    let end = word[authority..]
+        .find(['/', '?', '#'])
+        .map_or(word.len(), |end| authority + end);
+    match word[authority..end].rfind('@') {
+        Some(at) => format!(
+            "{}{REDACTED}{}",
+            &word[..authority],
+            &word[authority + at..]
+        ),
+        None => word.to_owned(),
+    }
+}
+
+/// `word` without an access token in it.
+fn redact_token(word: &str) -> String {
+    let start = word
+        .find(|character: char| character.is_ascii_alphanumeric())
+        .unwrap_or(word.len());
+    let candidate = &word[start..];
+    let end = candidate
+        .find(|character: char| {
+            !(character.is_ascii_alphanumeric()
+                || matches!(character, '_' | '-' | '.' | '/' | '+' | '='))
+        })
+        .unwrap_or(candidate.len());
+    let token = &candidate[..end];
+    if TOKEN_PREFIXES
+        .iter()
+        .any(|prefix| token.starts_with(prefix) && token.len() >= prefix.len() + 8)
+    {
+        format!("{}{REDACTED}{}", &word[..start], &candidate[end..])
+    } else {
+        word.to_owned()
+    }
 }
 
 /// Replaces every string under a secret-bearing key with [`REDACTED`].

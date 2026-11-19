@@ -326,9 +326,9 @@ impl McpUseCases for McpApplicationAdapter {
                 .await?,
             ),
             McpReadKind::Plans => self.read_plans(context, &runtime, &selection).await,
+            McpReadKind::Health => self.read_health(context, &runtime, &selection).await,
             McpReadKind::Services
             | McpReadKind::Routes
-            | McpReadKind::Health
             | McpReadKind::Names
             | McpReadKind::Operations => {
                 self.read_runtime_snapshot(
@@ -524,7 +524,7 @@ impl McpUseCases for McpApplicationAdapter {
             }
             .in_own_words())
         } else {
-            let selection = released(&selection, release);
+            let selection = super::released(&selection, Some(release.clone()));
             json_value(
                 runtime
                     .deployment_service(&selection, Some(&self.mm_home))?
@@ -544,7 +544,7 @@ impl McpUseCases for McpApplicationAdapter {
         let runtime = self.runtime();
         let selection = self.selection(context);
         let Some(environment) = self.remote(&selection, context)? else {
-            let selection = released(&selection, release);
+            let selection = super::released(&selection, Some(release.clone()));
             return json_value(
                 runtime
                     .deployment_service(&selection, Some(&self.mm_home))?
@@ -566,6 +566,23 @@ impl McpUseCases for McpApplicationAdapter {
             return json_value(report);
         }
         json_value(report.nodes.pop().and_then(|node| node.result))
+    }
+
+    async fn plan_setup(
+        &self,
+        context: &McpRequestContext,
+        step: &crate::domain::mcp::McpSetupStep,
+    ) -> Result<serde_json::Value, MmError> {
+        self.plan_setup_step(context, step).await
+    }
+
+    async fn apply_setup(
+        &self,
+        context: &McpRequestContext,
+        step: &crate::domain::mcp::McpSetupStep,
+        plan_hash: &str,
+    ) -> Result<serde_json::Value, MmError> {
+        self.apply_setup_step(context, step, plan_hash).await
     }
 
     async fn plan_job(
@@ -722,9 +739,10 @@ mod jobs;
 mod plans;
 #[path = "mcp/reads.rs"]
 mod reads;
+#[path = "mcp/setup.rs"]
+mod setup;
 #[path = "mcp/values.rs"]
 mod values;
-use plans::released;
 
 #[cfg(test)]
 #[path = "mcp_tests.rs"]

@@ -363,6 +363,16 @@ installations `mm target setup` upgrades in place and what it refuses.
   first-party images they build FROM; `mm build --all` builds every module,
   as before. A build receipt promotes to an environment that runs fewer
   modules than the one it was built for.
+- A deployment plan needs only the `release-inputs:` that a template of the
+  planned environment reads, and names every missing one with the template
+  line that reads it, so a development environment plans without the values
+  CI supplies for staging, from the command line and through MCP alike.
+- A failed MCP call returns the message the command line prints for its
+  error, redacted as the command log is, with the command line's help in
+  `next_action`; what another program printed stays out, and a failed
+  program is named with its exit code. `mm_read` `health` returns the
+  findings of `mm config validate` when the environment's status cannot be
+  read, and `MM_CONFIG_INVALID` names its first three findings.
 
 ### Added
 
@@ -378,6 +388,13 @@ installations `mm target setup` upgrades in place and what it refuses.
   Such a service has no routes, joins no network, and keeps the host's user
   namespace. See
   [run a service on the host's network](docs/remote-access.md#run-a-service-on-the-hosts-network).
+- `mm_setup_plan` and `mm_setup_apply` let an agent set up this machine within
+  its grant, through the services the command line uses: the shared local
+  services (`mm dev setup --services`), a managed secret provider's install,
+  the local age store (`mm secret init age`), and missing generated secrets
+  (`mm secret generate`). The secret steps need `secrets: true` with level
+  `deploy` on an environment that runs here; trusting the local certificate
+  authority and `mm agent trust` stay the user's.
 - Releases are published by the release workflow when a `vX.Y.Z` tag is
   pushed to `master`: the Linux x86-64 and ARM64 archives are built from the
   tag in pinned containers by `scripts/release/build-linux.sh` (which also

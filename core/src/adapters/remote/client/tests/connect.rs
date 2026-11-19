@@ -251,6 +251,7 @@ fn a_failed_connection_says_what_happened_and_what_to_run() {
     ];
     for (stderr, problem, help) in cases {
         let (actual_problem, actual_help) = connect_failure(stderr);
+        let actual_problem = crate::domain::error::shown(&actual_problem);
         assert!(
             actual_problem.contains(problem),
             "{stderr:?}: {actual_problem}"
@@ -266,6 +267,7 @@ fn a_failed_connection_says_what_happened_and_what_to_run() {
     let (problem, _) = connect_failure(
         "Warning: Permanently added the host key.\nssh: connect to host h port 22: No route to host\n",
     );
+    let problem = crate::domain::error::shown(&problem);
     assert!(
         problem.ends_with("(ssh: connect to host h port 22: No route to host)"),
         "{problem}"

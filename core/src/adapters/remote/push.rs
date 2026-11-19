@@ -156,7 +156,7 @@ impl GitCommitBundles {
             return Err(MmError::RuntimeResponse {
                 message: format!(
                     "git ls-tree failed: {}",
-                    String::from_utf8_lossy(&output.stderr).trim()
+                    crate::domain::error::printed(String::from_utf8_lossy(&output.stderr).trim())
                 ),
             });
         }

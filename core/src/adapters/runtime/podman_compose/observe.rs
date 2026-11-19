@@ -187,7 +187,7 @@ impl RuntimeDriver for PodmanComposeRuntime {
                         format!(
                             "Podman returned exit code {:?}: {}",
                             output.code,
-                            output.stderr.trim()
+                            crate::domain::error::printed(output.stderr.trim())
                         ),
                     ),
                 );
@@ -228,7 +228,7 @@ impl RuntimeDriver for PodmanComposeRuntime {
                     "MM_PODMAN_INFO_FAILED",
                     format!(
                         "Podman is installed but unavailable: {}",
-                        output.stderr.trim()
+                        crate::domain::error::printed(output.stderr.trim())
                     ),
                 ));
                 None
@@ -265,7 +265,7 @@ impl RuntimeDriver for PodmanComposeRuntime {
                 diagnostics.push(
                     Diagnostic::error(
                         "MM_COMPOSE_PROVIDER_UNAVAILABLE",
-                        output.stderr.trim().to_owned(),
+                        crate::domain::error::printed(output.stderr.trim()),
                     )
                     .with_help("install a Compose provider supported by podman compose"),
                 );

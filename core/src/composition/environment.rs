@@ -10,6 +10,10 @@ impl EnvironmentServices {
     pub(crate) fn initialize_age(&self) -> Result<InitializedAgeStore, MmError> {
         self.age.initialize()
     }
+
+    pub(crate) fn age_initialized(&self) -> bool {
+        self.age.initialized()
+    }
 }
 
 pub(crate) struct GateServices {

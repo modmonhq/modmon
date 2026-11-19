@@ -163,8 +163,7 @@ pub(super) async fn run_deploy_command(request: DeployCommandRequest<'_>) -> Res
             ),
         });
     }
-    let selection = &selection
-        .with_release(release.map(|release| composition::local_release(&selection.start, release)));
+    let selection = &composition::released(selection, release);
     run_local_deploy(
         command,
         (yes, format),

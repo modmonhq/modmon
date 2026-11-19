@@ -60,8 +60,9 @@ mm history show 20261115T201530123Z-4f2a
 gives the same records with each command's progress events and JSON result.
 The records live under `~/.mm/history/`, never in the repository. Values of
 flags and `NAME=value` arguments whose name mentions a password, secret, token
-or private key are replaced with `[REDACTED]`, and so are private keys in the
-output. mm keeps the newest 500 commands, up to 32 MiB, per project, and 256 KiB
+or private key are replaced with `[REDACTED]`, and so are private keys, the
+user and password in a URL, `Bearer` and `Basic` credentials, and access
+tokens of well-known forms in the output. mm keeps the newest 500 commands, up to 32 MiB, per project, and 256 KiB
 of each command's output. Set `MM_NO_HISTORY=1` to leave a command out. A
 command run before mm has stored anything on this machine is not recorded:
 mm does not create its home just to keep a record.

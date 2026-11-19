@@ -995,6 +995,8 @@ fn tool_schema_snapshot_is_versioned_and_has_no_shell_surface() {
             "mm_job_plan",
             "mm_logs",
             "mm_read",
+            "mm_setup_apply",
+            "mm_setup_plan",
             "mm_stage_value",
         ]
     );
@@ -1003,7 +1005,7 @@ fn tool_schema_snapshot_is_versioned_and_has_no_shell_surface() {
     let canonical = serde_json::to_vec(&snapshot).unwrap_or_default();
     let digest = blake3::hash(&canonical).to_hex().to_string();
     assert_eq!(
-        digest, "fea73719ca670df35da0607823be46d291f3a6894072da0c85b43c132cf01a1e",
+        digest, "c1122daa5c3e47171520c74c58a2f2d6339aed20864c2f054c6efc11856bf8ba",
         "the tool contract changed; bump MCP_TOOL_SCHEMA_VERSION if it is incompatible"
     );
     let text = String::from_utf8_lossy(&canonical).to_ascii_lowercase();

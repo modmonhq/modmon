@@ -71,13 +71,48 @@ impl McpApplicationAdapter {
                     limit.min(self.config.maximum_page_size),
                 )
             }
-            McpReadKind::Health => json_value(serde_json::json!({
-                "runtime": snapshot.runtime, "validation": snapshot.validation,
-            })),
             McpReadKind::Names => json_value(snapshot.names.unwrap_or_default()),
             _ => Err(MmError::State {
                 message: "unreachable MCP read category".to_owned(),
             }),
         }
+    }
+
+    /// `mm_read` of `health`: the runtime and the validation of the
+    /// environment. When its status cannot be read, the findings of `mm
+    /// config validate` and the error that stopped it.
+    pub(super) async fn read_health(
+        &self,
+        context: &McpRequestContext,
+        runtime: &RuntimeComposition,
+        selection: &WorkspaceSelection,
+    ) -> Result<serde_json::Value, MmError> {
+        let status = match self.gateway(selection, context, runtime) {
+            Ok(gateway) => gateway.status(&self.approval()).await,
+            Err(error) => Err(error),
+        };
+        let error = match status {
+            Ok(snapshot) => {
+                return json_value(serde_json::json!({
+                    "runtime": snapshot.runtime, "validation": snapshot.validation,
+                }));
+            }
+            Err(error) => error,
+        };
+        let Ok(mut validation) = crate::app::Application::read_only(
+            crate::composition::project_documents(),
+            crate::composition::environment_sources(),
+            runtime.driver(context.scope.runtime),
+            runtime.clock(),
+        )
+        .validate(selection)
+        .map(|snapshot| snapshot.validation) else {
+            return Err(error);
+        };
+        validation.push(crate::domain::diagnostic::Diagnostic::error(
+            error.code(),
+            error.agent_message(),
+        ));
+        json_value(serde_json::json!({ "runtime": null, "validation": validation }))
     }
 }

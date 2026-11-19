@@ -28,7 +28,10 @@ fn parse<T: serde::de::DeserializeOwned>(
     command: &str,
 ) -> Result<T, MmError> {
     serde_json::from_str(output.trim()).map_err(|error| MmError::Target {
-        message: format!("`{command}` on node {node} printed unexpected output: {error}"),
+        message: format!(
+            "`{command}` on node {node} printed unexpected output: {}",
+            crate::domain::error::printed(&error.to_string())
+        ),
     })
 }
 

@@ -62,7 +62,7 @@ impl OpenSshKeyFiles {
         Err(MmError::Environment {
             message: format!(
                 "ssh-keygen failed: {}",
-                String::from_utf8_lossy(&output.stderr).trim()
+                crate::domain::error::printed(String::from_utf8_lossy(&output.stderr).trim())
             ),
         })
     }

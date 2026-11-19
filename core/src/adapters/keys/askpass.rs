@@ -170,7 +170,7 @@ fn make_pipes(pipes: &[PathBuf]) -> Result<(), MmError> {
     Err(MmError::Environment {
         message: format!(
             "mkfifo failed: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
+            crate::domain::error::printed(String::from_utf8_lossy(&output.stderr).trim())
         ),
     })
 }

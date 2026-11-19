@@ -56,7 +56,7 @@ Each environment takes a level, and optionally `exec`:
 | `deploy`         | `operate` plus apply configuration edits, builds, and deployments, reconcile schedules, and enable or disable them |
 | `exec: true`     | run a command in any service container                                                                             |
 | `exec: [api, …]` | run a command in the listed services only                                                                          |
-| `secrets: true`  | stage secrets and variables on a remote environment's hosts, when your user may too                                |
+| `secrets: true`  | stage secrets and variables on a remote environment's hosts, when your user may too; with `deploy` on an environment on this machine, also [set up its secrets](#set-up-this-machine) |
 
 Rules:
 
@@ -182,8 +182,42 @@ to do instead:
 }
 ```
 
-Any other failure gets a fixed text for its kind of error, so nothing a
-provider, an engine, or a host printed reaches the agent.
+Every other failure returns its code and the message the command line
+prints for it, so it names the file, key, or step that failed. The help the
+command line prints after the error, and what an agent can do about it, are
+in `next_action`. A refused build context, for example, names the file and
+the rule, and a configuration that does not validate names its first
+findings:
+
+```json
+{
+  "error": {
+    "code": "MM_CONFIG_INVALID",
+    "message": "configuration validation failed with 1 error(s): MM_REPO_TARGET_INVALID at /work/shop/.config/mm.yaml: target 'staging' needs host, host-key, and daemon-fingerprint, or a nodes: list.",
+    "next_action": "Fix what the message names. Call mm_access for the configured environments, and mm_read with kinds 'project' and 'health' for diagnostics. A project without configuration needs the user to run `mm init`."
+  }
+}
+```
+
+What another program, the container engine, a secret provider, or a host's
+processes printed is never passed on. Where the command line quotes it, the
+agent reads `[what it printed is left out]`, also when the message comes
+from a host or quotes another error. A program that failed
+(`MM_PROCESS_FAILED`) is named with its exit code; an answer from the engine
+or a host that mm could not use (`MM_RUNTIME_RESPONSE`, or a host's
+`MM_PROCESS_FAILED`) names only that step. The user sees the whole output by
+running the same `mm` command in a terminal.
+
+The rest is redacted the way the command log redacts what a command printed:
+a `NAME=value` pair whose name contains `password`, `secret`, `token`,
+`private_key`, `cookie`, or `passphrase`, a private key block, the user and
+password in a URL, a `Bearer` or `Basic` credential, and access tokens of
+well-known forms read `[REDACTED]`.
+
+`mm_read` `health` does not fail when the environment's status cannot be
+read: it returns `runtime: null` and the findings of `mm config validate` for
+the environment, with the error that stopped the status as one more finding
+under its own code.
 
 On a cluster target, the reads `nodes` and `deployments` do not fail when a
 node refuses the agent key or does not answer, and neither does `services`
@@ -228,6 +262,39 @@ running commit that makes it live, and `mm_deploy_apply` applies it.
 
 `mm_read` kind `secrets` lists, per host, each declared secret and variable
 with its live and staged revision and who changed it.
+
+## Set up this machine
+
+`mm_setup_plan` reviews a step that sets up this machine for an environment
+that runs here, and `mm_setup_apply` applies it with the same `step`, the
+plan's token, and the confirmation `apply:<plan_hash>`, like any other plan.
+The `step` is one of:
+
+| `step`                                         | Does what this command does                                                                 | Applying needs               |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------- |
+| `{"kind": "dev_services"}`                     | `mm dev setup --services`: installs or repairs the shared local services; `smtp_port` publishes SMTP on that loopback port | `deploy`                     |
+| `{"kind": "secret_provider", "name": "vault"}` | `mm secret provider plan vault --operation install`, then its `apply`                       | `deploy` and `secrets: true` |
+| `{"kind": "secret_init"}`                      | `mm secret init age`: creates the project's local age store                                 | `deploy` and `secrets: true` |
+| `{"kind": "secret_generate"}`                  | `mm secret generate --missing`, or `mm secret generate NAME` with `"name": "NAME"`          | `deploy` and `secrets: true` |
+
+```yaml
+agents:
+  local: { level: deploy, exec: true, secrets: true }
+```
+
+The plan of `dev_services` and `secret_provider` is the one the command line
+prints. The command line runs `secret init` and `secret generate` without a
+plan; their plan says whether the local store exists and lists the
+environment's secrets as `mm secret status` shows them, so if a secret
+changes before the apply, the apply is refused with `MM_STATE` and you plan
+again. A generated value goes into the store and is never returned.
+
+Outside the grant the plan says `applied_by: user` and lists the user's
+commands, and `mm_setup_apply` returns `MM_AGENT_HANDOFF`. On a remote
+environment the steps are refused: they act on this machine only. Trusting
+mm's local certificate authority, which changes this machine's trust store
+and can ask for `sudo` (`mm dev setup`), and `mm agent trust` stay the
+user's.
 
 ## Read what commands printed
 
@@ -315,6 +382,8 @@ delete it or replace it with the form above.
 | `mm_job_apply`                                                     | `operate` or `deploy`  | Runs, cancels, or retries a job (`operate`); reconciles or toggles schedules (`deploy`)                                  |
 | `mm_config_apply`, `mm_build_apply`, `mm_deploy_apply`             | `deploy`               | Applies the plan just reviewed                                                                                           |
 | `mm_stage_value`                                                   | `secrets`              | Stages a secret or variable on a remote environment's hosts for the next deployment                                      |
+| `mm_setup_plan`                                                    | `view`                 | Reviews a step that [sets up this machine](#set-up-this-machine)                                                         |
+| `mm_setup_apply`                                                   | `deploy`, and `secrets` for a secret step | Applies the setup step just reviewed                                                                  |
 | `mm_dev_unit`                                                      | `deploy`               | Turns an [optional unit](./onboarding.md#run-part-of-a-large-project) on or off in the development environment, as `mm dev enable` and `mm dev disable` do |
 
 Only the environment is required in a tool's `scope`; the target and runtime
@@ -368,7 +437,9 @@ plan has a `redeploy` object with the `commit` and the `nodes`.
 `mm_deploy_plan` takes the release's name and inputs as
 `"release": {"name": "v26.6.0", "inputs": {"BUILD_ID": "4757"}}`, the
 `--release` and `--release-input` of `mm deploy plan`; a rollback returns to
-the ones it ran with, and a redeploy keeps the ones the hosts run. For an
+the ones it ran with, and a redeploy keeps the ones the hosts run. Without
+`release`, a plan deploys this checkout's commit as `mm deploy plan` does,
+and needs only the inputs the environment's templates read. For an
 environment on this machine, `mm_deploy_apply` plans again, so give it the
 same `release`; a remote plan carries its own.
 

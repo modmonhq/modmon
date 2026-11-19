@@ -198,7 +198,7 @@
           "$ref": "#/$defs/AccessLevel"
         },
         "secrets": {
-          "description": "The agent may set secrets and variables on the environment's hosts\nfor the next deployment, when its user may. It never reads a value.",
+          "description": "The agent may set secrets and variables on the environment's hosts\nfor the next deployment, when its user may. With level `deploy` on an\nenvironment that runs on this machine, it may also create the local\nsecret store, generate missing secrets, and install a managed secret\nprovider. It never reads a value.",
           "type": "boolean"
         }
       },

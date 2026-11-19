@@ -202,7 +202,10 @@ impl ProjectRepositories {
             Some(0) => Ok(true),
             Some(1) => Ok(false),
             _ => Err(MmError::RuntimeResponse {
-                message: format!("git merge-base failed: {}", output.stderr.trim()),
+                message: format!(
+                    "git merge-base failed: {}",
+                    crate::domain::error::printed(output.stderr.trim())
+                ),
             }),
         }
     }
@@ -338,7 +341,7 @@ impl ProjectRepositories {
                 .and_then(|unpacked| unpacked)
                 .map_err(|error| error.to_string())
             }
-            Ok(output) => Err(output.stderr.trim().to_owned()),
+            Ok(output) => Err(crate::domain::error::printed(output.stderr.trim())),
             Err(error) => Err(error.to_string()),
         };
         if let Err(cleanup) = std::fs::remove_file(&tarball)
@@ -428,7 +431,10 @@ fn succeeded(subcommand: &str, output: &CommandOutput) -> Result<String, MmError
     }
     if !output.success() {
         return Err(MmError::RuntimeResponse {
-            message: format!("git {subcommand} failed: {}", output.stderr.trim()),
+            message: format!(
+                "git {subcommand} failed: {}",
+                crate::domain::error::printed(output.stderr.trim())
+            ),
         });
     }
     Ok(output.stdout.to_string())

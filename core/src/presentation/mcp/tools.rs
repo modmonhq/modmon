@@ -343,6 +343,85 @@ impl McpServer {
         self.complete(&context, "build_plan", false, None, result)
     }
 
+    /// Review a step that sets up this machine for an environment that runs here: dev_services (the shared local services `mm dev setup --services` installs: ingress, Mailpit, the dashboard), secret_provider (install a managed provider declared under providers:), secret_init (the project's local age store, `mm secret init age`), or secret_generate (create a configured secret that has a generator and no value yet, or every missing one without name; a value is never shown). Planning is read-only. Applying dev_services needs level deploy, the secret steps level deploy and secrets: true; otherwise the plan names the commands for the user. Trusting mm's local certificate authority and `mm agent trust` stay the user's.
+    #[tool(name = "mm_setup_plan")]
+    pub(super) async fn setup_plan(
+        &self,
+        Parameters(request): Parameters<McpSetupPlanRequest>,
+    ) -> CallToolResult {
+        let commands = || setup_commands(&request.scope.environment, &request.step);
+        let context = match self
+            .authorize(
+                ("setup_plan", false),
+                &request.scope,
+                (AgentAction::Plan, None),
+                commands,
+            )
+            .await
+        {
+            Ok(context) => context,
+            Err(refusal) => return refusal,
+        };
+        let semantic = request_hash(&(&context.scope, &request.step));
+        let result = self
+            .bounded(self.use_cases.plan_setup(&context, &request.step))
+            .await
+            .and_then(|plan| {
+                let plan_hash = direct_plan_hash(&plan)?;
+                self.review(
+                    &context,
+                    (ReviewKind::Setup, request.step.action()),
+                    (plan_hash, semantic),
+                    plan,
+                    commands(),
+                )
+            });
+        self.complete(&context, "setup_plan", false, None, result)
+    }
+
+    /// Apply the exact setup step you just reviewed, with the same step, its token, and the confirmation apply:<plan_hash>. A step whose plan changed since is refused; plan it again.
+    #[tool(name = "mm_setup_apply")]
+    pub(super) async fn setup_apply(
+        &self,
+        Parameters(request): Parameters<McpSetupApplyRequest>,
+    ) -> CallToolResult {
+        let context = match self
+            .authorize(
+                ("setup_apply", true),
+                &request.scope,
+                (request.step.action(), None),
+                || setup_commands(&request.scope.environment, &request.step),
+            )
+            .await
+        {
+            Ok(context) => context,
+            Err(refusal) => return refusal,
+        };
+        let plan_hash = request.plan_hash.clone();
+        let semantic = request_hash(&(&context.scope, &request.step));
+        let reviewed = self.consume_review(
+            ReviewKind::Setup,
+            &plan_hash,
+            &request.approval_token,
+            &request.confirmation,
+            &semantic,
+        );
+        let result = match reviewed
+            .and_then(|()| self.begin_mutation(&context, "setup_apply", &plan_hash))
+        {
+            Ok(()) => {
+                self.bounded_as(
+                    "setup_apply",
+                    self.use_cases
+                        .apply_setup(&context, &request.step, &plan_hash),
+                )
+                .await
+            }
+            Err(error) => Err(error),
+        };
+        self.complete(&context, "setup_apply", true, Some(&plan_hash), result)
+    }
+
     /// Apply the exact build plan you just reviewed. Needs level deploy in this environment.
     #[tool(name = "mm_build_apply")]
     pub(super) async fn build_apply(

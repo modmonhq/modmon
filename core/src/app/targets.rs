@@ -268,7 +268,7 @@ impl TargetManager {
             .filter(|diagnostic| diagnostic.severity == Severity::Error)
             .count();
         if errors > 0 {
-            return Err(MmError::Validation { errors });
+            return Err(MmError::invalid(&validation.diagnostics));
         }
         let (environment_pref, project_pref) =
             load_selection_preferences(state, &document, &environment)?;

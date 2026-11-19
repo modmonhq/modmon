@@ -250,7 +250,7 @@ impl PrivateAgent {
                 message: format!(
                     "the passphrase mm keeps for {} did not open it: {}",
                     key.display(),
-                    String::from_utf8_lossy(&output.stderr).trim()
+                    crate::domain::error::printed(String::from_utf8_lossy(&output.stderr).trim())
                 ),
             });
         }

@@ -361,7 +361,10 @@ async fn inspect_remote_digest(
     }
     let metadata: serde_json::Value =
         serde_json::from_str(output.stdout.trim()).map_err(|error| MmError::Build {
-            message: format!("Docker imagetools inspect returned invalid metadata: {error}"),
+            message: format!(
+                "Docker imagetools inspect returned invalid metadata: {}",
+                crate::domain::error::printed(&error.to_string())
+            ),
         })?;
     metadata
         .get("digest")

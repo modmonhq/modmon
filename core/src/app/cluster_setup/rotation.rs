@@ -80,7 +80,7 @@ impl ClusterSetupService {
                 target_error(format!(
                     "node {} could not be read ({}). Rotating {rotated}'s key needs every node: one that misses the new key loses its link to {rotated}. Bring the node back, or take it out of nodes: and apply a setup plan first",
                     connection.name,
-                    stderr.trim()
+                    crate::domain::error::printed(stderr.trim())
                 ))
             }
             other => other,

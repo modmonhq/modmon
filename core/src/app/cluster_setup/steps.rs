@@ -42,7 +42,10 @@ pub(super) fn mmd_of(
 
 fn json(output: &str, context: &str) -> Result<serde_json::Value, MmError> {
     serde_json::from_str(output).map_err(|error| MmError::Target {
-        message: format!("{context} printed unexpected output: {error}"),
+        message: format!(
+            "{context} printed unexpected output: {}",
+            crate::domain::error::printed(&error.to_string())
+        ),
     })
 }
 

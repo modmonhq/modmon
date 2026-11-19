@@ -377,7 +377,7 @@ impl ClusterNetworkHost for HostClusterNetworks {
         Err(MmError::Target {
             message: format!(
                 "the node's cluster networks could not be brought up: `systemctl restart {UNIT}` failed ({}). On the node, `journalctl -u {UNIT} -n 30` says why; `mm target setup plan` and its apply install the unit when it is missing",
-                output.stderr.trim()
+                crate::domain::error::printed(output.stderr.trim())
             ),
         })
     }

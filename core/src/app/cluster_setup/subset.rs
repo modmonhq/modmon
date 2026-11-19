@@ -116,7 +116,7 @@ pub(super) fn unreachable(
         MmError::ProcessFailed { stderr, .. } if stderr.trim().is_empty() => {
             "nothing answered the key scan".to_owned()
         }
-        MmError::ProcessFailed { stderr, .. } => stderr.trim().to_owned(),
+        MmError::ProcessFailed { stderr, .. } => crate::domain::error::printed(stderr.trim()),
         other => other.to_string(),
     };
     MmError::Unreachable {

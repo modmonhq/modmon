@@ -209,8 +209,9 @@ impl ReleaseFacts {
     }
 
     /// Checks the name and inputs against what `release-inputs:` declares:
-    /// every declared input given, nothing else given, each value matching
-    /// its pattern. The error is the sentence the deployer reads.
+    /// nothing undeclared given, each value matching its pattern. Which
+    /// inputs have to be given depends on what the environment's templates
+    /// read. The error is the sentence the deployer reads.
     pub fn check(&self, declared: &BTreeMap<String, ReleaseInputConfig>) -> Result<(), String> {
         if let Some(name) = &self.name {
             check_name(name)?;
@@ -226,25 +227,6 @@ impl ReleaseFacts {
                     declared.keys().cloned().collect::<Vec<_>>().join(", ")
                 )
             });
-        }
-        let missing = declared
-            .keys()
-            .filter(|key| !self.inputs.contains_key(*key))
-            .collect::<Vec<_>>();
-        if !missing.is_empty() {
-            return Err(format!(
-                "this commit declares release inputs that the plan was not given: {}. Plan with {}",
-                missing
-                    .iter()
-                    .map(|key| key.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", "),
-                missing
-                    .iter()
-                    .map(|key| format!("--release-input {key}=VALUE"))
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            ));
         }
         for (key, value) in &self.inputs {
             if let Some(config) = declared.get(key) {
@@ -368,19 +350,30 @@ pub fn is_release_key(config: &MmConfig, key: &str) -> bool {
             .is_some_and(|name| config.release_inputs.contains_key(name))
 }
 
+/// The release key `key` reads in `environment`: itself when it is a
+/// release fact, or the one a binding refers to with `value-ref`; `None`
+/// for every other key.
+#[must_use]
+pub fn release_source<'a>(
+    config: &'a MmConfig,
+    environment: &str,
+    key: &'a str,
+) -> Option<&'a str> {
+    if is_release_key(config, key) {
+        return Some(key);
+    }
+    match effective_binding(config, environment, key)? {
+        EnvironmentBinding::Reference(reference) => Some(reference.value_ref.as_str()),
+        _ => None,
+    }
+}
+
 /// What `key` resolves to in `environment` when it is a release fact, or
 /// a binding that refers to one with `value-ref`; `None` for every other
 /// key.
 #[must_use]
 pub fn release_value(config: &MmConfig, environment: &str, key: &str) -> Option<ReleaseValue> {
-    let source = if is_release_key(config, key) {
-        key
-    } else {
-        match effective_binding(config, environment, key)? {
-            EnvironmentBinding::Reference(reference) => reference.value_ref.as_str(),
-            _ => return None,
-        }
-    };
+    let source = release_source(config, environment, key)?;
     Some(match &config.release {
         None => ReleaseValue::Pending,
         Some(release) => match release.value(source) {

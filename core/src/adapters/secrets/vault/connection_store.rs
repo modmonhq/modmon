@@ -277,7 +277,10 @@ impl VaultConnectionStore {
         )?);
         let document: Document =
             serde_json::from_slice(&plaintext).map_err(|error| MmError::Secret {
-                message: format!("Vault connection registry is invalid: {error}"),
+                message: format!(
+                    "Vault connection registry is invalid: {}",
+                    crate::domain::error::printed(&error.to_string())
+                ),
             })?;
         if document.version != DOCUMENT_VERSION {
             return Err(MmError::Secret {

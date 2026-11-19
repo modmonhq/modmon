@@ -120,7 +120,7 @@ impl BuildManager {
             .filter(|diagnostic| diagnostic.severity == Severity::Error)
             .count();
         if errors > 0 {
-            return Err(MmError::Validation { errors });
+            return Err(MmError::invalid(&validation.diagnostics));
         }
 
         let source = self.source.inspect(&document.root).await?;
@@ -177,7 +177,7 @@ impl BuildManager {
             .filter(|diagnostic| diagnostic.severity == Severity::Error)
             .count();
         if errors > 0 {
-            return Err(MmError::Validation { errors });
+            return Err(MmError::invalid(&validation.diagnostics));
         }
         // Plan from the receipt's source so VERSION and tags match the build.
         let current = plan_from_source(

@@ -66,6 +66,17 @@ impl Diagnostic {
         }
     }
 
+    /// The diagnostic on one line: its code, where, and what.
+    #[must_use]
+    pub fn summary(&self) -> String {
+        let at = match (&self.path, self.line) {
+            (Some(path), Some(line)) => format!(" at {}:{line}", path.display()),
+            (Some(path), None) => format!(" at {}", path.display()),
+            (None, _) => String::new(),
+        };
+        format!("{}{at}: {}", self.code, self.message)
+    }
+
     #[must_use]
     pub fn at_path(mut self, path: impl Into<PathBuf>) -> Self {
         self.path = Some(path.into());

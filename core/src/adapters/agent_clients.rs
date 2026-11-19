@@ -234,7 +234,7 @@ pub fn apply_setup(plan: &AgentSetupPlan) -> Result<Vec<String>, MmError> {
                 step.client.label(),
                 step.program,
                 step.arguments.join(" "),
-                String::from_utf8_lossy(&output.stderr).trim()
+                crate::domain::error::printed(String::from_utf8_lossy(&output.stderr).trim())
             )),
             Err(error) => failures.push(format!(
                 "{}: could not run {}: {error}",

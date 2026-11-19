@@ -21,7 +21,10 @@ pub struct AgentAccess {
     #[serde(default, skip_serializing_if = "ServiceSelection::is_none")]
     pub exec: ServiceSelection,
     /// The agent may set secrets and variables on the environment's hosts
-    /// for the next deployment, when its user may. It never reads a value.
+    /// for the next deployment, when its user may. With level `deploy` on an
+    /// environment that runs on this machine, it may also create the local
+    /// secret store, generate missing secrets, and install a managed secret
+    /// provider. It never reads a value.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub secrets: bool,
 }
@@ -83,6 +86,11 @@ pub enum AgentAction {
     SetValues,
     /// Turn an optional unit on or off for the development environment.
     DevelopmentUnit,
+    /// Install or repair the shared local services on this machine.
+    DevelopmentSetup,
+    /// Create the local secret store, generate missing secrets, or install
+    /// a managed secret provider on this machine.
+    SecretSetup,
 }
 
 impl AgentAction {
@@ -96,7 +104,9 @@ impl AgentAction {
             | Self::ConfigApply
             | Self::BuildApply
             | Self::DeployApply
-            | Self::DevelopmentUnit => Some(AccessLevel::Deploy),
+            | Self::DevelopmentUnit
+            | Self::DevelopmentSetup
+            | Self::SecretSetup => Some(AccessLevel::Deploy),
             Self::Exec | Self::SetValues => None,
         }
     }
@@ -105,6 +115,7 @@ impl AgentAction {
     #[must_use]
     pub fn requirement(self) -> String {
         match (self, self.required_level()) {
+            (Self::SecretSetup, _) => "level deploy and secrets: true".to_owned(),
             (_, Some(level)) => format!("level {}", level.as_str()),
             (Self::SetValues, None) => "secrets: true".to_owned(),
             (_, None) => "exec".to_owned(),
@@ -124,7 +135,9 @@ impl AgentAccess {
     #[must_use]
     pub fn permits(&self, action: AgentAction, service: Option<&str>) -> bool {
         match action.required_level() {
-            Some(level) => self.level >= level,
+            Some(level) => {
+                self.level >= level && (action != AgentAction::SecretSetup || self.secrets)
+            }
             None if action == AgentAction::SetValues => self.secrets,
             None => match (self.exec.services(), service) {
                 (None, _) | (Some(_), None) => false,

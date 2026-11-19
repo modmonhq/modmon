@@ -23,7 +23,7 @@ fn said(error: &MmError) -> String {
         other => other.to_string(),
     };
     let line = text.lines().last().unwrap_or_default().trim();
-    line.chars().take(SHOWN).collect()
+    crate::domain::error::printed(&line.chars().take(SHOWN).collect::<String>())
 }
 
 /// Runs a trivial container under `runtime`; `Err` says why it did not

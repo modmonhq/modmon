@@ -25,7 +25,7 @@ impl RuntimeDriver for DockerComposeRuntime {
                         format!(
                             "Docker returned exit code {:?}: {}",
                             output.code,
-                            output.stderr.trim()
+                            crate::domain::error::printed(output.stderr.trim())
                         ),
                     ),
                 );
