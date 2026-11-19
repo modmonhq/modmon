@@ -4,6 +4,7 @@ use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
+pub const RELEASE_ORIGIN: &str = "https://github.com/modmonhq/modmon";
 pub const RELEASE_MANIFEST_URL: &str =
     "https://github.com/modmonhq/modmon/releases/latest/download/manifest.json";
 pub const INSTALLER_URL: &str = "https://modmon.dev/install.sh";
@@ -17,6 +18,8 @@ pub const RELEASE_TARGETS: [&str; 4] = [
     "aarch64-apple-darwin",
 ];
 pub const RELEASE_BINARIES: [&str; 3] = ["mm", "mm-ingress-helper", "mmd"];
+pub const MANIFEST_FILE: &str = "manifest.json";
+pub const CHECKSUMS_FILE: &str = "SHA256SUMS";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ReleaseManifest {
@@ -89,6 +92,26 @@ pub struct UpdateCheckReport {
     pub message: String,
 }
 
+/// One archive of a release, and the file that vouches for its digest.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub struct ReleaseDownload {
+    pub tag: String,
+    pub target: String,
+    pub file: String,
+    pub sha256: String,
+    pub size: Option<u64>,
+    pub binaries: Vec<String>,
+    pub checked_against: String,
+}
+
+/// A release tag: `vMAJOR.MINOR.PATCH`, or a candidate `vMAJOR.MINOR.PATCH-rc.N`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReleaseTag {
+    pub tag: String,
+    pub version: Version,
+}
+
 #[derive(Deserialize)]
 struct SchemaHeader {
     schema_version: u32,
@@ -132,6 +155,18 @@ impl ReleaseManifest {
         artifact.validate(target, &self.tag)?;
         Ok(Some(artifact))
     }
+
+    pub fn download(&self, target: &str) -> Result<Option<ReleaseDownload>, String> {
+        Ok(self.artifact(target)?.map(|artifact| ReleaseDownload {
+            tag: self.tag.clone(),
+            target: target.to_owned(),
+            file: artifact.file_name().to_owned(),
+            sha256: artifact.sha256.clone(),
+            size: Some(artifact.size),
+            binaries: artifact.known_binaries(),
+            checked_against: MANIFEST_FILE.to_owned(),
+        }))
+    }
 }
 
 impl ReleaseArtifact {
@@ -173,6 +208,92 @@ impl ReleaseArtifact {
     }
 }
 
+impl ReleaseTag {
+    pub fn parse(tag: &str) -> Result<Self, String> {
+        let invalid = || {
+            format!(
+                "{tag} is not a release: use vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-rc.N, such as v0.1.2"
+            )
+        };
+        let version = tag
+            .strip_prefix('v')
+            .and_then(|value| Version::parse(value).ok())
+            .ok_or_else(invalid)?;
+        let candidate = version.pre.as_str();
+        let canonical = candidate.is_empty()
+            || candidate.strip_prefix("rc.").is_some_and(|number| {
+                number
+                    .parse::<u64>()
+                    .is_ok_and(|parsed| parsed.to_string() == number)
+            });
+        if !canonical || !version.build.is_empty() || format!("v{version}") != tag {
+            return Err(invalid());
+        }
+        Ok(Self {
+            tag: tag.to_owned(),
+            version,
+        })
+    }
+
+    #[must_use]
+    pub fn is_candidate(&self) -> bool {
+        !self.version.pre.is_empty()
+    }
+
+    /// The version its binaries print: a candidate's is the release it leads to.
+    #[must_use]
+    pub fn binary_version(&self) -> String {
+        format!(
+            "{}.{}.{}",
+            self.version.major, self.version.minor, self.version.patch
+        )
+    }
+
+    #[must_use]
+    pub fn archive(&self, target: &str) -> String {
+        format!("mm-{}-{target}.tar.gz", self.tag)
+    }
+}
+
+/// The archive for `target` as a release's `SHA256SUMS` lists it: how a
+/// release candidate, which has no manifest, is checked.
+pub fn checksums_download(
+    sums: &str,
+    tag: &ReleaseTag,
+    target: &str,
+) -> Result<ReleaseDownload, String> {
+    let file = tag.archive(target);
+    let digests = sums
+        .lines()
+        .filter_map(|line| line.split_once("  "))
+        .filter(|(_, name)| *name == file)
+        .map(|(digest, _)| digest)
+        .collect::<Vec<_>>();
+    let [digest] = digests.as_slice() else {
+        return Err(if digests.is_empty() {
+            format!(
+                "release {} lists no {file} in {CHECKSUMS_FILE}; it has no archive for {target}",
+                tag.tag
+            )
+        } else {
+            format!(
+                "{CHECKSUMS_FILE} of {} lists {file} more than once",
+                tag.tag
+            )
+        });
+    };
+    validate_digest_and_size(digest, 1)?;
+    Ok(ReleaseDownload {
+        tag: tag.tag.clone(),
+        target: target.to_owned(),
+        file,
+        sha256: (*digest).to_owned(),
+        size: None,
+        binaries: Vec::new(),
+        checked_against: CHECKSUMS_FILE.to_owned(),
+    })
+}
+
 pub fn compare_installed(
     current: &str,
     target: Option<&str>,
@@ -199,7 +320,7 @@ pub fn compare_installed(
             std::cmp::Ordering::Less => (
                 UpdateStatus::UpdateAvailable,
                 format!(
-                    "mm {current} can be updated to {}; rerun the installer, {INSTALLER_URL}",
+                    "mm {current} can be updated to {}; run `mm update`",
                     manifest.version
                 ),
             ),

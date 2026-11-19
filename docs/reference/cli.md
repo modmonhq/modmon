@@ -34,6 +34,7 @@ Commands:
   agent      Show and trust what AI agents may do, and connect coding tools
   history    List the commands run in this project on this machine, and show what one printed
   workspace  List the project folders mm knows on this machine, and forget the ones that are gone
+  update     Update this machine's mm, and the mmd and mm-ingress-helper beside it, from a verified release
   mcp        Serve the Model Context Protocol server that AI agents use
   help       Print this message or the help of the given subcommand(s)
 
@@ -5589,6 +5590,38 @@ Examples:
   mm workspace forget ~/src/old-checkout
 
 A folder that still exists is registered again the next time mm runs there.
+```
+
+## `mm update`
+
+```text
+Update this machine's mm, and the mmd and mm-ingress-helper beside it, from a verified release
+
+Usage: update [OPTIONS]
+
+Options:
+      --check
+          Only say whether a newer stable release exists; change nothing
+
+      --version <vX.Y.Z>
+          Install this release instead of the latest stable one, such as v0.1.2, or a release candidate such as v0.1.3-rc.1
+
+      --force
+          Install an older release named with --version, install the same release again, or replace an mm built from a checkout
+
+      --yes
+          Replace without asking. Needed when standard input is not a terminal
+
+  -h, --help
+          Print help
+
+Examples:
+  mm update --check
+  mm update
+  mm update --yes
+  mm update --version v0.1.2 --force
+
+mm update downloads the release's archive for this platform, checks its SHA-256 and size against the release's manifest.json (SHA256SUMS for a release candidate), runs the new mm, and then replaces every binary at once or none. It replaces mm, and mmd and mm-ingress-helper when they sit beside it. Hosts keep the release they run: upgrade them with `mm target setup plan --upgrade`. Exit codes: 0 updated or nothing to do; 1 the release could not be read or installed, or this installation is refused; 3 the archive failed its checks.
 ```
 
 ## `mm mcp`

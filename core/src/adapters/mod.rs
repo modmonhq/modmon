@@ -32,6 +32,7 @@ pub mod release;
 pub mod remote;
 pub mod runtime;
 pub mod secrets;
+pub mod self_update;
 pub mod service_stack_runtime;
 pub mod services;
 pub mod shared_storage;

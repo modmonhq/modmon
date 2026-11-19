@@ -378,6 +378,12 @@ installations `mm target setup` upgrades in place and what it refuses.
 
 ### Added
 
+- `mm update` updates `mm` from the latest stable release, or the one
+  `--version` names, and `mmd` and `mm-ingress-helper` when they sit beside
+  it. It checks the archive against the release's `manifest.json` before it
+  unpacks anything, runs the new `mm`, and replaces every binary or none.
+  `mm update --check` only reports, and the update check now says to run
+  `mm update`. See [update mm](docs/start/install.md#update-mm).
 - `mm workspace list` shows the project folders mm has run in on this machine,
   their project ID, when each was last used, and which are gone.
   `mm workspace forget --stale` (or `ROOT|ID`) forgets them through a reviewed

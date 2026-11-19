@@ -355,9 +355,9 @@ the installer through `sudo`.
 A checksum mismatch is fail-closed: nothing is installed. Retry only after the
 download or proxy issue is understood; never skip checksum verification.
 
-`mm doctor --check-updates` reads `manifest.json` of the
+`mm doctor --check-updates` and `mm update --check` read `manifest.json` of the
 [latest release](https://github.com/modmonhq/modmon/releases/latest) on GitHub
-and downloads nothing else. It reports updates as unavailable when GitHub
+and download nothing else. It reports updates as unavailable when GitHub
 cannot be reached over HTTPS or the manifest does not validate; restore
 connectivity and run it again, or compare `mm --version` with the latest
 release by hand. A release candidate is never offered as an update.

@@ -71,6 +71,9 @@ pub async fn run(
     if let Some(Command::History(args)) = &cli.command {
         return super::history::run(&cli, args);
     }
+    if let Some(Command::Update(args)) = &cli.command {
+        return super::update::run(args, cli.output).await;
+    }
     let invocation = Invocation::prepare(&cli)?;
     let command = cli.command.take();
     route(command, &invocation, cancellation).await
@@ -172,6 +175,7 @@ async fn route(
             Command::Generate { .. }
             | Command::Mcp { .. }
             | Command::History(_)
+            | Command::Update(_)
             | Command::DashboardSchema
             | Command::Relay { .. }
             | Command::InstallIngress { .. }

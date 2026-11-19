@@ -47,8 +47,46 @@ curl --proto '=https' --tlsv1.2 -LsSf https://modmon.dev/install.sh | sh -s -- -
 | `--force`                      | Allow a downgrade, or replace an `mm` whose version is unknown                           |
 | `--no-modify-path`             | Do not print the `PATH` reminder                                                         |
 
-To update, run the installer again. It replaces the existing binaries only after
-the new archive is verified, and refuses to downgrade without `--force`.
+## Update mm
+
+Update an installation from a release with `mm update`:
+
+```sh
+mm update --check
+mm update
+```
+
+`--check` only says whether a newer stable release exists. `mm update` reads
+the latest release's `manifest.json`, prints what it replaces, such as
+`mm 0.1.1 → 0.1.2 in ~/.local/bin: mm, mmd`, and asks first. It downloads the
+archive for your platform, checks its SHA-256 and size against the manifest,
+runs the new `mm --version`, and then replaces `mm`, and `mmd` and
+`mm-ingress-helper` when they sit beside it, all at once: if one cannot be
+replaced, every one is put back. Expected result: `mm --version` prints the new
+release.
+
+| Option             | Effect                                                                                 |
+| ------------------ | -------------------------------------------------------------------------------------- |
+| `--version vX.Y.Z` | Install that release; a candidate (`vX.Y.Z-rc.N`) is checked against its `SHA256SUMS` |
+| `--force`          | Install an older release named with `--version`, the same release again, or replace an `mm` built from a checkout |
+| `--yes`            | Do not ask; needed when standard input is not a terminal                               |
+
+`mm update` refuses, and names what to run instead, when the directory of
+`mm` is not writable (run `sudo mm update`, or install into a directory you
+own with the installer's `--install-dir`), when `mm` was built from a checkout
+(update the checkout, see below), and when no release is built for your
+platform. On Linux, if local ingress runs a root-owned copy of
+`mm-ingress-helper` that differs from the new one, it prints the `sudo install`
+command that refreshes it. Hosts keep the release they run: see
+[upgrade mm and your hosts](../how-to/upgrade.md).
+
+Running the installer again also updates `mm`: it replaces the existing
+binaries only after the new archive is verified, and refuses to downgrade
+without `--force`. Use it when `mm update` says a release needs a newer `mm`.
+
+A release candidate prints the version it leads to, so `mm --version` cannot
+tell `0.1.2-rc.1` from `0.1.2`. After a candidate, install the final release
+with `mm update --version v0.1.2 --force`.
 
 ## Install a release from GitHub
 
@@ -241,7 +279,9 @@ command printed by the installer. Other custom aliases are preserved.
 
 ### Update
 
-From your checkout, get the latest changes and rerun the installer:
+`mm update` refuses to replace an `mm` built from a checkout, since the
+checkout's `install-receipt.txt` sits beside it. From your checkout, get the
+latest changes and rerun the installer:
 
 ```sh
 git pull

@@ -13,11 +13,12 @@ same release.
 
 ## Before you start
 
-- Install the new release on your machine with `mmd` beside `mm`: run the
-  installer with `--with-daemon`, or unpack the release archive, which holds
-  both (see [install mm](../start/install.md)). `mm --version` prints the new
-  release. Setup installs the `mm` and `mmd` from the directory of the `mm` you
-  run; pass `--host-binaries DIRECTORY` to install others.
+- Update `mm` on your machine: `mm update` (see
+  [update mm](../start/install.md#update-mm)). It also replaces the `mmd`
+  beside `mm`, if there is one. `mm --version` prints the new release. Setup
+  installs the `mm` and `mmd` from the directory of the `mm` you run, so that
+  directory needs `mmd`: run the installer with `--with-daemon` once, or pass
+  `--host-binaries DIRECTORY` to install others.
 - Check that no deployment runs: `mm deploy status`. A deployment that runs on
   a node while its `mmd` restarts fails at its current step and rolls back.
 - If the environment pins the release with

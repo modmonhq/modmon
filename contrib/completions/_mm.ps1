@@ -52,6 +52,7 @@ Register-ArgumentCompleter -Native -CommandName 'mm' -ScriptBlock {
             [CompletionResult]::new('agent', 'agent', [CompletionResultType]::ParameterValue, 'Show and trust what AI agents may do, and connect coding tools')
             [CompletionResult]::new('history', 'history', [CompletionResultType]::ParameterValue, 'List the commands run in this project on this machine, and show what one printed')
             [CompletionResult]::new('workspace', 'workspace', [CompletionResultType]::ParameterValue, 'List the project folders mm knows on this machine, and forget the ones that are gone')
+            [CompletionResult]::new('update', 'update', [CompletionResultType]::ParameterValue, 'Update this machine''s mm, and the mmd and mm-ingress-helper beside it, from a verified release')
             [CompletionResult]::new('mcp', 'mcp', [CompletionResultType]::ParameterValue, 'Serve the Model Context Protocol server that AI agents use')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
@@ -6166,6 +6167,22 @@ Register-ArgumentCompleter -Native -CommandName 'mm' -ScriptBlock {
         'mm;workspace;help;help' {
             break
         }
+        'mm;update' {
+            [CompletionResult]::new('--version', '--version', [CompletionResultType]::ParameterName, 'Install this release instead of the latest stable one, such as v0.1.2, or a release candidate such as v0.1.3-rc.1')
+            [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root or a path inside the project')
+            [CompletionResult]::new('-e', '-e', [CompletionResultType]::ParameterName, 'Environment to operate on (overrides MM_ENVIRONMENT and default-environment)')
+            [CompletionResult]::new('--environment', '--environment', [CompletionResultType]::ParameterName, 'Environment to operate on (overrides MM_ENVIRONMENT and default-environment)')
+            [CompletionResult]::new('--runtime', '--runtime', [CompletionResultType]::ParameterName, 'Ephemeral runtime adapter for this invocation only')
+            [CompletionResult]::new('--target', '--target', [CompletionResultType]::ParameterName, 'Ephemeral target name for this invocation only')
+            [CompletionResult]::new('--mm-home', '--mm-home', [CompletionResultType]::ParameterName, 'Directory containing mm''s local state and target catalog')
+            [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Human text or machine-readable JSON. JSON errors stay JSON')
+            [CompletionResult]::new('--check', '--check', [CompletionResultType]::ParameterName, 'Only say whether a newer stable release exists; change nothing')
+            [CompletionResult]::new('--force', '--force', [CompletionResultType]::ParameterName, 'Install an older release named with --version, install the same release again, or replace an mm built from a checkout')
+            [CompletionResult]::new('--yes', '--yes', [CompletionResultType]::ParameterName, 'Replace without asking. Needed when standard input is not a terminal')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
         'mm;mcp' {
             [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root or a path inside the project')
             [CompletionResult]::new('-e', '-e', [CompletionResultType]::ParameterName, 'Environment to operate on (overrides MM_ENVIRONMENT and default-environment)')
@@ -6228,6 +6245,7 @@ Register-ArgumentCompleter -Native -CommandName 'mm' -ScriptBlock {
             [CompletionResult]::new('agent', 'agent', [CompletionResultType]::ParameterValue, 'Show and trust what AI agents may do, and connect coding tools')
             [CompletionResult]::new('history', 'history', [CompletionResultType]::ParameterValue, 'List the commands run in this project on this machine, and show what one printed')
             [CompletionResult]::new('workspace', 'workspace', [CompletionResultType]::ParameterValue, 'List the project folders mm knows on this machine, and forget the ones that are gone')
+            [CompletionResult]::new('update', 'update', [CompletionResultType]::ParameterValue, 'Update this machine''s mm, and the mmd and mm-ingress-helper beside it, from a verified release')
             [CompletionResult]::new('mcp', 'mcp', [CompletionResultType]::ParameterValue, 'Serve the Model Context Protocol server that AI agents use')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
@@ -7239,6 +7257,9 @@ Register-ArgumentCompleter -Native -CommandName 'mm' -ScriptBlock {
             break
         }
         'mm;help;workspace;forget' {
+            break
+        }
+        'mm;help;update' {
             break
         }
         'mm;help;mcp' {

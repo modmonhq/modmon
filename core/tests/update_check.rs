@@ -82,7 +82,7 @@ async fn a_newer_same_or_older_release_is_reported_as_such() -> TestResult {
             assert!(
                 report
                     .message
-                    .contains("rerun the installer, https://modmon.dev/install.sh"),
+                    .contains("can be updated to 0.1.0; run `mm update`"),
                 "{}",
                 report.message
             );
