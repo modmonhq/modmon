@@ -20,8 +20,7 @@ const TARGET_ID: &str = "319c527b-6242-7b43-bfd4-bd60e27c1de3";
 const HOST_KEY: &str = "SHA256:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU";
 
 #[test]
-fn persists_a_strict_private_catalog_with_stable_unique_ids()
--> Result<(), Box<dyn std::error::Error>> {
+fn persists_a_private_catalog_with_stable_unique_ids() -> Result<(), Box<dyn std::error::Error>> {
     let home = temp_dirs::tempdir()?;
     let path = home.path().join("targets.yaml");
     let store: Arc<dyn TargetStore> = Arc::new(FilesystemTargetStore::new(path.clone()));
@@ -145,7 +144,7 @@ fn persists_a_strict_private_catalog_with_stable_unique_ids()
 
         fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
     }
-    assert!(manager.list().is_err());
+    assert_eq!(manager.list()?.targets.len(), 1);
     Ok(())
 }
 

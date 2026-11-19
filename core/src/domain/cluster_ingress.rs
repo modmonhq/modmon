@@ -74,7 +74,7 @@ pub const ACME_FILE: &str = "acme.json";
 
 /// One route of an environment as the ingress serves it.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct IngressRoute {
     /// The proxy's name for the route, unique across projects.
     pub router: String,
