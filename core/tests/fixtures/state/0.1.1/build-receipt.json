@@ -1,0 +1,73 @@
+{
+  "schema": "mm-build-receipt-v1",
+  "plan": {
+    "schema": "mm-image-build-plan-v1",
+    "project_id": "00010000-0000-4000-8000-000000000001",
+    "config_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "environment": "production",
+    "source": {
+      "commit": "3f9a1c2e7b4d5a6f8091a2b3c4d5e6f708192a3b",
+      "branch": "main",
+      "tags_at_head": [],
+      "repository_tags": [],
+      "tags_complete": true,
+      "default_branch": true,
+      "dirty": false
+    },
+    "publish": true,
+    "tag_strategy": "auto",
+    "platforms": [
+      "linux/amd64"
+    ],
+    "units": [
+      {
+        "module": "web",
+        "image": "registry.example.test/web",
+        "context": "web",
+        "dockerfile": "web/Dockerfile",
+        "context_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "dockerfile_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "args": {
+          "VERSION": "3f9a1c2e"
+        },
+        "secret_ids": [],
+        "dependencies": [],
+        "upstream_node_ids": [],
+        "extra_inputs": [],
+        "version_embedded": false,
+        "reuse_policy": "allowed",
+        "input_fingerprint": "59ac0208f1c6c2a9abca5606e550464576fe6c9276bb4680516027fb03d506ae",
+        "variants": [
+          {
+            "target": null,
+            "tag_suffix": "",
+            "tags": [
+              "edge",
+              "sha-3f9a1c2e7b4d5a6f8091a2b3c4d5e6f708192a3b"
+            ]
+          }
+        ]
+      }
+    ],
+    "plan_hash": "9e85a5f2155443594284b9ecf2854dfa951502308983118c731c7491d831c1a8"
+  },
+  "result": {
+    "operation_id": "8db0b1ab-2a07-42d6-93c5-08d190879d4f",
+    "plan_hash": "9e85a5f2155443594284b9ecf2854dfa951502308983118c731c7491d831c1a8",
+    "images": [
+      {
+        "module": "web",
+        "target": null,
+        "repository": "registry.example.test/web",
+        "tags": [
+          "registry.example.test/web:edge",
+          "registry.example.test/web:sha-3f9a1c2e7b4d5a6f8091a2b3c4d5e6f708192a3b"
+        ],
+        "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "execution_fingerprint": "2c52bb4813d3a0f3e68f10cc2900948558c22257d4f079b676ed766c940aa479",
+        "archive": null
+      }
+    ]
+  },
+  "receipt_hash": "8d43f423aea2595fa7fa67718655522a8aab1417d06694ee91b32d47e11f0fc8"
+}

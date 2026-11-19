@@ -1,0 +1,26 @@
+targets:
+  local:
+    id: 00010000-0000-4000-8000-000000000002
+    transport:
+      kind: local
+    bootstrap:
+      provider: ansible
+    ingress:
+      provider: traefik
+      image: docker.io/library/traefik@sha256:16acb89c6db341182970d6fdafece31303b0a380a8ed7aa51682e225229bf1d2
+  staging:
+    id: 00000000-0000-0000-0000-000000000007
+    transport:
+      kind: ssh
+      host: app.example.test
+      port: 22
+      user: deploy
+      host_key_fingerprint: SHA256:0ilAVEYiaM4+PCd17vMiY2bh4bv814hVSbQKrN45DMU
+      host_key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFkPDuJzgp2r/scZMqe+noBIAdbQcrLlOG3w6WBNqR+w
+      daemon_fingerprint: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    bootstrap:
+      provider: ansible
+    ingress:
+      provider: traefik
+      image: docker.io/library/traefik@sha256:16acb89c6db341182970d6fdafece31303b0a380a8ed7aa51682e225229bf1d2
+    default-runtime: docker-compose

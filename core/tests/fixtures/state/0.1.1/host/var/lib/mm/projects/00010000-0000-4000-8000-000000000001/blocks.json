@@ -1,0 +1,9 @@
+[
+  {
+    "project-id": "00010000-0000-4000-8000-000000000001",
+    "environment": "production",
+    "fingerprint": "SHA256:blocked",
+    "blocked-by": "ops",
+    "blocked-at-unix-ms": 6100
+  }
+]

@@ -1,0 +1,19 @@
+{
+  "node": "app-1",
+  "space": "10.96.0.0/12",
+  "mesh-interface": "mm0",
+  "mtu": 1420,
+  "table": {
+    "networks": {
+      "000100000000-production-default": {
+        "block": "10.96.0.0/20",
+        "nodes": {
+          "app-1": {
+            "slice": "10.96.0.0/24",
+            "network": "mm-web-production-default"
+          }
+        }
+      }
+    }
+  }
+}

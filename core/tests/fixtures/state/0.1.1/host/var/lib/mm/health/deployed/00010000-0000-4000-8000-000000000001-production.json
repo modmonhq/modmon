@@ -1,0 +1,22 @@
+{
+  "scope": {
+    "project_id": "00010000-0000-4000-8000-000000000001",
+    "environment": "production",
+    "target": "production",
+    "target_fingerprint": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "runtime": "docker-compose",
+    "node": "app-1"
+  },
+  "root": "/srv/mm/projects/web/production/3f9a1c2e7b4d",
+  "services": [
+    {
+      "stack": "app",
+      "service": "web",
+      "restart": {
+        "after-ms": 180000,
+        "max-restarts": 5,
+        "window-ms": 3600000
+      }
+    }
+  ]
+}

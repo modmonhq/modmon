@@ -1,0 +1,16 @@
+{
+  "containers": {
+    "4b7c2d0e9f1a3b5c7d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c": {
+      "stack": "app",
+      "service": "web",
+      "restarts": [
+        {
+          "node": "app-1",
+          "container": "web-production-app-web-1",
+          "at-unix-ms": 7000,
+          "reason": "unhealthy for 3m"
+        }
+      ]
+    }
+  }
+}

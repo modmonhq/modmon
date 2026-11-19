@@ -1,0 +1,9 @@
+schema-version: 2
+break-glass:
+  - name: ops
+    key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFkPDuJzgp2r/scZMqe+noBIAdbQcrLlOG3w6WBNqR+w
+projects:
+  00010000-0000-4000-8000-000000000001:
+    name: web
+    delivery: push
+    environments: [production]

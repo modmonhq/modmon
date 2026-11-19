@@ -1,0 +1,25 @@
+{
+  "schema-version": 1,
+  "project-id": "00010000-0000-4000-8000-000000000001",
+  "environment": "production",
+  "commit": "3f9a1c2e7b4d5a6f8091a2b3c4d5e6f708192a3b",
+  "users": {
+    "ana": {
+      "machine": false,
+      "keys": [
+        {
+          "public-key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFkPDuJzgp2r/scZMqe+noBIAdbQcrLlOG3w6WBNqR+w",
+          "fingerprint": "SHA256:0ilAVEYiaM4+PCd17vMiY2bh4bv814hVSbQKrN45DMU"
+        }
+      ],
+      "access": {
+        "level": "deploy"
+      }
+    }
+  },
+  "deploy-from": [
+    "main"
+  ],
+  "reconciled-at-unix-ms": 6000,
+  "reconciled-by": "ana"
+}

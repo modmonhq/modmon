@@ -1,0 +1,126 @@
+{
+  "schema": 1,
+  "installation_id": "00000000-0000-0000-0000-000000000015",
+  "runtime": "docker-compose",
+  "target_id": "00010000-0000-4000-8000-000000000002",
+  "stack_version": "1.0.0",
+  "plan_hash": "1ef1b766b5ee4b92036bb2e5049dde40c67368a4c7ec23b3107071f6e65de56b",
+  "artifact": {
+    "root": "/srv/web/.mm/services/artifacts/1",
+    "manifest_path": "/srv/web/.mm/services/artifacts/1/manifest.json",
+    "compose_path": "/srv/web/.mm/services/artifacts/1/compose.yaml",
+    "route_path": "/srv/web/.mm/services/artifacts/1/mailpit.dynamic.yaml",
+    "compose_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "route_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "dashboard_unit_path": "/srv/web/.mm/services/artifacts/1/mm-dashboard.service",
+    "dashboard_unit_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+  },
+  "ingress": {
+    "root": "/srv/web/.mm/ingress/1",
+    "manifest_path": "/srv/web/.mm/ingress/1/manifest.json",
+    "compose_path": "/srv/web/.mm/ingress/1/compose.yaml",
+    "support_paths": [],
+    "manifest": {
+      "target_id": "00010000-0000-4000-8000-000000000002",
+      "target_name": "local",
+      "target_fingerprint": "a738f54c90c9c1bb3a634fc8f83f6858adcdd6955c311ad5fe2de8fe9310d1bc",
+      "provider": "traefik",
+      "image": "docker.io/library/traefik@sha256:16acb89c6db341182970d6fdafece31303b0a380a8ed7aa51682e225229bf1d2",
+      "compose_project_name": "mm-ingress",
+      "network_name": "mm-ingress-a5ba3ffa58c57cf63882",
+      "acme_volume_name": "mm-ingress-acme",
+      "dynamic_config_volume_name": "mm-ingress-dynamic",
+      "dynamic_config_directory": "/etc/traefik/dynamic",
+      "acme_storage_path": "/acme/acme.json",
+      "acme_file_mode": "0600",
+      "public_http_port": 80,
+      "public_https_port": 443,
+      "proxy_http_port": 18080,
+      "proxy_https_port": 18443,
+      "proxy_verify_port": 18081,
+      "certificate_resolver": "mm",
+      "target_compose_path": "/srv/web/.mm/ingress/1/compose.yaml",
+      "compose_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "support_files": [],
+      "steps": [],
+      "artifact_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  },
+  "development_network": "mm-services-dev-a5ba3ffa58c57cf63882",
+  "mailpit_data_volume": "mm-mailpit-data",
+  "host_smtp_port": 1025,
+  "journal_state": "applied",
+  "operation_id": "00000000-0000-0000-0000-000000000016",
+  "updated_at_unix_ms": 5000,
+  "applied_plan": {
+    "schema": 1,
+    "action": "apply",
+    "stack_version": "1.0.0",
+    "runtime": "docker-compose",
+    "target_id": "00010000-0000-4000-8000-000000000002",
+    "target_fingerprint": "a738f54c90c9c1bb3a634fc8f83f6858adcdd6955c311ad5fe2de8fe9310d1bc",
+    "components": [
+      {
+        "kind": "mailpit",
+        "version": "1.27.8",
+        "image": "docker.io/axllent/mailpit@sha256:6abc8e633df15eaf785cfcf38bae48e66f64beecdc03121e249d0f9ec15f0707",
+        "dependencies": [],
+        "engine_socket_mounted": false
+      }
+    ],
+    "dashboard_hosts": [
+      "mm.test"
+    ],
+    "dashboard_service": {
+      "executable": "/usr/local/bin/mm",
+      "mm_home": "/srv/web/.mm"
+    },
+    "development_network": "mm-services-dev-a5ba3ffa58c57cf63882",
+    "mailpit_data_volume": "mm-mailpit-data",
+    "host_smtp_port": 1025,
+    "purge_data": false,
+    "previous_state_digest": "",
+    "ingress": {
+      "root": "/srv/web/.mm/ingress/1",
+      "manifest_path": "/srv/web/.mm/ingress/1/manifest.json",
+      "compose_path": "/srv/web/.mm/ingress/1/compose.yaml",
+      "support_paths": [],
+      "manifest": {
+        "target_id": "00010000-0000-4000-8000-000000000002",
+        "target_name": "local",
+        "target_fingerprint": "a738f54c90c9c1bb3a634fc8f83f6858adcdd6955c311ad5fe2de8fe9310d1bc",
+        "provider": "traefik",
+        "image": "docker.io/library/traefik@sha256:16acb89c6db341182970d6fdafece31303b0a380a8ed7aa51682e225229bf1d2",
+        "compose_project_name": "mm-ingress",
+        "network_name": "mm-ingress-a5ba3ffa58c57cf63882",
+        "acme_volume_name": "mm-ingress-acme",
+        "dynamic_config_volume_name": "mm-ingress-dynamic",
+        "dynamic_config_directory": "/etc/traefik/dynamic",
+        "acme_storage_path": "/acme/acme.json",
+        "acme_file_mode": "0600",
+        "public_http_port": 80,
+        "public_https_port": 443,
+        "proxy_http_port": 18080,
+        "proxy_https_port": 18443,
+        "proxy_verify_port": 18081,
+        "certificate_resolver": "mm",
+        "target_compose_path": "/srv/web/.mm/ingress/1/compose.yaml",
+        "compose_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "support_files": [],
+        "steps": [],
+        "artifact_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    },
+    "artifact": {
+      "root": "/srv/web/.mm/services/artifacts/1",
+      "manifest_path": "/srv/web/.mm/services/artifacts/1/manifest.json",
+      "compose_path": "/srv/web/.mm/services/artifacts/1/compose.yaml",
+      "route_path": "/srv/web/.mm/services/artifacts/1/mailpit.dynamic.yaml",
+      "compose_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "route_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "dashboard_unit_path": "/srv/web/.mm/services/artifacts/1/mm-dashboard.service",
+      "dashboard_unit_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "plan_hash": "1ef1b766b5ee4b92036bb2e5049dde40c67368a4c7ec23b3107071f6e65de56b"
+  }
+}
