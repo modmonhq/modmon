@@ -205,10 +205,21 @@ With `--output json`, each line is one JSON object:
 
 ### Secret values are replaced
 
-mm replaces configured secret values with `[REDACTED]`. If it cannot check a
-configured secret, it refuses to open the redacted stream. A value of eight
-characters or more is replaced wherever it appears. A shorter value is replaced
-only where it stands alone, so a secret `hunter2` is hidden in
+mm replaces the environment's secret values with `[REDACTED]`, for every
+service of the environment, not only the one you read:
+
+- every secret the environment hands out: the variables and secret files of
+  its services, its registry logins, its tunnel token, and its certificate;
+- every other secret declared under `secrets:` that is kept in a store the
+  environment uses, such as one a service no longer reads.
+
+If it cannot read a secret the environment hands out, it refuses to open the
+redacted stream and says which secret or store failed and what to run. A store
+that only other environments use is not asked, so the logs of `local` work on
+a machine with no connection to the store that holds the secrets of `staging`.
+
+A value of eight characters or more is replaced wherever it appears. A shorter
+value is replaced only where it stands alone, so a secret `hunter2` is hidden in
 `password=hunter2` and left in the path `/srv/hunter2/`. Values under four
 characters, and words such as `null` or `true`, are not replaced: ordinary
 output cannot be told apart from them, so give such a secret a real value.

@@ -231,9 +231,10 @@ the other nodes keep coming.
 ![The log of a service on three nodes: each line starts with its node and container, and a node that does not answer is one marked line](./images/tui/cluster-logs.png)
 
 Lines from standard error have a bar in the margin. Lines that mention an
-error or a warning are tinted. Configured secret values are redacted, as in
-[`mm service logs`](./runtime-observability.md#read-logs). The view keeps the
-newest 5,000 lines.
+error or a warning are tinted. The environment's secret values are redacted,
+as in
+[`mm service logs`](./runtime-observability.md#secret-values-are-replaced).
+The view keeps the newest 5,000 lines.
 
 ### Run a command
 

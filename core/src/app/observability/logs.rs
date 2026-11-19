@@ -54,7 +54,13 @@ impl RuntimeOperationsService {
         let redactions = if request.mode == LogMode::Raw {
             Vec::new()
         } else {
-            self.log_redactions(&document, &environment).await?
+            crate::app::environment::environment_redactions(
+                &self.application,
+                self.secrets.as_ref(),
+                &document,
+                &environment,
+            )
+            .await?
         };
         let modules = service_modules(&document);
         // One read needs no merge: the driver's stream is the answer.

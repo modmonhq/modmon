@@ -50,7 +50,10 @@ mm job retry RUN_UUID
 ```
 
 Replace `RUN_UUID` with a run ID from the run command or history. Output is
-limited in size and redacted against configured secrets.
+limited in size and redacted against the environment's secrets, as
+[service logs are](./runtime-observability.md#secret-values-are-replaced). A job
+whose output cannot be redacted, because a secret the environment hands out
+cannot be read here, does not start.
 
 ## Run a job on a remote target
 
@@ -255,7 +258,7 @@ app-2 migrate | Migrated: 2026_11_01_000000_create_orders_table
 
 With `--output json` it prints the runs, each with its `node`, `state`,
 `exit_code`, and `output`. Output is bounded by `output-limit-bytes` and
-redacted against configured secrets.
+redacted against the environment's secrets.
 
 It works before the environment's first deployment has finished: when the
 first one fails, `mm deploy logs`, `mm job history`, and `mm status` read

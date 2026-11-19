@@ -13,7 +13,7 @@ use crate::domain::observability::{
     environment_values, validate_exec_request, validate_selector,
 };
 use crate::domain::runtime::{RuntimeCapability, RuntimeTarget};
-use crate::domain::secret::{SecretScope, SecretStatus};
+use crate::domain::secret::SecretScope;
 
 #[derive(Clone)]
 pub struct RuntimeOperationsService {
@@ -316,34 +316,6 @@ impl RuntimeOperationsService {
             task_cancellation.cancel();
         });
         ExecStream::new(receiver, cancellation)
-    }
-
-    async fn log_redactions(
-        &self,
-        document: &crate::domain::config::ConfigDocument,
-        environment: &str,
-    ) -> Result<Vec<zeroize::Zeroizing<String>>, MmError> {
-        let scope = SecretScope::new(environment);
-        let mut values = Vec::new();
-        for declaration in document.config.secrets.values() {
-            let reference = declaration
-                .storage
-                .reference()
-                .map_err(|message| MmError::Secret { message })?;
-            let resolution = self.secrets.resolve(&scope, &reference).await?;
-            match (resolution.metadata.status, resolution.material) {
-                (SecretStatus::Set, Some(material)) => values.push(material.into_zeroizing()),
-                (SecretStatus::Unset, None) => {}
-                (status, _) => {
-                    return Err(MmError::Secret {
-                        message: format!(
-                            "log redaction could not resolve a configured secret ({status:?}); use explicit authorized raw mode only if disclosure is acceptable"
-                        ),
-                    });
-                }
-            }
-        }
-        Ok(values)
     }
 
     async fn resolve_exec_environment(
