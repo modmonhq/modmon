@@ -19543,7 +19543,7 @@ _mm() {
             return 0
             ;;
         mm__subcmd__secret__subcmd__generate)
-            opts="-e -h -V --missing --root --environment --runtime --target --mm-home --output --help --version"
+            opts="-e -h -V --missing --all --root --environment --runtime --target --mm-home --output --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

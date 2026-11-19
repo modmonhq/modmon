@@ -98,7 +98,7 @@ The commands are the ones you use with the age store:
 
 ```sh
 mm -e production secret set db_password          # staged on every node
-mm -e production secret generate --missing       # generated here, staged on every node
+mm -e production secret generate --missing       # production's, generated here, staged on every node
 mm -e production secret rotate db_password
 mm -e production secret status
 mm -e production deploy plan                     # binds the staged revision

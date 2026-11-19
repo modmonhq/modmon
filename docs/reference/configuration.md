@@ -811,6 +811,8 @@ default to the provider's name and `18200`. See
 
 Generator presets are `password` (length 32), `token` (48), `bytes` (32 and
 `base64-url`), `laravel-app-key`, and `uuid`. Length overrides must be 16–4096.
+`mm secret generate --missing` creates the generated secrets the selected
+environment uses, and `--all` creates every one.
 Other byte encodings are `base64` and `hex`. Provider instance names are stable
 and independent of driver/mode. Credentials and recovery material remain
 private mm state, not project configuration.

@@ -43,7 +43,8 @@ mm secret init age
 mm secret generate --missing
 ```
 
-`generate --missing` creates values only for secrets with a configured generator.
+`generate --missing` creates values only for the secrets the selected
+environment uses that have a configured generator.
 For other values, use `mm secret set KEY` and enter the value at the hidden prompt.
 
 ## Existing clone
