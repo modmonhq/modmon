@@ -15,8 +15,8 @@ use mm::app::ports::{
 };
 use mm::app::{SecretManager, SecretManagerDependencies};
 use mm::domain::secret::{
-    SecretExpectedState, SecretGenerationStatus, SecretMaterial, SecretReference,
-    SecretReplacement, SecretRotationPlanStatus, SecretScope,
+    SecretExpectedState, SecretGenerationSelection, SecretGenerationStatus, SecretMaterial,
+    SecretReference, SecretReplacement, SecretRotationPlanStatus, SecretScope,
 };
 
 mod temp_dirs;
@@ -54,14 +54,17 @@ async fn scheduled_rotation_requires_the_current_reviewed_plan()
     )?;
 
     let generated = initial
-        .generate(project.path(), None, Some("database.password"), false)
+        .generate(project.path(), None, &named("database.password"))
         .await?;
     assert_eq!(generated.secrets.len(), 1);
     assert_eq!(
         generated.secrets[0].status,
         SecretGenerationStatus::Generated
     );
-    let original_revision = generated.secrets[0].revision.clone();
+    let original_revision = generated.secrets[0]
+        .revision
+        .clone()
+        .ok_or("a generated secret has a revision")?;
     let early_plan = initial.rotation_plan(project.path(), None).await?;
     assert_eq!(
         early_plan.secrets[0].status,
@@ -217,7 +220,9 @@ async fn mixed_deployment_coupled_rotation_plan_fails_before_writing()
     age.initialize()?;
     let router = support::secret_registry(age)?;
     let initial = secret_manager(Arc::clone(&router), Arc::new(FixedClock { unix_ms: 1_000 }))?;
-    initial.generate(project.path(), None, None, true).await?;
+    initial
+        .generate(project.path(), None, &SecretGenerationSelection::All)
+        .await?;
     let reference: SecretReference = "age://local/db-password".parse()?;
     let original_revision = router.inspect(&scope(), &reference).await?.revision;
 
@@ -350,7 +355,7 @@ async fn generate_rejects_operator_supplied_secrets() -> Result<(), Box<dyn std:
     let router = support::secret_registry(age)?;
     let manager = secret_manager(router, Arc::new(FixedClock { unix_ms: 1_000 }))?;
     let error = manager
-        .generate(project.path(), None, Some("stripe.secret"), false)
+        .generate(project.path(), None, &named("stripe.secret"))
         .await
         .err()
         .ok_or("operator-supplied secrets cannot be generated")?;
@@ -480,27 +485,17 @@ async fn generated_secret_direct_rotation_rejects_input_and_regenerates()
         None
     );
     assert!(manager.input_prompt(project.path(), "missing").is_err());
-    assert!(
-        manager
-            .generate(project.path(), None, None, false)
-            .await
-            .is_err()
-    );
-    assert!(
-        manager
-            .generate(project.path(), None, Some("database.password"), true)
-            .await
-            .is_err()
-    );
 
     let generated = manager
-        .generate(project.path(), None, Some("database.password"), false)
+        .generate(project.path(), None, &named("database.password"))
         .await?;
     assert_eq!(
         generated.secrets[0].status,
         SecretGenerationStatus::Generated
     );
-    let repeated = manager.generate(project.path(), None, None, true).await?;
+    let repeated = manager
+        .generate(project.path(), None, &SecretGenerationSelection::Missing)
+        .await?;
     assert_eq!(
         repeated.secrets[0].status,
         SecretGenerationStatus::AlreadySet
@@ -531,7 +526,7 @@ async fn generated_secret_direct_rotation_rejects_input_and_regenerates()
             None,
         )
         .await?;
-    assert_ne!(rotated.revision, generated.secrets[0].revision);
+    assert_ne!(Some(rotated.revision), generated.secrets[0].revision);
     Ok(())
 }
 
@@ -567,7 +562,7 @@ async fn declaration_sources_prompts_and_rotation_strategy_fail_closed()
     );
     assert!(
         manager
-            .generate(project.path(), None, Some("database.password"), false)
+            .generate(project.path(), None, &named("database.password"))
             .await
             .is_err()
     );
@@ -675,6 +670,10 @@ async fn read_only_storage_rejects_mutation_and_scheduled_rotation()
     )?;
     assert!(manager.rotation_plan(project.path(), None).await.is_err());
     Ok(())
+}
+
+fn named(name: &str) -> SecretGenerationSelection {
+    SecretGenerationSelection::Named(name.to_owned())
 }
 
 fn scope() -> SecretScope {

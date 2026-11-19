@@ -3108,9 +3108,10 @@ set edit:completion:arg-completer[mm] = {|@words|
             cand --target 'Ephemeral target name for this invocation only'
             cand --mm-home 'Directory containing mm''s local state and target catalog'
             cand --output 'Human text or machine-readable JSON. JSON errors stay JSON'
-            cand --missing 'Generate every configured secret that is currently missing'
-            cand -h 'Print help'
-            cand --help 'Print help'
+            cand --missing 'Generate the secrets the selected environment uses: those its bindings name, its services mount, and its registries, TLS, tunnel and deploy key read'
+            cand --all 'Generate every configured generated secret, whichever environment uses it'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
             cand -V 'Print version'
             cand --version 'Print version'
         }

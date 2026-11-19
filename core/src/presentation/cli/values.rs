@@ -129,21 +129,23 @@ pub(super) async fn generate_in_store(
     invocation: &super::dispatch::Invocation,
 ) -> Result<Option<u8>, MmError> {
     use super::secret::SecretCommand;
-    let (requested, rotate, stdin) = match command {
-        SecretCommand::Generate { key, .. } => (key.as_deref(), false, false),
-        SecretCommand::Rotate { key, stdin, .. } => (Some(key.as_str()), true, *stdin),
+    let document = composition::project_documents().load_from(&invocation.start)?;
+    let (names, rotate, stdin, batch) = match command {
+        SecretCommand::Generate { key, all, .. } => {
+            let environment = crate::domain::config::resolve_environment(
+                &document,
+                invocation.selection.environment.as_deref(),
+            )?;
+            let selection = super::secret::generation_selection(key.clone(), *all);
+            let names = crate::app::generated_secrets(&document, &environment, &selection)?;
+            (names, false, false, key.is_none())
+        }
+        SecretCommand::Rotate { key, stdin, .. } => (vec![key.clone()], true, *stdin, false),
         _ => return Ok(None),
     };
-    let document = composition::project_documents().load_from(&invocation.start)?;
-    let names = document
-        .config
-        .secrets
-        .keys()
-        .filter(|name| {
-            requested.is_none_or(|wanted| wanted == name.as_str()) && kept_in_store(&document, name)
-        })
-        .cloned()
-        .collect::<Vec<_>>();
+    let (names, outside): (Vec<_>, Vec<_>) = names
+        .into_iter()
+        .partition(|name| kept_in_store(&document, name));
     if names.is_empty() {
         return Ok(None);
     }
@@ -177,37 +179,31 @@ pub(super) async fn generate_in_store(
             edit: ValueEdit::Set(value),
         });
     }
-    if requested.is_none() {
-        generate_outside_store(&document, invocation).await?;
+    if batch && !outside.is_empty() {
+        generate_outside_store(outside, invocation).await?;
     }
     stage_generated(&remote, edits, invocation.format).await
 }
 
-/// `generate --missing` for the secrets the managed store does not keep.
+/// `generate --missing` and `--all` for the secrets the managed store does
+/// not keep.
 async fn generate_outside_store(
-    document: &crate::domain::config::ConfigDocument,
+    names: Vec<String>,
     invocation: &super::dispatch::Invocation,
 ) -> Result<(), MmError> {
-    let secrets = composition::environment_services(
+    let report = composition::environment_services(
         &invocation.start,
         invocation.home(),
         Arc::clone(&invocation.clock),
     )?
-    .secrets;
-    for (name, declaration) in &document.config.secrets {
-        if declaration.generate.is_some() && !kept_in_store(document, name) {
-            let report = secrets
-                .generate(
-                    &invocation.start,
-                    invocation.selection.environment.as_deref(),
-                    Some(name),
-                    false,
-                )
-                .await?;
-            output::write_secret_generation(&report, invocation.format)?;
-        }
-    }
-    Ok(())
+    .secrets
+    .generate(
+        &invocation.start,
+        invocation.selection.environment.as_deref(),
+        &crate::domain::secret::SecretGenerationSelection::Listed(names),
+    )
+    .await?;
+    output::write_secret_generation(&report, invocation.format)
 }
 
 async fn stage_generated(

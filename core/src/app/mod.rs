@@ -88,7 +88,7 @@ pub use scheduler::{JobSchedulerDependencies, JobSchedulerService, SchedulerCycl
 pub(crate) use secret_backends::plan_remote_secret_backend_setup;
 pub use secret_backends::{ProviderDriverRegistration, SecretBackendManager};
 pub(crate) use secret_generator::generate_secret;
-pub use secrets::{SecretManager, SecretManagerDependencies};
+pub use secrets::{SecretManager, SecretManagerDependencies, generated_secrets};
 pub use selection::{
     LocalSelectionPreference, ResolvedOperationContext, ResolvedSelection, SelectionSource,
     load_selection_preferences, resolve_named_target, resolve_operation_context,

@@ -3145,9 +3145,11 @@ Options:
 ### `mm secret generate`
 
 ```text
-Create configured generated secrets without overwriting existing values
+Create configured generated secrets without overwriting existing values.
 
-Usage: generate [OPTIONS] [KEY]
+With --missing or --all, a secret whose provider has no connection from this machine is listed as skipped with the reason, and the others are still created.
+
+Usage: generate <KEY|--missing|--all>
 
 Arguments:
   [KEY]
@@ -3155,10 +3157,13 @@ Arguments:
 
 Options:
       --missing
-          Generate every configured secret that is currently missing
+          Generate the secrets the selected environment uses: those its bindings name, its services mount, and its registries, TLS, tunnel and deploy key read
+
+      --all
+          Generate every configured generated secret, whichever environment uses it
 
   -h, --help
-          Print help
+          Print help (see a summary with '-h')
 ```
 
 ### `mm secret rotate`

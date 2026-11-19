@@ -4513,9 +4513,10 @@ _arguments "${_arguments_options[@]}" : \
 '--target=[Ephemeral target name for this invocation only]:NAME:_default' \
 '--mm-home=[Directory containing mm'\''s local state and target catalog]:PATH:_files' \
 '--output=[Human text or machine-readable JSON. JSON errors stay JSON]:OUTPUT:(human json)' \
-'--missing[Generate every configured secret that is currently missing]' \
-'-h[Print help]' \
-'--help[Print help]' \
+'--missing[Generate the secrets the selected environment uses\: those its bindings name, its services mount, and its registries, TLS, tunnel and deploy key read]' \
+'--all[Generate every configured generated secret, whichever environment uses it]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
 '-V[Print version]' \
 '--version[Print version]' \
 '::key -- Logical secret name to generate:_default' \

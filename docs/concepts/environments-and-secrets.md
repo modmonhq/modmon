@@ -84,6 +84,19 @@ mm secret status database.password
 mm env check
 ```
 
+`generate --missing` creates the generated secrets the selected environment
+uses and leaves existing values alone. Those are the secrets its bindings name,
+its services mount with `secret-files`, and its registries, TLS certificate,
+tunnel and deploy key read. Run it once per environment, for example
+`mm -e staging secret generate --missing`. `--all` creates every secret with a
+`generate:` block, whichever environment uses it.
+
+When this machine has no connection to a secret's provider, such as a team
+OpenBao you have not added with `mm secret provider add`, the secret is listed
+as skipped with the reason and the others are still created. The command
+succeeds. Naming one secret, as in `mm secret generate database.password`,
+fails instead.
+
 To enter an existing password instead, use `mm secret set database.password`.
 The prompt hides your input. Other stores are described in
 [secret providers](../secret-providers.md).

@@ -1094,8 +1094,9 @@ complete -c mm -n "__fish_mm_using_subcommand secret; and __fish_seen_subcommand
 complete -c mm -n "__fish_mm_using_subcommand secret; and __fish_seen_subcommand_from generate" -l mm-home -d 'Directory containing mm\'s local state and target catalog' -r -F
 complete -c mm -n "__fish_mm_using_subcommand secret; and __fish_seen_subcommand_from generate" -l output -d 'Human text or machine-readable JSON. JSON errors stay JSON' -r -f -a "human\t''
 json\t''"
-complete -c mm -n "__fish_mm_using_subcommand secret; and __fish_seen_subcommand_from generate" -l missing -d 'Generate every configured secret that is currently missing'
-complete -c mm -n "__fish_mm_using_subcommand secret; and __fish_seen_subcommand_from generate" -s h -l help -d 'Print help'
+complete -c mm -n "__fish_mm_using_subcommand secret; and __fish_seen_subcommand_from generate" -l missing -d 'Generate the secrets the selected environment uses: those its bindings name, its services mount, and its registries, TLS, tunnel and deploy key read'
+complete -c mm -n "__fish_mm_using_subcommand secret; and __fish_seen_subcommand_from generate" -l all -d 'Generate every configured generated secret, whichever environment uses it'
+complete -c mm -n "__fish_mm_using_subcommand secret; and __fish_seen_subcommand_from generate" -s h -l help -d 'Print help (see more with \'--help\')'
 complete -c mm -n "__fish_mm_using_subcommand secret; and __fish_seen_subcommand_from generate" -s V -l version -d 'Print version'
 complete -c mm -n "__fish_mm_using_subcommand secret; and __fish_seen_subcommand_from rotate" -l root -d 'Project root or a path inside the project' -r -F
 complete -c mm -n "__fish_mm_using_subcommand secret; and __fish_seen_subcommand_from rotate" -s e -l environment -d 'Environment to operate on (overrides MM_ENVIRONMENT and default-environment)' -r

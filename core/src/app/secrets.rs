@@ -12,13 +12,15 @@ use crate::domain::config::{
 };
 use crate::domain::error::MmError;
 use crate::domain::secret::{
-    DirectSecretRotationPlan, SecretCapabilitySnapshot, SecretExpectedState, SecretGenerationItem,
-    SecretGenerationReport, SecretGenerationStatus, SecretMaterial, SecretMetadata,
-    SecretReference, SecretReplacement, SecretRotationApplyReport, SecretRotationPlan,
-    SecretRotationPlanItem, SecretRotationPlanStatus, SecretRotationResultItem, SecretScope,
-    SecretStatus,
+    DirectSecretRotationPlan, SecretCapabilitySnapshot, SecretExpectedState, SecretMaterial,
+    SecretMetadata, SecretReference, SecretReplacement, SecretRotationApplyReport,
+    SecretRotationPlan, SecretRotationPlanItem, SecretRotationPlanStatus, SecretRotationResultItem,
+    SecretScope, SecretStatus,
 };
 use crate::domain::secret_contract::{RevisionSemantics, RotationCapability, StorageOperation};
+
+mod generation;
+pub use generation::generated_secrets;
 
 const DAY_MILLISECONDS: i64 = 24 * 60 * 60 * 1_000;
 
@@ -193,74 +195,6 @@ impl SecretManager {
             status => return Err(unavailable_for_mutation(name, status)),
         };
         Ok((reference.scheme().to_owned(), removed))
-    }
-
-    pub async fn generate(
-        &self,
-        start: &Path,
-        environment: Option<&str>,
-        requested_name: Option<&str>,
-        missing: bool,
-    ) -> Result<SecretGenerationReport, MmError> {
-        if requested_name.is_some() == missing {
-            return Err(MmError::Secret {
-                message: "select one secret name or use --missing".to_owned(),
-            });
-        }
-        let document = self.documents.load_from(start)?;
-        let scope = secret_scope(&document, environment)?;
-        let declarations = if let Some(name) = requested_name {
-            let declaration = declaration(&document, name)?;
-            if declaration.generate.is_none() {
-                return Err(MmError::Secret {
-                    message: format!(
-                        "secret '{name}' is operator-supplied and has no generator; use `mm secret set {name}` with hidden input or --stdin"
-                    ),
-                });
-            }
-            vec![(name, declaration)]
-        } else {
-            document
-                .config
-                .secrets
-                .iter()
-                .filter(|(_, declaration)| declaration.generate.is_some())
-                .map(|(name, declaration)| (name.as_str(), declaration))
-                .collect()
-        };
-
-        let now_unix_ms = self.clock.now_unix_ms();
-        let mut secrets = Vec::with_capacity(declarations.len());
-        for (name, declaration) in declarations {
-            ensure_single_source(name, declaration)?;
-            self.ensure_writable(name, declaration, StorageOperation::Create)?;
-            let generator = declaration
-                .generate
-                .as_ref()
-                .ok_or_else(|| MmError::Secret {
-                    message: format!("secret '{name}' has no generator configured"),
-                })?;
-            let material = generate_secret(generator)?;
-            let reference = secret_reference(declaration)?;
-            let result = self
-                .creator
-                .create(&scope, &reference, material, now_unix_ms)
-                .await?;
-            secrets.push(SecretGenerationItem {
-                name: name.to_owned(),
-                provider: reference.scheme().to_owned(),
-                status: if result.changed {
-                    SecretGenerationStatus::Generated
-                } else {
-                    SecretGenerationStatus::AlreadySet
-                },
-                revision: result.revision,
-            });
-        }
-        Ok(SecretGenerationReport {
-            project_name: document.config.project.name,
-            secrets,
-        })
     }
 
     pub async fn rotate(

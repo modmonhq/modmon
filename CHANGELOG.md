@@ -342,6 +342,12 @@ installations `mm target setup` upgrades in place and what it refuses.
   `/etc/mm/access.yaml`. `mmd` reads `/etc/mm/host.yaml` (enrolled projects,
   ceilings, break-glass keys) and `mmd.json` schema 2, and refuses the old
   files with a pointer to the migration steps.
+- `mm secret generate --missing` creates only the generated secrets the
+  selected environment uses: those its bindings name, its services mount, and
+  its registries, TLS, tunnel and deploy key read. `--all` takes every secret
+  with a `generate:` block, as `--missing` did before. A secret whose provider
+  has no connection from this machine is listed as skipped with the reason,
+  in the JSON output too, and the others are still created.
 
 ### Added
 
