@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.1.1] - 2026-11-18
+## [0.1.1] - 2026-11-19
 
 Remote protocol: 1. This release is the baseline: from it on, `mm` and the
 `mmd` on your hosts use the newest remote protocol both speak, so a newer `mm`
