@@ -1,5 +1,9 @@
 use super::*;
 
+fn coded<T>(result: Result<T, MmError>, code: &str) -> bool {
+    result.is_err_and(|error| error.code() == code)
+}
+
 fn write(path: &Path, contents: impl AsRef<[u8]>) -> Result<(), MmError> {
     fs::write(path, contents).map_err(|source| MmError::Io {
         context: format!("writing test file {}", path.display()),
@@ -149,9 +153,9 @@ fn dockerfile_and_project_paths_require_regular_in_root_files() -> Result<(), Mm
         "id_dsa",
         "age-identity.txt",
     ] {
-        assert!(reject_sensitive_context_file(root.path(), &root.path().join(name)).is_err());
+        assert!(is_sensitive_file(&root.path().join(name)));
     }
-    assert!(reject_sensitive_context_file(root.path(), &file).is_ok());
+    assert!(!is_sensitive_file(&file));
     #[cfg(unix)]
     {
         std::os::unix::fs::symlink(&file, root.path().join("linked-Dockerfile")).map_err(
@@ -300,9 +304,9 @@ fn context_hash_rejects_large_non_utf8_external_and_special_entries() -> Result<
         if crate::test_support::NON_UTF8_FILE_NAMES {
             let invalid = context.join(OsString::from_vec(vec![b'i', 0xff]));
             write(&invalid, "invalid path")?;
-            assert!(matches!(
+            assert!(coded(
                 hash_context(&context, &context.join("Dockerfile")),
-                Err(MmError::Security { .. })
+                "MM_SECURITY"
             ));
             fs::remove_file(&invalid).map_err(|source| MmError::Io {
                 context: "removing non-UTF-8 context file".to_owned(),
@@ -315,9 +319,9 @@ fn context_hash_rejects_large_non_utf8_external_and_special_entries() -> Result<
             context: "creating context socket".to_owned(),
             source,
         })?;
-        assert!(matches!(
+        assert!(coded(
             hash_context(&context, &context.join("Dockerfile")),
-            Err(MmError::Security { .. })
+            "MM_SECURITY"
         ));
     }
     Ok(())
@@ -336,18 +340,14 @@ fn context_collection_and_hashing_preserve_specific_io_and_traversal_errors() ->
         source,
     })?;
     write(&root.path().join("outside"), "outside")?;
-    let matcher = dockerignore(&context)?;
+    let dockerfile = context.join("Dockerfile");
+    let scan = ContextScan::new(root.path(), &context, &dockerfile)?;
     assert!(matches!(
-        collect_context_files(
-            &context,
-            &root.path().join("missing"),
-            &matcher,
-            &mut Vec::new()
-        ),
+        scan.collect(&root.path().join("missing"), None, &mut BTreeMap::new()),
         Err(MmError::Io { .. })
     ));
     assert!(matches!(
-        collect_context_files(&context, root.path(), &matcher, &mut Vec::new()),
+        scan.collect(root.path(), None, &mut BTreeMap::new()),
         Err(MmError::Security { .. })
     ));
     assert!(matches!(
@@ -377,21 +377,19 @@ fn context_collection_and_hashing_preserve_specific_io_and_traversal_errors() ->
         source,
     })?;
     assert!(matches!(
-        collect_context_entries(
+        scan.collect_entries(
             &context,
-            &context,
-            &matcher,
-            &mut Vec::new(),
+            None,
+            &mut BTreeMap::new(),
             entries.into_iter().map(Ok)
         ),
         Err(MmError::Io { .. })
     ));
     assert!(matches!(
-        collect_context_entries(
+        scan.collect_entries(
             &context,
-            &context,
-            &matcher,
-            &mut Vec::new(),
+            None,
+            &mut BTreeMap::new(),
             std::iter::once(Err(std::io::Error::new(
                 std::io::ErrorKind::PermissionDenied,
                 "injected directory iteration failure"
@@ -405,9 +403,10 @@ fn context_collection_and_hashing_preserve_specific_io_and_traversal_errors() ->
             context: "resolving current process directory".to_owned(),
             source,
         })?;
-        let matcher = dockerignore(&process)?;
+        let dockerfile = process.join("Dockerfile");
+        let scan = ContextScan::new(&process, &process, &dockerfile)?;
         assert!(
-            collect_context_files(&process, &process.join("task"), &matcher, &mut Vec::new())
+            scan.collect(&process.join("task"), None, &mut BTreeMap::new())
                 .is_err()
         );
     }
@@ -418,22 +417,29 @@ fn context_collection_and_hashing_preserve_specific_io_and_traversal_errors() ->
 fn context_hash_preflight_rejects_count_size_metadata_and_read_failures()
 -> Result<(), Box<dyn std::error::Error>> {
     let root = crate::test_support::tempdir()?;
-    let repeated = vec![root.path().join("missing"); MAX_CONTEXT_FILES + 1];
+    let missing = root.path().join("missing");
+    let repeated = (0..=MAX_CONTEXT_FILES)
+        .map(|index| (PathBuf::from(index.to_string()), missing.clone()))
+        .collect::<BTreeMap<_, _>>();
     assert!(matches!(
         hash_context_files(root.path(), &repeated),
         Err(MmError::Build { .. })
     ));
 
     assert!(matches!(
-        hash_context_files(root.path(), &[root.path().join("missing")]),
+        hash_context_files(
+            root.path(),
+            &BTreeMap::from([(PathBuf::from("missing"), missing)])
+        ),
         Err(MmError::Io { .. })
     ));
 
-    let mut sparse = Vec::new();
+    let mut sparse = BTreeMap::new();
     for index in 0..5 {
-        let path = root.path().join(format!("sparse-{index}"));
+        let name = PathBuf::from(format!("sparse-{index}"));
+        let path = root.path().join(&name);
         std::fs::File::create(&path)?.set_len(MAX_CONTEXT_FILE_BYTES)?;
-        sparse.push(path);
+        sparse.insert(name, path);
     }
     assert!(matches!(
         hash_context_files(root.path(), &sparse),
@@ -442,7 +448,10 @@ fn context_hash_preflight_rejects_count_size_metadata_and_read_failures()
 
     #[cfg(target_os = "linux")]
     assert!(matches!(
-        hash_context_files(Path::new("/proc/self"), &[PathBuf::from("/proc/self/mem")]),
+        hash_context_files(
+            Path::new("/proc/self"),
+            &BTreeMap::from([(PathBuf::from("mem"), PathBuf::from("/proc/self/mem"))])
+        ),
         Err(MmError::Io { .. })
     ));
     Ok(())
@@ -465,7 +474,7 @@ fn snapshots_copy_internal_and_external_dockerfiles_and_bind_the_reviewed_hash()
     write(&external, "FROM scratch\n")?;
     let hash = hash_context(&context, &external)?;
     let destination = root.path().join("external-snapshot");
-    let copied = snapshot_build_context(&context, &external, &destination, &hash)?;
+    let copied = snapshot_build_context(&context, &context, &external, &destination, &hash)?;
     assert_eq!(copied, destination.join(SNAPSHOT_DOCKERFILE));
     assert!(copied.is_file());
     #[cfg(unix)]
@@ -484,9 +493,15 @@ fn snapshots_copy_internal_and_external_dockerfiles_and_bind_the_reviewed_hash()
             0o700
         );
     }
-    assert!(snapshot_build_context(&context, &external, &destination, &hash).is_err());
+    assert!(snapshot_build_context(&context, &context, &external, &destination, &hash).is_err());
     assert!(matches!(
-        snapshot_build_context(&context, &external, &context.join("nested-snapshot"), &hash),
+        snapshot_build_context(
+            &context,
+            &context,
+            &external,
+            &context.join("nested-snapshot"),
+            &hash
+        ),
         Err(MmError::Security { .. })
     ));
 
@@ -494,27 +509,25 @@ fn snapshots_copy_internal_and_external_dockerfiles_and_bind_the_reviewed_hash()
     write(&internal, "FROM scratch\n")?;
     let internal_hash = hash_context(&context, &internal)?;
     let internal_destination = root.path().join("internal-snapshot");
-    let copied =
-        snapshot_build_context(&context, &internal, &internal_destination, &internal_hash)?;
+    let copied = snapshot_build_context(
+        &context,
+        &context,
+        &internal,
+        &internal_destination,
+        &internal_hash,
+    )?;
     assert_eq!(copied, internal_destination.join("Dockerfile"));
-    assert_eq!(
-        context_hash_path(&context, &internal),
-        Path::new("Dockerfile")
-    );
-    assert_eq!(
-        context_hash_path(&context, &external),
-        Path::new(SNAPSHOT_DOCKERFILE)
-    );
-    assert_eq!(
-        context_hash_path(&context, &context.join(SNAPSHOT_DOCKERFILE)),
-        Path::new(SNAPSHOT_DOCKERFILE)
-    );
 
     write(&context.join(".dockerignore"), "Dockerfile\n")?;
     let excluded_hash = hash_context(&context, &internal)?;
     let excluded_destination = root.path().join("excluded-snapshot");
-    let copied =
-        snapshot_build_context(&context, &internal, &excluded_destination, &excluded_hash)?;
+    let copied = snapshot_build_context(
+        &context,
+        &context,
+        &internal,
+        &excluded_destination,
+        &excluded_hash,
+    )?;
     assert_eq!(
         fs::read_to_string(copied).map_err(|source| MmError::Io {
             context: "reading explicitly copied Dockerfile".to_owned(),
@@ -525,11 +538,18 @@ fn snapshots_copy_internal_and_external_dockerfiles_and_bind_the_reviewed_hash()
 
     let stale_destination = root.path().join("stale-snapshot");
     assert!(matches!(
-        snapshot_build_context(&context, &external, &stale_destination, &"0".repeat(64)),
+        snapshot_build_context(
+            &context,
+            &context,
+            &external,
+            &stale_destination,
+            &"0".repeat(64)
+        ),
         Err(MmError::State { .. })
     ));
     assert!(matches!(
         snapshot_build_context(
+            &context,
             &context,
             &external,
             &root.path().join("missing-parent/snapshot"),
@@ -567,7 +587,7 @@ fn snapshot_detects_a_source_change_during_copy() -> Result<(), Box<dyn std::err
         }
         fs::write(late, "changed during snapshot")
     });
-    let snapshot = snapshot_build_context(&context, &dockerfile, &destination, &expected);
+    let snapshot = snapshot_build_context(&context, &context, &dockerfile, &destination, &expected);
     mutator
         .join()
         .map_err(|_| std::io::Error::other("snapshot mutator panicked"))??;
@@ -602,7 +622,7 @@ fn snapshot_reports_a_source_deleted_during_copy() -> Result<(), Box<dyn std::er
         }
         fs::remove_file(late)
     });
-    let snapshot = snapshot_build_context(&context, &dockerfile, &destination, &expected);
+    let snapshot = snapshot_build_context(&context, &context, &dockerfile, &destination, &expected);
     remover
         .join()
         .map_err(|_| std::io::Error::other("snapshot remover panicked"))??;
@@ -643,7 +663,13 @@ fn snapshot_reports_dockerfiles_deleted_during_copy() -> Result<(), Box<dyn std:
     let expected = hash_context(&external_context, &external)?;
     let destination = root.path().join("external-snapshot");
     let remover = wait_then_remove(destination.join("0-large"), external.clone());
-    let result = snapshot_build_context(&external_context, &external, &destination, &expected);
+    let result = snapshot_build_context(
+        &external_context,
+        &external_context,
+        &external,
+        &destination,
+        &expected,
+    );
     remover
         .join()
         .map_err(|_| std::io::Error::other("external Dockerfile remover panicked"))??;
@@ -661,7 +687,13 @@ fn snapshot_reports_dockerfiles_deleted_during_copy() -> Result<(), Box<dyn std:
     let expected = hash_context(&internal_context, &internal)?;
     let destination = root.path().join("internal-snapshot");
     let remover = wait_then_remove(destination.join("0-large"), internal.clone());
-    let result = snapshot_build_context(&internal_context, &internal, &destination, &expected);
+    let result = snapshot_build_context(
+        &internal_context,
+        &internal_context,
+        &internal,
+        &destination,
+        &expected,
+    );
     remover
         .join()
         .map_err(|_| std::io::Error::other("internal Dockerfile remover panicked"))??;
@@ -704,7 +736,7 @@ fn snapshot_reports_target_directory_and_final_hash_races() -> Result<(), Box<dy
     let mutator = mutate_after_copy(destination.join("0-large"), move || {
         fs::write(blocker, "not a directory")
     });
-    let result = snapshot_build_context(&context, &external, &destination, &expected);
+    let result = snapshot_build_context(&context, &context, &external, &destination, &expected);
     mutator
         .join()
         .map_err(|_| std::io::Error::other("target blocker panicked"))??;
@@ -722,7 +754,7 @@ fn snapshot_reports_target_directory_and_final_hash_races() -> Result<(), Box<dy
     let mutator = mutate_after_copy(destination.join("0-large"), move || {
         fs::write(blocker, "not a directory")
     });
-    let result = snapshot_build_context(&context, &internal, &destination, &expected);
+    let result = snapshot_build_context(&context, &context, &internal, &destination, &expected);
     mutator
         .join()
         .map_err(|_| std::io::Error::other("Dockerfile target blocker panicked"))??;
@@ -737,7 +769,7 @@ fn snapshot_reports_target_directory_and_final_hash_races() -> Result<(), Box<dy
     let copied = destination.join("0-early");
     let signal = copied.clone();
     let mutator = mutate_after_copy(signal, move || fs::remove_file(copied));
-    let result = snapshot_build_context(&context, &external, &destination, &expected);
+    let result = snapshot_build_context(&context, &context, &external, &destination, &expected);
     mutator
         .join()
         .map_err(|_| std::io::Error::other("snapshot hash mutator panicked"))??;
@@ -756,11 +788,11 @@ fn snapshot_reports_target_directory_and_final_hash_races() -> Result<(), Box<dy
     let mutator = mutate_after_copy(destination.join("0-large"), move || {
         fs::write(copied_ignore, "\\\n")
     });
-    let result = snapshot_build_context(&context, &external, &destination, &expected);
+    let result = snapshot_build_context(&context, &context, &external, &destination, &expected);
     mutator
         .join()
         .map_err(|_| std::io::Error::other("snapshot ignore mutator panicked"))??;
-    assert!(matches!(result, Err(MmError::Build { .. })));
+    assert!(coded(result, "MM_BUILD"));
     Ok(())
 }
 
@@ -771,6 +803,7 @@ fn snapshot_propagates_source_and_ignore_inventory_errors() -> Result<(), Box<dy
     let missing = root.path().join("missing");
     assert!(matches!(
         snapshot_build_context(
+            &missing,
             &missing,
             &root.path().join("Dockerfile"),
             &root.path().join("missing-snapshot"),
@@ -783,56 +816,43 @@ fn snapshot_propagates_source_and_ignore_inventory_errors() -> Result<(), Box<dy
     fs::create_dir(&context)?;
     write(&context.join(".dockerignore"), "\\\n")?;
     write(&context.join("Dockerfile"), "FROM scratch\n")?;
-    assert!(matches!(
+    assert!(coded(
         hash_context(&context, &context.join("Dockerfile")),
-        Err(MmError::Build { .. })
+        "MM_BUILD"
     ));
-    assert!(matches!(
+    assert!(coded(
         snapshot_build_context(
+            &context,
             &context,
             &context.join("Dockerfile"),
             &root.path().join("invalid-ignore-snapshot"),
             "unused"
         ),
-        Err(MmError::Build { .. })
+        "MM_BUILD"
     ));
     Ok(())
 }
 
 #[test]
-fn dockerignore_parse_and_compile_errors_fail_with_build_context() -> Result<(), MmError> {
+fn dockerignore_parse_and_size_errors_fail_with_build_context() -> Result<(), MmError> {
     let root = crate::test_support::tempdir().map_err(|source| MmError::Io {
         context: "creating dockerignore test root".to_owned(),
         source,
     })?;
+    let dockerfile = root.path().join("Dockerfile");
     write(&root.path().join(".dockerignore"), "\\\n")?;
-    let error = match dockerignore(root.path()) {
-        Err(error) => error,
-        Ok(_) => {
-            return Err(MmError::Build {
-                message: "invalid glob was accepted".to_owned(),
-            });
-        }
-    };
-    assert!(matches!(error, MmError::Build { .. }));
+    assert!(coded(
+        ContextScan::new(root.path(), root.path(), &dockerfile),
+        "MM_BUILD"
+    ));
 
-    let root = crate::test_support::tempdir().map_err(|source| MmError::Io {
-        context: "creating complex dockerignore test root".to_owned(),
-        source,
-    })?;
-    // This parses as a glob but exceeds globset's 10 MiB NFA limit when compiled.
     write(
         &root.path().join(".dockerignore"),
         format!("{}\n", "{a,b}".repeat(300_000)),
     )?;
-    let error = match dockerignore(root.path()) {
-        Err(error) => error,
-        Ok(_) => {
-            return Err(MmError::Build {
-                message: "oversized ignore matcher was accepted".to_owned(),
-            });
-        }
-    };
-    assert!(matches!(error, MmError::Build { .. }));
+    assert!(coded(
+        ContextScan::new(root.path(), root.path(), &dockerfile),
+        "MM_BUILD"
+    ));
     Ok(())
 }

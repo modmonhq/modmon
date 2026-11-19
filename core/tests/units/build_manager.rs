@@ -377,12 +377,19 @@ async fn included_environment_file_and_dirty_publish_are_rejected()
     fs::write(project.path().join("website/.env"), "SECRET=value\n")?;
     let clean = build_manager(source(false));
 
-    assert!(matches!(
-        clean
-            .plan(&WorkspaceSelection::new(project.path(), None), false)
-            .await,
-        Err(MmError::Security { .. })
-    ));
+    let Err(refused) = clean
+        .plan(&WorkspaceSelection::new(project.path(), None), false)
+        .await
+    else {
+        return Err("an included .env was accepted".into());
+    };
+    assert_eq!(refused.code(), "MM_SECURITY");
+    assert_eq!(
+        refused.refusal().as_deref(),
+        Some(
+            "sensitive file .env would be sent in build context website (exclude it in website/.dockerignore)"
+        )
+    );
 
     fs::remove_file(project.path().join("website/.env"))?;
     let dirty = build_manager(source(true));
