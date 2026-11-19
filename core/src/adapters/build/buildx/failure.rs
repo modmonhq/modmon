@@ -85,6 +85,20 @@ pub(super) async fn explain(
             "Docker Buildx is not installed; install the docker-buildx-plugin package (Docker Desktop includes it), then check it with `docker buildx version`",
         );
     }
+    if docker && let Some(missing) = missing_builder(&output.stderr) {
+        let missing = missing.map_or_else(
+            || "the buildx builder Docker has selected".to_owned(),
+            |name| format!("the buildx builder '{name}' that Docker has selected"),
+        );
+        return own(match builder {
+            Builder::Buildx => format!(
+                "{missing} no longer exists; select another with `docker buildx use NAME` (`docker buildx ls` lists them) or create one with `docker buildx create --use`, then run the build again"
+            ),
+            Builder::Engine(_) => format!(
+                "{missing} no longer exists; select the engine's own builder with `docker buildx use default` (`docker buildx ls` lists the others), then run the build again"
+            ),
+        });
+    }
     if docker && stderr.contains("not supported for the docker driver") {
         let builder = match builder_name(process).await {
             Some(name) => format!("the buildx builder '{name}'"),
@@ -133,6 +147,34 @@ fn lacking(stderr: &str, asked: Option<&Asked<'_>>) -> String {
     }
 }
 
+/// `Some` when Buildx answered that the builder it was to use does not
+/// exist, with the builder's name when it said it.
+fn missing_builder(stderr: &str) -> Option<Option<String>> {
+    let lower = stderr.to_ascii_lowercase();
+    if let Some(start) = lower.find("no builder ") {
+        let rest = &stderr[start + "no builder ".len()..];
+        let found = rest.lines().next().unwrap_or_default();
+        if found.trim_end().to_ascii_lowercase().ends_with(" found") {
+            let name = found.split_whitespace().next().unwrap_or_default();
+            let name = name.trim_matches(['"', '\'']);
+            return Some(plain_name(name).then(|| name.to_owned()));
+        }
+    }
+    let start = lower.find("buildx/instances/")? + "buildx/instances/".len();
+    let (name, after) = stderr[start..].split_once(':')?;
+    after
+        .to_ascii_lowercase()
+        .contains("no such file or directory")
+        .then(|| plain_name(name).then(|| name.to_owned()))
+}
+
+fn plain_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "-_.".contains(character))
+}
+
 async fn builder_name(process: &dyn ProcessRunner) -> Option<String> {
     let output = process
         .run(
@@ -150,11 +192,6 @@ async fn builder_name(process: &dyn ProcessRunner) -> Option<String> {
         .lines()
         .find_map(|line| line.strip_prefix("Name:"))
         .map(str::trim)
-        .filter(|name| {
-            !name.is_empty()
-                && name
-                    .chars()
-                    .all(|character| character.is_ascii_alphanumeric() || "-_.".contains(character))
-        })
+        .filter(|name| plain_name(name))
         .map(str::to_owned)
 }

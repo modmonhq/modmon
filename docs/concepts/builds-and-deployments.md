@@ -66,9 +66,9 @@ environment, local or published, and never builds.
 
 A local build builds one platform: this machine's, `linux/amd64` or
 `linux/arm64`, when `build.platforms` lists it, otherwise the first one listed.
-On Docker it runs on the builder of the current Docker context, so the images
-land in the engine Compose uses and a module that builds `FROM` another
-module's image finds it there. Old local images stay in the engine until you
+On Docker it runs on the current Docker context's own builder, whichever
+builder `docker buildx use` selected, so the images land in the engine Compose
+uses and a module that builds `FROM` another module's image finds it there. Old local images stay in the engine until you
 remove them; `docker image ls --filter 'reference=mm.invalid/*/*'` lists them.
 
 ## Build and publish

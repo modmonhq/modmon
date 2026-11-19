@@ -706,6 +706,7 @@ type Answer = Result<(i32, &'static str, &'static str), std::io::ErrorKind>;
 struct ScriptedEngine {
     rules: Vec<(&'static str, Answer)>,
     seen: Mutex<Vec<String>>,
+    environments: Mutex<Vec<Vec<String>>>,
 }
 
 impl ScriptedEngine {
@@ -713,7 +714,17 @@ impl ScriptedEngine {
         Arc::new(Self {
             rules,
             seen: Mutex::new(Vec::new()),
+            environments: Mutex::new(Vec::new()),
         })
+    }
+
+    /// The environment variables each command got, by name, in the order
+    /// of [`ScriptedEngine::seen`].
+    fn environments(&self) -> Vec<Vec<String>> {
+        self.environments
+            .lock()
+            .map(|environments| environments.clone())
+            .unwrap_or_default()
     }
 
     fn seen(&self) -> Vec<String> {
@@ -730,6 +741,9 @@ impl ProcessRunner for ScriptedEngine {
         let line = specification.redacted_display();
         if let Ok(mut seen) = self.seen.lock() {
             seen.push(line.clone());
+        }
+        if let Ok(mut environments) = self.environments.lock() {
+            environments.push(specification.redacted_record().environment_keys);
         }
         let answer = self
             .rules
@@ -929,5 +943,123 @@ async fn a_build_that_cannot_run_says_why_and_what_to_run() -> Result<(), Box<dy
     .err()
     .ok_or("a failed build succeeded")?;
     assert!(matches!(error, MmError::ProcessFailed { .. }), "{error}");
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_builder_that_no_longer_exists_is_named_with_the_command_that_fixes_it()
+-> Result<(), Box<dyn std::error::Error>> {
+    let project = local_project()?;
+    let machine = Machine::new()?;
+
+    let published = ScriptedEngine::new(vec![(
+        "docker buildx build",
+        Ok((1, "", "ERROR: no builder \"old-builder\" found\n")),
+    )]);
+    let message = own_words(build_with(&project, &machine, published, (None, true)).await?);
+    assert!(
+        message
+            .contains("the buildx builder 'old-builder' that Docker has selected no longer exists"),
+        "{message}"
+    );
+    assert!(message.contains("`docker buildx ls`"), "{message}");
+    assert!(
+        message.contains("`docker buildx create --use`"),
+        "{message}"
+    );
+
+    let local = ScriptedEngine::new(vec![(
+        "docker build ",
+        Ok((
+            1,
+            "",
+            "ERROR: open /root/.docker/buildx/instances/old-builder: no such file or directory\n",
+        )),
+    )]);
+    let result = build_with(
+        &project,
+        &machine,
+        local,
+        (Some(LocalImageEngine::Docker), false),
+    )
+    .await?;
+    let code = result.as_ref().err().map(MmError::code);
+    let message = own_words(result);
+    assert_eq!(code, Some("MM_BUILD"));
+    assert!(message.contains("'old-builder'"), "{message}");
+    assert!(message.contains("`docker buildx use default`"), "{message}");
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_local_docker_build_runs_on_the_current_contexts_own_builder()
+-> Result<(), Box<dyn std::error::Error>> {
+    let project = local_project()?;
+    let machine = Machine::new()?;
+    let process = ScriptedEngine::new(vec![
+        ("docker context show", Ok((0, "desktop-linux\n", ""))),
+        ("docker image inspect", Ok((0, IMAGE_ID, ""))),
+    ]);
+    build_with(
+        &project,
+        &machine,
+        process.clone(),
+        (Some(LocalImageEngine::Docker), false),
+    )
+    .await??;
+    let seen = process.seen();
+    let environments = process.environments();
+    let builds = seen
+        .iter()
+        .zip(&environments)
+        .filter(|(line, _)| line.starts_with("docker build "))
+        .collect::<Vec<_>>();
+    assert_eq!(builds.len(), 2, "{seen:#?}");
+    assert!(
+        builds
+            .iter()
+            .all(|(_, environment)| environment.iter().any(|name| name == "BUILDX_BUILDER")),
+        "{environments:#?}"
+    );
+
+    let unnamed = ScriptedEngine::new(vec![
+        ("docker context show", Ok((1, "", "unknown command"))),
+        ("docker image inspect", Ok((0, IMAGE_ID, ""))),
+    ]);
+    build_with(
+        &project,
+        &Machine::new()?,
+        unnamed.clone(),
+        (Some(LocalImageEngine::Docker), false),
+    )
+    .await??;
+    let unpinned = unnamed
+        .seen()
+        .into_iter()
+        .zip(unnamed.environments())
+        .filter(|(line, _)| line.starts_with("docker build "))
+        .map(|(_, environment)| environment)
+        .collect::<Vec<_>>();
+    assert_eq!(unpinned.len(), 2, "{:#?}", unnamed.seen());
+    assert!(
+        unpinned
+            .iter()
+            .all(|environment| !environment.iter().any(|name| name == "BUILDX_BUILDER"))
+    );
+
+    let podman = ScriptedEngine::new(vec![("podman image inspect", Ok((0, IMAGE_ID, "")))]);
+    build_with(
+        &project,
+        &Machine::new()?,
+        podman.clone(),
+        (Some(LocalImageEngine::Podman), false),
+    )
+    .await??;
+    let seen = podman.seen();
+    assert!(
+        seen.iter().any(|line| line.starts_with("podman build "))
+            && !seen.iter().any(|line| line.starts_with("docker ")),
+        "{seen:#?}"
+    );
     Ok(())
 }

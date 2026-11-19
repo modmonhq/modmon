@@ -246,6 +246,14 @@ mm build --publish plan
 
 A local build runs on the engine's own builder and does not need this.
 
+When the builder that Docker has selected was removed, the message names it.
+Select one that exists, then build again:
+
+```sh
+docker buildx ls
+docker buildx use default
+```
+
 ## Configuration schema is rejected
 
 The project file must declare:
