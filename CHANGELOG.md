@@ -979,6 +979,12 @@ installations `mm target setup` upgrades in place and what it refuses.
 
 ### Fixed
 
+- Job output, `mm service logs` and MCP `mm_logs` are redacted against the
+  secrets the environment hands out (its services' variables and secret
+  files, registry logins, tunnel token and certificate) and the other
+  declared secrets in the stores it uses. Before, they read every declared
+  secret, so on a machine with no connection to another environment's secret
+  store a local before-deploy job, and with it `mm dev up`, failed.
 - A node of a cluster no longer refuses a deployment plan for want of a
   secret that only a service placed on other nodes mounts, such as the
   secret file of a `role: job` service pinned to one node.

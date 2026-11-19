@@ -332,7 +332,7 @@ reconciles them.
 of the last deployment that ran any, in the order they ran, each with its
 `node`, `state`, `exit_code`, and `output`, as a page of `items` (`cursor`
 and `limit` as for `operations`). The output is redacted against the
-configured secrets like a job's own record. The runs on one page share the
+environment's secrets like a job's own record. The runs on one page share the
 256 KiB log bound; a run whose output did not fit keeps its last part and
 says `output_truncated: true`. An agent reads it when a deployment fails in a
 job, before or after the environment's first deployment finished.
