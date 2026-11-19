@@ -92,6 +92,32 @@ async fn sensitive_stdin_is_piped_and_redacted() -> Result<(), mm::domain::error
 
 #[cfg(unix)]
 #[tokio::test]
+async fn a_stdin_file_is_read_from_its_offset() -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::{Seek, SeekFrom, Write};
+
+    let mut file = tempfile::tempfile()?;
+    file.write_all(b"skipped:binary\x00\xffinput")?;
+    file.seek(SeekFrom::Start(8))?;
+    let output = TokioProcessRunner
+        .run(
+            CommandSpec::new("/bin/sh")
+                .args(["-c", "od -An -c | tr -s ' '"])
+                .sensitive_stdin(zeroize::Zeroizing::new("replaced".to_owned()))
+                .stdin_file(file),
+        )
+        .await?;
+    assert!(output.success(), "{}", output.stderr.as_str());
+    assert_eq!(
+        output.stdout.split_whitespace().collect::<Vec<_>>(),
+        [
+            "b", "i", "n", "a", "r", "y", "\\0", "377", "i", "n", "p", "u", "t"
+        ]
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn cancellation_reaps_the_streaming_process_group() -> Result<(), Box<dyn std::error::Error>>
 {
     let cancellation = OperationCancellation::default();
