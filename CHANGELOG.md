@@ -1102,8 +1102,9 @@ hosts up again with `mm target setup plan --upgrade`. See
 - Every stored schema number starts at 1: `schema-version` in
   `/etc/mm/host.yaml`, `schema_version` in `/etc/mm/mmd.json` and
   `MM_HOME/mcp.json`, and the access policy. Adding a key no longer raises
-  one: `mmd.json`, `host.yaml` and `mcp.json` take keys they do not know with
-  a warning that names them, and the messages about earlier formats
+  one: `mmd.json` and `host.yaml` take keys they do not know with a warning
+  that names them (`mcp.json`, which only narrows what agents may do,
+  refuses them), and the messages about earlier formats
   (`access.yaml`, version 1 of `mcp.json`) are gone. A host set up by an
   earlier build gets `mmd.json` again from `mm target setup --upgrade`; set
   `schema-version: 1` in its `host.yaml` by hand.
