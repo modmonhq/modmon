@@ -262,6 +262,21 @@ If the dashboard cannot load status, run `mm doctor` and
 `mm dev services status` rather than connecting directly to its authenticated
 backend port.
 
+## A deleted project is still listed
+
+mm keeps every project folder it ran in on this machine, including scratch
+checkouts that were deleted since. `mm doctor` reports them as
+`MM_WORKSPACE_STALE`. List them, then review and apply their removal:
+
+```sh
+mm workspace list
+mm workspace forget --stale
+mm workspace forget --stale --plan PLAN_HASH --yes
+```
+
+No file is deleted. See
+[forget a project that is gone](../local-dashboard.md#forget-a-project-that-is-gone).
+
 ## Interrupted deployment or service operation
 
 Deployment apply records a journal and attempts rollback/recovery on the next

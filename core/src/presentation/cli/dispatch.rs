@@ -25,6 +25,7 @@ impl Invocation {
                     | Command::Ingress { .. }
                     | Command::Key { .. }
                     | Command::Agent { .. }
+                    | Command::Workspace { .. }
             )
         ) {
             cli.runtime
@@ -154,6 +155,7 @@ async fn route(
         Some(Command::Target { command }) => target::run(command, invocation).await,
         Some(Command::Key { command }) => super::key::run(command, invocation),
         Some(Command::Agent { command }) => super::agent::run(command, invocation),
+        Some(Command::Workspace { command }) => super::workspace::run(command, invocation),
         Some(Command::Forward(args)) => super::forward::run(args, invocation).await,
         Some(Command::Team { command }) => super::team::run_team(command, invocation).await,
         Some(Command::Dev { command }) => dev::run(command, invocation).await,

@@ -14,6 +14,24 @@ pub(crate) fn state_recovery(
     }))
 }
 
+/// The workspaces registered in this machine's state. Reading never creates
+/// the state; `write` opens it for `mm workspace forget` when it exists.
+pub(crate) fn workspace_registry(
+    home: Option<&Path>,
+    write: bool,
+) -> Result<crate::app::WorkspaceRegistry, MmError> {
+    let home = MmHome::inspect(home)?;
+    let state: Option<Arc<dyn StateStore>> = if !write {
+        SqliteStateStore::inspect(&home.state_database)?
+            .map(|state| Arc::new(state) as Arc<dyn StateStore>)
+    } else if home.state_database.exists() {
+        Some(Arc::new(SqliteStateStore::open(&home.state_database)?))
+    } else {
+        None
+    };
+    Ok(crate::app::WorkspaceRegistry::new(state))
+}
+
 pub(crate) fn readiness_service(
     home: Option<&Path>,
     runtime: &RuntimeComposition,
@@ -72,7 +90,11 @@ pub(crate) fn doctor_service(
     home: Option<&Path>,
     runtime: &RuntimeComposition,
 ) -> Result<crate::app::ReadinessService, MmError> {
+    let state = Arc::new(crate::adapters::state::SqliteStateInspector {
+        path: MmHome::inspect(home)?.state_database,
+    });
     Ok(readiness_service(home, runtime)?
+        .with_probe(Arc::new(crate::app::RegisteredWorkspacesCheck::new(state)))
         .with_probe(Arc::new(ClusterNodesCheck {
             home: home.map(Path::to_path_buf),
         }))

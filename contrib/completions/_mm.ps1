@@ -51,6 +51,7 @@ Register-ArgumentCompleter -Native -CommandName 'mm' -ScriptBlock {
             [CompletionResult]::new('target', 'target', [CompletionResultType]::ParameterValue, 'Manage targets, private selection, setup, ingress, and remote access')
             [CompletionResult]::new('agent', 'agent', [CompletionResultType]::ParameterValue, 'Show and trust what AI agents may do, and connect coding tools')
             [CompletionResult]::new('history', 'history', [CompletionResultType]::ParameterValue, 'List the commands run in this project on this machine, and show what one printed')
+            [CompletionResult]::new('workspace', 'workspace', [CompletionResultType]::ParameterValue, 'List the project folders mm knows on this machine, and forget the ones that are gone')
             [CompletionResult]::new('mcp', 'mcp', [CompletionResultType]::ParameterValue, 'Serve the Model Context Protocol server that AI agents use')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
@@ -6097,6 +6098,69 @@ Register-ArgumentCompleter -Native -CommandName 'mm' -ScriptBlock {
         'mm;history;help;help' {
             break
         }
+        'mm;workspace' {
+            [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root or a path inside the project')
+            [CompletionResult]::new('-e', '-e', [CompletionResultType]::ParameterName, 'Environment to operate on (overrides MM_ENVIRONMENT and default-environment)')
+            [CompletionResult]::new('--environment', '--environment', [CompletionResultType]::ParameterName, 'Environment to operate on (overrides MM_ENVIRONMENT and default-environment)')
+            [CompletionResult]::new('--runtime', '--runtime', [CompletionResultType]::ParameterName, 'Ephemeral runtime adapter for this invocation only')
+            [CompletionResult]::new('--target', '--target', [CompletionResultType]::ParameterName, 'Ephemeral target name for this invocation only')
+            [CompletionResult]::new('--mm-home', '--mm-home', [CompletionResultType]::ParameterName, 'Directory containing mm''s local state and target catalog')
+            [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Human text or machine-readable JSON. JSON errors stay JSON')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('-V', '-V ', [CompletionResultType]::ParameterName, 'Print version')
+            [CompletionResult]::new('--version', '--version', [CompletionResultType]::ParameterName, 'Print version')
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the project folders mm has run in on this machine, when each was last used, and which are gone')
+            [CompletionResult]::new('forget', 'forget', [CompletionResultType]::ParameterValue, 'Forget registered project folders through a reviewed plan')
+            [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
+            break
+        }
+        'mm;workspace;list' {
+            [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root or a path inside the project')
+            [CompletionResult]::new('-e', '-e', [CompletionResultType]::ParameterName, 'Environment to operate on (overrides MM_ENVIRONMENT and default-environment)')
+            [CompletionResult]::new('--environment', '--environment', [CompletionResultType]::ParameterName, 'Environment to operate on (overrides MM_ENVIRONMENT and default-environment)')
+            [CompletionResult]::new('--runtime', '--runtime', [CompletionResultType]::ParameterName, 'Ephemeral runtime adapter for this invocation only')
+            [CompletionResult]::new('--target', '--target', [CompletionResultType]::ParameterName, 'Ephemeral target name for this invocation only')
+            [CompletionResult]::new('--mm-home', '--mm-home', [CompletionResultType]::ParameterName, 'Directory containing mm''s local state and target catalog')
+            [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Human text or machine-readable JSON. JSON errors stay JSON')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('-V', '-V ', [CompletionResultType]::ParameterName, 'Print version')
+            [CompletionResult]::new('--version', '--version', [CompletionResultType]::ParameterName, 'Print version')
+            break
+        }
+        'mm;workspace;forget' {
+            [CompletionResult]::new('--plan', '--plan', [CompletionResultType]::ParameterName, 'Exact hash printed by an earlier review of the same change')
+            [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root or a path inside the project')
+            [CompletionResult]::new('-e', '-e', [CompletionResultType]::ParameterName, 'Environment to operate on (overrides MM_ENVIRONMENT and default-environment)')
+            [CompletionResult]::new('--environment', '--environment', [CompletionResultType]::ParameterName, 'Environment to operate on (overrides MM_ENVIRONMENT and default-environment)')
+            [CompletionResult]::new('--runtime', '--runtime', [CompletionResultType]::ParameterName, 'Ephemeral runtime adapter for this invocation only')
+            [CompletionResult]::new('--target', '--target', [CompletionResultType]::ParameterName, 'Ephemeral target name for this invocation only')
+            [CompletionResult]::new('--mm-home', '--mm-home', [CompletionResultType]::ParameterName, 'Directory containing mm''s local state and target catalog')
+            [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Human text or machine-readable JSON. JSON errors stay JSON')
+            [CompletionResult]::new('--stale', '--stale', [CompletionResultType]::ParameterName, 'Forget every registered workspace whose folder or mm.yaml is gone')
+            [CompletionResult]::new('--yes', '--yes', [CompletionResultType]::ParameterName, 'Apply the exact reviewed plan')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('-V', '-V ', [CompletionResultType]::ParameterName, 'Print version')
+            [CompletionResult]::new('--version', '--version', [CompletionResultType]::ParameterName, 'Print version')
+            break
+        }
+        'mm;workspace;help' {
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the project folders mm has run in on this machine, when each was last used, and which are gone')
+            [CompletionResult]::new('forget', 'forget', [CompletionResultType]::ParameterValue, 'Forget registered project folders through a reviewed plan')
+            [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
+            break
+        }
+        'mm;workspace;help;list' {
+            break
+        }
+        'mm;workspace;help;forget' {
+            break
+        }
+        'mm;workspace;help;help' {
+            break
+        }
         'mm;mcp' {
             [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root or a path inside the project')
             [CompletionResult]::new('-e', '-e', [CompletionResultType]::ParameterName, 'Environment to operate on (overrides MM_ENVIRONMENT and default-environment)')
@@ -6158,6 +6222,7 @@ Register-ArgumentCompleter -Native -CommandName 'mm' -ScriptBlock {
             [CompletionResult]::new('target', 'target', [CompletionResultType]::ParameterValue, 'Manage targets, private selection, setup, ingress, and remote access')
             [CompletionResult]::new('agent', 'agent', [CompletionResultType]::ParameterValue, 'Show and trust what AI agents may do, and connect coding tools')
             [CompletionResult]::new('history', 'history', [CompletionResultType]::ParameterValue, 'List the commands run in this project on this machine, and show what one printed')
+            [CompletionResult]::new('workspace', 'workspace', [CompletionResultType]::ParameterValue, 'List the project folders mm knows on this machine, and forget the ones that are gone')
             [CompletionResult]::new('mcp', 'mcp', [CompletionResultType]::ParameterValue, 'Serve the Model Context Protocol server that AI agents use')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
@@ -7158,6 +7223,17 @@ Register-ArgumentCompleter -Native -CommandName 'mm' -ScriptBlock {
             break
         }
         'mm;help;history;show' {
+            break
+        }
+        'mm;help;workspace' {
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the project folders mm has run in on this machine, when each was last used, and which are gone')
+            [CompletionResult]::new('forget', 'forget', [CompletionResultType]::ParameterValue, 'Forget registered project folders through a reviewed plan')
+            break
+        }
+        'mm;help;workspace;list' {
+            break
+        }
+        'mm;help;workspace;forget' {
             break
         }
         'mm;help;mcp' {

@@ -2,14 +2,19 @@
 import { computed } from "vue";
 import MmArrowLink from "@mm/ui/components/MmArrowLink.vue";
 import MmCard from "@mm/ui/components/MmCard.vue";
+import MmCommand from "@mm/ui/components/MmCommand.vue";
 import MmEmpty from "@mm/ui/components/MmEmpty.vue";
 import MmStat from "@mm/ui/components/MmStat.vue";
-import type { DashboardProjectSummary, InstallationDashboard } from "../api.generated";
+import type { DashboardProjectSummary, DashboardStaleWorkspace, InstallationDashboard } from "../api.generated";
 import { friendly, host, issueSummary, plural, shareTone } from "../format";
 import ControlPlane from "./ControlPlane.vue";
 import DiagnosticList from "./DiagnosticList.vue";
 
-const props = defineProps<{ installation: InstallationDashboard; projects: DashboardProjectSummary[] }>();
+const props = defineProps<{
+  installation: InstallationDashboard;
+  projects: DashboardProjectSummary[];
+  staleWorkspaces?: DashboardStaleWorkspace[];
+}>();
 
 const components = computed(() => props.installation.components);
 const healthy = computed(() => components.value.filter((component) => component.healthy).length);
@@ -59,6 +64,13 @@ const issues = computed(() => issueSummary(props.installation.diagnostics));
         </li>
       </ul>
       <MmEmpty v-else title="No projects yet">Run <code>mm init</code> in a project to add it.</MmEmpty>
+      <div v-if="staleWorkspaces?.length" class="projects__gone">
+        <p>
+          {{ plural(staleWorkspaces.length, "registered project") }} {{ staleWorkspaces.length === 1 ? "is" : "are" }}
+          gone from disk. <code>mm workspace list</code> shows where {{ staleWorkspaces.length === 1 ? "it was" : "they were" }}.
+        </p>
+        <MmCommand command="mm workspace forget --stale" />
+      </div>
     </MmCard>
     <ControlPlane :installation="installation" />
   </div>

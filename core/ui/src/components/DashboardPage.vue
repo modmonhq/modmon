@@ -34,7 +34,12 @@ const snapshotClock = computed(() => formatClock(props.dashboard.generated_at_un
       </MmNotice>
 
       <ProjectView v-if="dashboard.project" :project="dashboard.project" :installation="dashboard.installation" />
-      <InstallationView v-else :installation="dashboard.installation" :projects="dashboard.projects" />
+      <InstallationView
+        v-else
+        :installation="dashboard.installation"
+        :projects="dashboard.projects"
+        :stale-workspaces="dashboard.stale_workspaces"
+      />
     </main>
 
     <footer class="dash__foot">

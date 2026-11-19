@@ -254,6 +254,9 @@ passphrase kept in a file beside the key: a warning where a system keychain
 is available, a note where there is none or where `MM_KEY_VAULT=file` chose
 the file, and the message says which. See
 [remote access](../remote-access.md#keys-are-encrypted-and-only-mm-uses-them).
+The warning `MM_WORKSPACE_STALE` names registered project folders, or their
+`.config/mm.yaml`, that are gone; `mm workspace forget --stale`
+[forgets them](../local-dashboard.md#forget-a-project-that-is-gone).
 
 For shared storage it reports what `mm target storage status` finds:
 `MM_STORAGE_UNREACHABLE` (a node cannot reach the storage node's storage

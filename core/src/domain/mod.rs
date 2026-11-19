@@ -68,3 +68,4 @@ pub mod user_namespace;
 pub mod users;
 pub mod version_pin;
 pub mod workspace;
+pub mod workspace_registry;

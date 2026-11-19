@@ -56,6 +56,7 @@ mod targets_apply;
 pub mod timing;
 mod traefik_dynamic;
 mod update_check;
+mod workspaces;
 
 pub use application::{
     Application, ApplicationDependencies, DocumentScope, StatusRead, WorkspaceSelection,
@@ -105,3 +106,4 @@ pub use targets::{BootstrapAccessRequest, SshTargetInput, TargetManager};
 pub use targets_apply::{TargetBootstrapExecutionPorts, TargetBootstrapService};
 pub use traefik_dynamic::render_traefik_dynamic_routes;
 pub use update_check::UpdateCheckService;
+pub use workspaces::{RegisteredWorkspacesCheck, WorkspaceRegistry, registered_workspaces};

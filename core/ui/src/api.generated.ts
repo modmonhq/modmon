@@ -56,6 +56,11 @@ export interface DashboardResponse {
   project?: ProjectDashboard | null;
   projects: DashboardProjectSummary[];
   scope: DashboardScopeDto;
+  /**
+   * Registered projects whose folder or configuration file is gone;
+   * `mm workspace forget --stale` forgets them.
+   */
+  stale_workspaces?: DashboardStaleWorkspace[];
 }
 export interface InstallationDashboard {
   components: DashboardComponent[];
@@ -197,4 +202,8 @@ export interface DashboardProjectSummary {
   name: string;
   project_id: string;
   slug: string;
+}
+export interface DashboardStaleWorkspace {
+  last_used_at_unix_ms: number;
+  project_id: string;
 }

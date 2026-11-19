@@ -173,6 +173,16 @@ pub enum Command {
     )]
     History(super::HistoryArgs),
 
+    /// List the project folders mm knows on this machine, and forget the
+    /// ones that are gone.
+    #[command(
+        after_help = "Examples:\n  mm workspace list\n  mm workspace forget --stale\n  mm workspace forget --stale --plan HASH --yes\n\nmm registers a project folder the first time it runs there. Forgetting one drops its operation history and `mm env set` values on this machine; no file is deleted."
+    )]
+    Workspace {
+        #[command(subcommand)]
+        command: super::WorkspaceCommand,
+    },
+
     /// Serve the Model Context Protocol server that AI agents use.
     Mcp {
         #[command(subcommand)]

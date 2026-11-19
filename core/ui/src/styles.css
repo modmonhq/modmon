@@ -604,6 +604,17 @@ html {
   color: var(--mm-ink-soft);
 }
 
+.projects__gone {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+  color: var(--mm-ink-soft);
+}
+
+.projects__gone p {
+  margin: 0;
+}
+
 @media (min-width: 560px) {
   .project {
     grid-template-columns: minmax(0, 1fr) auto 6rem;

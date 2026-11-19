@@ -1,18 +1,60 @@
 macro_rules! sqlite_workspaces { () => {
-    fn list_workspaces(&self, limit: usize) -> Result<Vec<WorkspaceRecord>, MmError> {
+    fn workspace_usage(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<crate::domain::workspace_registry::WorkspaceUsage>, MmError> {
         let connection = self.connection()?;
         let mut statement = connection
-            .prepare(
-                "SELECT id, project_id, root, config_path FROM workspaces ORDER BY last_seen_at_ms DESC, id LIMIT ?1",
-            )
+            .prepare(&format!(
+                "{WORKSPACE_USAGE} ORDER BY workspaces.last_seen_at_ms DESC, workspaces.id LIMIT ?1"
+            ))
             .map_err(state_error)?;
         let rows = statement
             .query_map(
                 [i64::try_from(limit).unwrap_or(i64::MAX)],
-                workspace_from_row,
+                workspace_usage_from_row,
             )
             .map_err(state_error)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(state_error)
+    }
+
+    fn forget_workspaces(
+        &self,
+        expected: &[crate::domain::workspace_registry::WorkspaceUsage],
+    ) -> Result<u64, MmError> {
+        let mut connection = self.connection()?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(state_error)?;
+        let mut operations = 0_u64;
+        for usage in expected {
+            let id = usage.workspace.id.0.to_string();
+            let current = transaction
+                .query_row(
+                    &format!("{WORKSPACE_USAGE} WHERE workspaces.id = ?1"),
+                    params![id],
+                    workspace_usage_from_row,
+                )
+                .optional()
+                .map_err(state_error)?;
+            if current.as_ref() != Some(usage) {
+                return Err(MmError::Security {
+                    message: format!(
+                        "the workspace at {} changed while it was being forgotten, so nothing was forgotten; review it again",
+                        usage.workspace.root.display()
+                    ),
+                });
+            }
+            let deleted = transaction
+                .execute("DELETE FROM operations WHERE workspace_id = ?1", params![id])
+                .map_err(state_error)?;
+            transaction
+                .execute("DELETE FROM workspaces WHERE id = ?1", params![id])
+                .map_err(state_error)?;
+            operations += u64::try_from(deleted).unwrap_or_default();
+        }
+        transaction.commit().map_err(state_error)?;
+        Ok(operations)
     }
 
     fn register_workspace(
@@ -287,3 +329,18 @@ macro_rules! sqlite_workspaces { () => {
             .flatten())
     }
 } }
+
+const WORKSPACE_USAGE: &str = "SELECT workspaces.id, workspaces.project_id, workspaces.root,
+        workspaces.config_path, workspaces.last_seen_at_ms,
+        (SELECT COUNT(*) FROM operations WHERE operations.workspace_id = workspaces.id)
+    FROM workspaces";
+
+fn workspace_usage_from_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<crate::domain::workspace_registry::WorkspaceUsage> {
+    Ok(crate::domain::workspace_registry::WorkspaceUsage {
+        workspace: workspace_from_row(row)?,
+        last_used_at_unix_ms: row.get(4)?,
+        operations: u64::try_from(row.get::<_, i64>(5)?).unwrap_or_default(),
+    })
+}

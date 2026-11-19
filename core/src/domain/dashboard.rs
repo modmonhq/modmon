@@ -36,6 +36,10 @@ pub struct DashboardResponse {
     pub scope: DashboardScopeDto,
     pub installation: InstallationDashboard,
     pub projects: Vec<DashboardProjectSummary>,
+    /// Registered projects whose folder or configuration file is gone;
+    /// `mm workspace forget --stale` forgets them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stale_workspaces: Vec<DashboardStaleWorkspace>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<ProjectDashboard>,
 }
@@ -77,6 +81,13 @@ pub struct DashboardProjectSummary {
     pub slug: String,
     pub dashboard_url: String,
     pub environment: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DashboardStaleWorkspace {
+    pub project_id: ProjectId,
+    pub last_used_at_unix_ms: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

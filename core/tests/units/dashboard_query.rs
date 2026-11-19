@@ -392,6 +392,8 @@ fn registered_project_listing_rejects_an_oversized_response()
     let setup = setup()?;
     for index in 0..MAX_DASHBOARD_PROJECTS {
         let root = setup._home.path().join(format!("project-{index}"));
+        fs::create_dir_all(root.join(".config"))?;
+        fs::write(root.join(".config/mm.yaml"), "")?;
         setup.state.register_workspace(
             &WorkspaceRegistration {
                 project_id: ProjectId(Uuid::from_u128(index as u128 + 100)),
@@ -408,5 +410,47 @@ fn registered_project_listing_rejects_an_oversized_response()
         Err(mm::domain::error::MmError::State { message })
             if message.contains("dashboard project response exceeds")
     ));
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_registered_project_that_is_gone_is_listed_stale_instead_of_failing()
+-> Result<(), Box<dyn std::error::Error>> {
+    let setup = setup()?;
+    let gone = crate::temp_dirs::tempdir()?;
+    let root = gone.path().join("checkout");
+    fs::create_dir_all(root.join(".config"))?;
+    fs::copy(
+        setup._project.path().join(".config/mm.yaml"),
+        root.join(".config/mm.yaml"),
+    )?;
+    setup.state.register_workspace(
+        &WorkspaceRegistration {
+            project_id: ProjectId(Uuid::from_u128(0x44)),
+            config_path: root.join(".config/mm.yaml"),
+            root: root.clone(),
+        },
+        NOW - 1_000,
+    )?;
+    fs::remove_dir_all(&root)?;
+
+    let installation = setup.service.query(DashboardScope::Installation).await?;
+    assert_eq!(installation.projects.len(), 1);
+    assert_eq!(installation.stale_workspaces.len(), 1);
+    assert_eq!(
+        installation.stale_workspaces[0].project_id,
+        ProjectId(Uuid::from_u128(0x44))
+    );
+    assert_eq!(
+        installation.stale_workspaces[0].last_used_at_unix_ms,
+        NOW - 1_000
+    );
+    let encoded = serde_json::to_string(&installation)?;
+    assert!(!encoded.contains(&root.display().to_string()));
+
+    let slug = project_dashboard_slug("dashboard-query", ProjectId(Uuid::from_u128(0x42)))?;
+    let hosts = RegisteredDashboardHostSource::new(setup.documents.clone(), setup.state.clone())
+        .project_dashboard_hosts()?;
+    assert_eq!(hosts, [format!("mm.{slug}.test")].into_iter().collect());
     Ok(())
 }

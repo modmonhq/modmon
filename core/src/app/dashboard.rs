@@ -5,22 +5,24 @@ use crate::app::ports::{
     Clock, DashboardHostSource, InstallationStatusQuery, ProjectDocumentStore, SchedulerRepository,
     StateStore,
 };
-use crate::app::{RuntimeOperationsService, WorkspaceSelection};
+use crate::app::{RuntimeOperationsService, WorkspaceSelection, registered_workspaces};
 use crate::domain::config::{ConfigDocument, resolve_environment};
 use crate::domain::dashboard::{
     DASHBOARD_API_VERSION, DashboardComponent, DashboardDiagnostic, DashboardHealth, DashboardJob,
     DashboardJobRun, DashboardOperation, DashboardProjectSummary, DashboardResource,
     DashboardResourceKind, DashboardResponse, DashboardRoute, DashboardSchedule, DashboardScope,
-    DashboardScopeDto, DashboardService, InstallationDashboard, MAX_DASHBOARD_DIAGNOSTICS,
-    MAX_DASHBOARD_JOB_RUNS, MAX_DASHBOARD_OPERATIONS, MAX_DASHBOARD_PROJECTS,
-    MAX_DASHBOARD_SERVICES, ProjectDashboard,
+    DashboardScopeDto, DashboardService, DashboardStaleWorkspace, InstallationDashboard,
+    MAX_DASHBOARD_DIAGNOSTICS, MAX_DASHBOARD_JOB_RUNS, MAX_DASHBOARD_OPERATIONS,
+    MAX_DASHBOARD_PROJECTS, MAX_DASHBOARD_SERVICES, ProjectDashboard,
 };
 use crate::domain::diagnostic::{Diagnostic, Severity};
 use crate::domain::error::MmError;
 use crate::domain::local_ingress::project_dashboard_slug;
 use crate::domain::ownership::ResourceKind;
 use crate::domain::runtime::{ContainerObservation, ServiceState};
-use crate::domain::workspace::WorkspaceRecord;
+use crate::domain::workspace_registry::{
+    FORGET_STALE_COMMAND, MAX_REGISTERED_WORKSPACES, RegisteredWorkspace,
+};
 
 #[derive(Clone)]
 pub struct DashboardQueryService {
@@ -39,31 +41,49 @@ pub struct RegisteredDashboardHostSource {
 }
 
 struct RegisteredDashboardProject {
-    workspace: WorkspaceRecord,
+    workspace: RegisteredWorkspace,
     document: ConfigDocument,
+}
+
+struct RegisteredProjects {
+    owned: BTreeMap<String, RegisteredDashboardProject>,
+    stale: Vec<DashboardStaleWorkspace>,
 }
 
 fn registered_projects(
     documents: &dyn ProjectDocumentStore,
     state: &dyn StateStore,
-) -> Result<BTreeMap<String, RegisteredDashboardProject>, MmError> {
-    let workspaces = state.list_workspaces(MAX_DASHBOARD_PROJECTS + 1)?;
-    if workspaces.len() > MAX_DASHBOARD_PROJECTS {
+) -> Result<RegisteredProjects, MmError> {
+    let workspaces = registered_workspaces(state, MAX_REGISTERED_WORKSPACES + 1)?;
+    if workspaces.len() > MAX_REGISTERED_WORKSPACES {
         return Err(MmError::State {
             message: format!(
-                "dashboard project response exceeds the {MAX_DASHBOARD_PROJECTS}-project limit"
+                "more than {MAX_REGISTERED_WORKSPACES} workspaces are registered on this machine; run `{FORGET_STALE_COMMAND}` to forget the ones that are gone"
+            ),
+        });
+    }
+    let (stale, present): (Vec<_>, Vec<_>) = workspaces
+        .into_iter()
+        .partition(|workspace| workspace.stale);
+    if present.len() > MAX_DASHBOARD_PROJECTS {
+        return Err(MmError::State {
+            message: format!(
+                "dashboard project response exceeds the {MAX_DASHBOARD_PROJECTS}-project limit; `mm workspace list` lists the registered projects and `mm workspace forget ROOT` forgets one"
             ),
         });
     }
     let mut projects = BTreeMap::new();
-    for workspace in workspaces {
+    for workspace in present {
         let document = documents.load_from(&workspace.root)?;
         if document.config.project.id != workspace.project_id
             || document.path != workspace.config_path
         {
             return Err(MmError::Security {
-                message: "a registered dashboard workspace no longer matches its project owner"
-                    .to_owned(),
+                message: format!(
+                    "the registered workspace {} no longer matches its project owner: its configuration names another project or file. If that folder holds another project now, run `mm workspace forget {}`",
+                    workspace.root.display(),
+                    workspace.root.display()
+                ),
             });
         }
         let slug =
@@ -85,7 +105,17 @@ fn registered_projects(
             });
         }
     }
-    Ok(projects)
+    Ok(RegisteredProjects {
+        owned: projects,
+        stale: stale
+            .into_iter()
+            .take(MAX_DASHBOARD_PROJECTS)
+            .map(|workspace| DashboardStaleWorkspace {
+                project_id: workspace.project_id,
+                last_used_at_unix_ms: workspace.last_used_at_unix_ms,
+            })
+            .collect(),
+    })
 }
 
 impl RegisteredDashboardHostSource {
@@ -99,6 +129,7 @@ impl DashboardHostSource for RegisteredDashboardHostSource {
     fn project_dashboard_hosts(&self) -> Result<std::collections::BTreeSet<String>, MmError> {
         Ok(
             registered_projects(self.documents.as_ref(), self.state.as_ref())?
+                .owned
                 .into_keys()
                 .map(|slug| format!("mm.{slug}.test"))
                 .collect(),
@@ -138,7 +169,10 @@ impl DashboardQueryService {
         let DashboardScope::Project(slug) = scope else {
             return Ok(());
         };
-        if registered_projects(self.documents.as_ref(), self.state.as_ref())?.contains_key(slug) {
+        if registered_projects(self.documents.as_ref(), self.state.as_ref())?
+            .owned
+            .contains_key(slug)
+        {
             Ok(())
         } else {
             Err(MmError::Security {
@@ -150,7 +184,8 @@ impl DashboardQueryService {
 
     pub async fn query(&self, scope: DashboardScope) -> Result<DashboardResponse, MmError> {
         let installation = self.installation.installation_status().await?;
-        let owned = registered_projects(self.documents.as_ref(), self.state.as_ref())?;
+        let RegisteredProjects { owned, stale } =
+            registered_projects(self.documents.as_ref(), self.state.as_ref())?;
 
         let projects = owned
             .iter()
@@ -241,6 +276,7 @@ impl DashboardQueryService {
                 diagnostics: safe_diagnostics(installation.diagnostics),
             },
             projects,
+            stale_workspaces: stale,
             project,
         })
     }

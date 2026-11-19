@@ -39,6 +39,35 @@ Replace `PLAN_HASH` with the printed hash. See
 [troubleshooting](./help/troubleshooting.md) for DNS, certificate, and service
 repair steps.
 
+## Forget a project that is gone
+
+mm registers a project folder the first time it runs there, and the dashboard
+lists every registered project. When a folder or its `.config/mm.yaml` is
+deleted, the dashboard and `mm doctor` (finding `MM_WORKSPACE_STALE`) say how
+many registered projects are gone, and the shared services leave them out.
+Nothing else changes until you forget them:
+
+```sh
+mm workspace list
+mm workspace forget --stale
+mm workspace forget --stale --plan PLAN_HASH --yes
+```
+
+`mm workspace list` shows each registered folder, its project ID, when mm last
+used it, and whether it is gone. The first `forget` prints a review and its
+hash; the second applies exactly that review. Forgetting deletes the folder's
+operation history and the values set there with `mm env set` from mm's state
+on this machine. It never deletes files.
+
+To forget one folder, name it or its project ID:
+`mm workspace forget ~/src/old-checkout`. A folder that still exists is
+registered again the next time mm runs there.
+
+A registered folder whose `mm.yaml` now names another project stops the
+dashboard with `MM_SECURITY`, because that folder could claim another project's
+dashboard. If the folder holds another project on purpose, forget it with
+`mm workspace forget FOLDER`.
+
 ## Access and privacy
 
 The dashboard omits secret values, credentials, raw command output, and private
