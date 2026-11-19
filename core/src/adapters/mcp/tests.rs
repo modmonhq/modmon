@@ -81,7 +81,11 @@ fn rejects_oversized_malformed_invalid_and_newer_content() -> Result<(), Box<dyn
         format!(r#"{{"schema_version":{MCP_CONFIG_SCHEMA_VERSION},"added_later":["inspect"]}}"#)
             .as_bytes(),
     )?;
-    assert!(McpPolicyStore::load(&policy, false).is_ok());
+    let unknown = McpPolicyStore::load(&policy, false)
+        .err()
+        .map(|error| error.to_string())
+        .unwrap_or_default();
+    assert!(unknown.contains("unknown key `added_later`"), "{unknown}");
     write_policy(&policy, br#"{"schema_version":2}"#)?;
     let error = McpPolicyStore::load(&policy, false)
         .err()
