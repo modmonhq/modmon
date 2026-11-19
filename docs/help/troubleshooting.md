@@ -331,6 +331,49 @@ that recorded release instead.
 For CA rotation/trust interruption, use `mm dev tls repair`. Recovery commands
 remain ownership-checked and fail rather than adopting unknown resources.
 
+## Route ownership has no successful deployment snapshot
+
+Releases up to 0.1.1 stop `mm deploy plan` and `mm dev up` with this error when
+the routes an environment holds on its target are not the ones its last
+finished deployment recorded:
+
+```text
+error[MM_STATE]: state store error: existing route ownership has no successful deployment snapshot; recover the target before deploying
+```
+
+This happens after an apply that was cut off or failed after it had saved its
+routes, or after a deployment from another checkout of the project whose
+history `mm workspace forget` removed. No command recovers from it in those
+releases. From 0.1.2 on, the plan takes those routes back. Update `mm` and plan
+again:
+
+```sh
+mm update
+mm deploy plan
+```
+
+The plan says what it takes back, and `mm dev up` shows the same line:
+
+```text
+  routes: takes back 10 routes this environment holds that the last finished deployment did not record
+```
+
+Apply it as usual. The apply replaces those routes with the plan's, and only
+if no other change to the target's routes happened since the plan. Do not
+delete rows from `ingress_route_claims` or clear `config_digest` in
+`~/.mm/state.sqlite3`; that is not needed any more.
+
+A plan only takes back routes of its own project and environment on that
+target. A route that another project or environment holds and that overlaps
+one of the plan's still stops it with `conflicts with ... route`: give one of
+them another host or path in its project's configuration and deploy that
+project, then run `mm deploy plan` again.
+
+If the plan stops because `the stored route digest of target '...' does not
+match its stored routes`, the state database was changed outside mm, or a
+release that writes routes differently deployed to the target last. Plan again
+with that release, or after restoring the database.
+
 ## Release installation fails
 
 For the checkout installer, start with
