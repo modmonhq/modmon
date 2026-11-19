@@ -290,9 +290,9 @@ fn plan() -> Result<ClusterSetupPlan, serde_json::Error> {
         "setup": {"user": "root", "origin": "git@example.com:shop.git",
                   "deploy-key": {"secret": "DEPLOY_KEY", "public-key": "ssh-ed25519 CCCC"}},
         "input-files": [],
-        "binaries": "/opt/mm/bin",
-        "mm-digest": "a".repeat(64),
-        "mmd-digest": "b".repeat(64),
+        "binaries": [{"architecture": "x86_64", "directory": "/opt/mm/bin",
+                      "mm-digest": "a".repeat(64), "mmd-digest": "b".repeat(64),
+                      "source": "the directory of this mm"}],
         "secrets": (0..68).map(|index| serde_json::json!({
             "name": format!("SECRET_{index}"), "reference": format!("age://SECRET_{index}"),
             "revision": format!("r{index}")
