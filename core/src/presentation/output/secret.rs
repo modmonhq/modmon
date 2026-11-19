@@ -184,26 +184,39 @@ pub(crate) fn write_secret_generation(
     let mut writer = stdout.lock();
     writeln!(
         writer,
-        "Generated secrets for {}",
-        terminal_safe(&report.project_name)
+        "Generated secrets for {} in {}",
+        terminal_safe(&report.project_name),
+        terminal_safe(&report.environment)
     )
     .map_err(output_error)?;
     if report.secrets.is_empty() {
-        return writeln!(writer, "  No generated secrets are configured").map_err(output_error);
+        return writeln!(writer, "  No secret to generate").map_err(output_error);
     }
-    writeln!(writer, "  {:<28} {:<12} STATUS", "NAME", "PROVIDER").map_err(output_error)?;
+    writeln!(writer, "  {:<28} {:<16} STATUS", "NAME", "PROVIDER").map_err(output_error)?;
     for secret in &report.secrets {
         writeln!(
             writer,
-            "  {:<28} {:<12} {}",
+            "  {:<28} {:<16} {}",
             terminal_safe(&secret.name),
             terminal_safe(&secret.provider),
             match secret.status {
                 SecretGenerationStatus::Generated => "generated",
                 SecretGenerationStatus::AlreadySet => "already set",
+                SecretGenerationStatus::Skipped => "skipped",
             }
         )
         .map_err(output_error)?;
+    }
+    for secret in &report.secrets {
+        if let Some(reason) = &secret.reason {
+            writeln!(
+                writer,
+                "Skipped {}: {}",
+                terminal_safe(&secret.name),
+                terminal_safe(reason)
+            )
+            .map_err(output_error)?;
+        }
     }
     Ok(())
 }

@@ -341,11 +341,26 @@ pub struct DirectSecretRotationPlan {
     pub plan_hash: String,
 }
 
+/// Which configured generated secrets `mm secret generate` creates.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SecretGenerationSelection {
+    /// One secret; any failure fails the run.
+    Named(String),
+    /// The secrets the selected environment uses.
+    Missing,
+    /// Every secret with a generator, whichever environment uses it.
+    All,
+    /// These secrets, run like `Missing` and `All`.
+    Listed(Vec<String>),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SecretGenerationStatus {
     Generated,
     AlreadySet,
+    /// Its provider has no connection from this machine; `reason` says why.
+    Skipped,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -353,12 +368,16 @@ pub struct SecretGenerationItem {
     pub name: String,
     pub provider: String,
     pub status: SecretGenerationStatus,
-    pub revision: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct SecretGenerationReport {
     pub project_name: String,
+    pub environment: String,
     pub secrets: Vec<SecretGenerationItem>,
 }
 

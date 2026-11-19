@@ -1,4 +1,5 @@
 use super::*;
+use crate::domain::secret::SecretGenerationSelection;
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum SecretCommand {
@@ -59,13 +60,27 @@ pub enum SecretCommand {
     },
 
     /// Create configured generated secrets without overwriting existing values.
+    ///
+    /// With --missing or --all, a secret whose provider has no connection
+    /// from this machine is listed as skipped with the reason, and the
+    /// others are still created.
+    #[command(group(
+        clap::ArgGroup::new("selection")
+            .required(true)
+            .args(["key", "missing", "all"])
+    ))]
     Generate {
         /// Logical secret name to generate.
-        #[arg(required_unless_present = "missing", conflicts_with = "missing")]
         key: Option<String>,
-        /// Generate every configured secret that is currently missing.
-        #[arg(long, required_unless_present = "key")]
+        /// Generate the secrets the selected environment uses: those its
+        /// bindings name, its services mount, and its registries, TLS,
+        /// tunnel and deploy key read.
+        #[arg(long)]
         missing: bool,
+        /// Generate every configured generated secret, whichever
+        /// environment uses it.
+        #[arg(long)]
+        all: bool,
     },
 
     /// Explicitly replace one secret using its configured source.
@@ -243,14 +258,13 @@ async fn run_secret_command(
             output::write_secret_mutation(&key, &provider, None, Some(removed), format)?;
             Ok(0)
         }
-        SecretCommand::Generate { key, missing } => {
+        SecretCommand::Generate { key, all, .. } => {
             let report = services
                 .secrets
                 .generate(
                     start,
                     selection.environment.as_deref(),
-                    key.as_deref(),
-                    missing,
+                    &generation_selection(key, all),
                 )
                 .await?;
             output::write_secret_generation(&report, format)?;
@@ -398,4 +412,12 @@ async fn run_scheduled_rotation(
         .await?;
     output::write_secret_rotation_apply(&report, format)?;
     Ok(0)
+}
+
+pub(super) fn generation_selection(key: Option<String>, all: bool) -> SecretGenerationSelection {
+    match key {
+        Some(key) => SecretGenerationSelection::Named(key),
+        None if all => SecretGenerationSelection::All,
+        None => SecretGenerationSelection::Missing,
+    }
 }

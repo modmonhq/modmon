@@ -27,6 +27,8 @@ mod build_target;
 pub use build_target::{BuildTarget, BuildTargetSelection, BuildVariantConfig};
 #[path = "config/scalar.rs"]
 mod scalar;
+#[path = "config/secret_usage.rs"]
+mod secret_usage;
 pub use scalar::EnvScalar;
 #[path = "config/network.rs"]
 mod network;

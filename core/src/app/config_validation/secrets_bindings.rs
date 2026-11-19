@@ -6,18 +6,12 @@ pub(super) fn validate_secrets_and_bindings(
 ) {
     let document = context.document;
     validate_secret_declarations(document, report);
-    let mut used_secrets = validate_environment_bindings(document, report);
-    // Secrets mm itself consumes: registry logins, provided certificates,
-    // and cluster deploy keys.
-    for registry in document.config.registries.values() {
-        used_secrets.insert(registry.password.secret.clone());
-    }
+    validate_environment_bindings(document, report);
     for (name, environment) in &document.config.environments {
         let Some(tls) = &environment.tls else {
             continue;
         };
         for (field, secret) in [("certificate", &tls.certificate), ("key", &tls.key)] {
-            used_secrets.insert(secret.clone());
             if !document.config.secrets.contains_key(secret) {
                 report.push(
                     Diagnostic::error(
@@ -31,34 +25,7 @@ pub(super) fn validate_secrets_and_bindings(
             }
         }
     }
-    used_secrets.extend(
-        document
-            .config
-            .environments
-            .values()
-            .filter_map(|environment| environment.ingress.as_ref()?.tunnel())
-            .map(|(token, _)| token),
-    );
-    // And the files services mount with `secret-files`.
-    for module in document.config.modules.values() {
-        for service in module.services.values() {
-            used_secrets.extend(
-                service
-                    .secret_files
-                    .values()
-                    .map(|file| file.secret.clone()),
-            );
-        }
-    }
-    for target in document.config.targets.values() {
-        if let Some(deploy_key) = target
-            .setup
-            .as_ref()
-            .and_then(|setup| setup.deploy_key.as_ref())
-        {
-            used_secrets.insert(deploy_key.secret.clone());
-        }
-    }
+    let used_secrets = document.config.used_secrets(None);
     for secret_name in document.config.secrets.keys() {
         if !used_secrets.contains(secret_name) {
             report.push(
@@ -145,18 +112,13 @@ fn validate_secret_declarations(document: &ConfigDocument, report: &mut Validati
     }
 }
 
-fn validate_environment_bindings(
-    document: &ConfigDocument,
-    report: &mut ValidationReport,
-) -> BTreeSet<String> {
+fn validate_environment_bindings(document: &ConfigDocument, report: &mut ValidationReport) {
     let config_file = document.source("environments");
-    let mut used_secrets = BTreeSet::new();
     validate_binding_map(
         &document.config.bindings,
         "top-level",
         document,
         document.source("bindings"),
-        &mut used_secrets,
         report,
     );
     for (environment_name, environment_config) in &document.config.environments {
@@ -204,7 +166,6 @@ fn validate_environment_bindings(
             &format!("environment '{environment_name}'"),
             document,
             config_file,
-            &mut used_secrets,
             report,
         );
         for (key, binding) in effective_bindings(&document.config, environment_name) {
@@ -237,8 +198,6 @@ fn validate_environment_bindings(
             }
         }
     }
-
-    used_secrets
 }
 
 fn validate_binding_map(
@@ -246,7 +205,6 @@ fn validate_binding_map(
     scope: &str,
     document: &ConfigDocument,
     source: &Path,
-    used_secrets: &mut BTreeSet<String>,
     report: &mut ValidationReport,
 ) {
     for key in bindings.keys() {
@@ -264,7 +222,6 @@ fn validate_binding_map(
     for (key, binding) in bindings {
         match binding {
             EnvironmentBinding::Secret(secret) => {
-                used_secrets.insert(secret.secret.clone());
                 if !document.config.secrets.contains_key(&secret.secret) {
                     report.push(
                         Diagnostic::error(

@@ -76,7 +76,7 @@ pub fn validate_provider_address(address: &str) -> Result<(), String> {
 
 impl MmConfig {
     /// The name of the target an environment deploys to.
-    fn target_of(&self, environment: &str) -> &str {
+    pub(crate) fn target_of(&self, environment: &str) -> &str {
         self.environments
             .get(environment)
             .and_then(|environment| environment.target.as_deref())
