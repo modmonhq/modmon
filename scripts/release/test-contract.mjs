@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { canonicalJson, fileRecord, releaseBinaries, targets } from "./lib.mjs";
+import { canonicalJson, fileRecord, manifestSchema, minimumInstallerSchema, releaseBinaries, targets } from "./lib.mjs";
 
 const require = createRequire(path.resolve("site/package.json"));
 const Ajv2020 = require("ajv/dist/2020").default;
@@ -46,6 +46,13 @@ try {
   if (!manifestBytes.equals(await readFile(fixture))) throw new Error(`the assembled manifest differs from ${fixture}, which the update check's tests parse; if the contract changed on purpose, rerun with MM_RELEASE_UPDATE_FIXTURE=1`);
   const manifest = JSON.parse(manifestBytes);
   if (!validate(manifest)) throw new Error(`manifest schema failed: ${JSON.stringify(validate.errors)}`);
+  if (manifest.schema_version !== manifestSchema || manifest.minimum_installer_schema !== minimumInstallerSchema || minimumInstallerSchema !== 1) throw new Error("the manifest raises the schema that every mm since 0.1.1 reads; readers of schema 1 would refuse this release");
+  const later = structuredClone(manifest);
+  later.schema_version = manifestSchema + 1;
+  later.signatures = { "x86_64-unknown-linux-gnu": "a field this release does not know" };
+  later.artifacts["x86_64-unknown-linux-musl"] = { ...later.artifacts["x86_64-unknown-linux-gnu"], path: "releases/v0.1.0/mm-v0.1.0-x86_64-unknown-linux-musl.tar.gz", binaries: ["mm", "mm-future-tool"] };
+  later.artifacts["aarch64-unknown-linux-gnu"].binaries.push("mm-future-tool");
+  if (!validate(later)) throw new Error(`the schema refuses a later release that adds a field, a target, and a binary: ${JSON.stringify(validate.errors)}`);
   const order = Object.keys(manifest.artifacts);
   if (JSON.stringify(order) !== JSON.stringify([...targets].sort())) throw new Error("manifest target keys are not deterministic");
 
@@ -63,7 +70,7 @@ try {
   await writeFile(macosMetadata, JSON.stringify(macosRecord));
   await rm(path.join(packages, `${targets[0]}.metadata.json`));
   expectAssemblyFailure(packages, source, metadata, path.join(temporary, "missing"), `expected ${targets.length} package metadata files`);
-  process.stdout.write("release contract passed schema, the update check's fixture, exact target, per-target binary inventory, deterministic serialization/assembly, byte-identical manifest, and missing-target tests\n");
+  process.stdout.write("release contract passed schema, a later release's additions, the update check's fixture, exact target, per-target binary inventory, deterministic serialization/assembly, byte-identical manifest, and missing-target tests\n");
 } finally {
   await rm(temporary, { recursive: true, force: true });
 }

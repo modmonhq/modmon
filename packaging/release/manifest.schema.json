@@ -2,8 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/modmonhq/modmon/blob/master/packaging/release/manifest.schema.json",
   "title": "mm stable release manifest",
+  "description": "Every stable release attaches this manifest, and every mm since 0.1.1 reads the latest one to check for and install updates. Readers ignore properties they do not know, skip artifacts for targets they do not know, and skip binaries they do not know, so a release may add any of them. A release raises minimum_installer_schema only when a reader of an older schema would misread the manifest; such a reader refuses and points at the installer.",
   "type": "object",
-  "additionalProperties": false,
   "required": [
     "schema_version",
     "product",
@@ -21,28 +21,32 @@
     "provenance"
   ],
   "properties": {
-    "schema_version": { "const": 1 },
+    "schema_version": {
+      "description": "The format of this manifest. Readers accept a later one when minimum_installer_schema allows them.",
+      "type": "integer",
+      "minimum": 1
+    },
     "product": { "const": "mm" },
     "channel": { "const": "stable" },
     "version": { "$ref": "#/$defs/version" },
-    "tag": { "type": "string", "pattern": "^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$" },
-    "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "tag": {
+      "description": "v followed by version; readers refuse a manifest whose tag and version differ.",
+      "type": "string",
+      "pattern": "^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+    },
+    "commit": { "type": "string", "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$" },
     "published_at": { "type": "string", "format": "date-time" },
     "source_date_epoch": { "type": "integer", "minimum": 1 },
-    "minimum_installer_schema": { "const": 1 },
+    "minimum_installer_schema": {
+      "description": "The oldest manifest schema a reader must understand to use this manifest. A reader of an older schema refuses and points at the installer.",
+      "type": "integer",
+      "minimum": 1
+    },
     "artifacts": {
+      "description": "The archive of each platform, by Rust target triple. Readers use the one for their own platform and skip targets they do not know.",
       "type": "object",
       "minProperties": 1,
-      "propertyNames": {
-        "enum": [
-          "x86_64-unknown-linux-gnu",
-          "aarch64-unknown-linux-gnu",
-          "x86_64-apple-darwin",
-          "aarch64-apple-darwin",
-          "x86_64-pc-windows-msvc",
-          "aarch64-pc-windows-msvc"
-        ]
-      },
+      "propertyNames": { "pattern": "^[a-z0-9_]+(-[a-z0-9_]+){2,3}$" },
       "additionalProperties": { "$ref": "#/$defs/artifact" }
     },
     "source": { "$ref": "#/$defs/file" },
@@ -66,7 +70,6 @@
     "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "file": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["path", "sha256", "size"],
       "properties": {
         "path": { "$ref": "#/$defs/path" },
@@ -76,18 +79,24 @@
     },
     "artifact": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["path", "format", "sha256", "size", "binaries"],
       "properties": {
-        "path": { "$ref": "#/$defs/path" },
-        "format": { "enum": ["tar.gz", "zip"] },
+        "path": {
+          "description": "releases/TAG/FILE; the release attaches FILE, so it downloads from releases/download/TAG/FILE. Readers refuse any other path for the archive they use.",
+          "allOf": [{ "$ref": "#/$defs/path" }, { "pattern": "^releases/v[^/]+/[A-Za-z0-9][A-Za-z0-9._-]*$" }]
+        },
+        "format": {
+          "description": "tar.gz for every target today. A reader refuses to use an archive in a format it cannot unpack.",
+          "type": "string"
+        },
         "sha256": { "$ref": "#/$defs/sha256" },
         "size": { "type": "integer", "minimum": 1 },
         "binaries": {
+          "description": "The executables at the top of the archive. Readers install the ones they know (mm, mmd, mm-ingress-helper) and skip the others.",
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": { "enum": ["mm", "mmd", "mm-ingress-helper"] },
+          "items": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
           "contains": { "const": "mm" }
         }
       }

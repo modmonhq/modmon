@@ -188,7 +188,13 @@ tag) and re-run the publish job.
 - `manifest.json`, for a stable release: its version, tag, commit, and each
   archive's SHA-256, size, and binaries. `mm doctor --check-updates` reads it
   from `releases/latest/download/manifest.json`; a candidate has none, so it
-  is never offered as an update.
+  is never offered as an update. Every `mm` since 0.1.1 reads the latest
+  manifest, so a release may add fields, targets, and binaries, which older
+  readers skip, but must not remove or change one they read. Raise
+  `minimum_installer_schema` in `scripts/release/lib.mjs` only for a change
+  older readers would misread: each of them then refuses that release and
+  tells its user to run the installer. `packaging/release/manifest.schema.json`
+  describes the format.
 - A build provenance attestation for each of those files, kept by GitHub and
   linked from the workflow run.
 - `SHA256SUMS.sig`, when the maintainer added an SSH signature.

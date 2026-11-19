@@ -35,7 +35,9 @@ installations `mm target setup` upgrades in place and what it refuses.
   WSL it installs the Linux archive.
 - `mm doctor --check-updates` reads `manifest.json` of the latest GitHub
   release, which the release workflow attaches and attests; a release
-  candidate is never offered as an update.
+  candidate is never offered as an update. It reads the manifest of every
+  later release: fields, platforms, and binaries a release adds are skipped,
+  and a release that needs a newer reader says to run the installer.
 - A client newer than its host now says to run `mm target setup plan
   --upgrade` and to apply that plan with `--upgrade`; before, it named the
   plan without the flag that a cluster's setup asks for.

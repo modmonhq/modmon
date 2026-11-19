@@ -2,7 +2,7 @@
 import { copyFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
-import { canonicalJson, fileRecord, releaseBinaries, repository, targets, versionFromTag } from "./lib.mjs";
+import { canonicalJson, fileRecord, manifestSchema, minimumInstallerSchema, releaseBinaries, repository, targets, versionFromTag } from "./lib.mjs";
 
 const options = parse(process.argv.slice(2));
 const version = versionFromTag(options.tag);
@@ -92,7 +92,7 @@ const artifacts = Object.fromEntries(
   metadata.map((item) => [item.target, { path: item.path, format: item.format, sha256: item.sha256, size: item.size, binaries: item.binaries }]),
 );
 const manifest = {
-  schema_version: 1,
+  schema_version: manifestSchema,
   product: "mm",
   channel: "stable",
   version,
@@ -100,7 +100,7 @@ const manifest = {
   commit: options.commit,
   published_at: new Date(epoch * 1000).toISOString().replace(".000Z", "Z"),
   source_date_epoch: epoch,
-  minimum_installer_schema: 1,
+  minimum_installer_schema: minimumInstallerSchema,
   artifacts,
   source,
   sbom: sbomRecord,
