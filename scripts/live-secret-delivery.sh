@@ -158,6 +158,43 @@ EOF
   docker rm --force "$container" >/dev/null
   container=
 
+  kept="$root/kept"
+  mkdir "$kept"
+  chmod 700 "$kept"
+  readable="$kept/revision"
+  printf '%s' "$sentinel" >"$readable"
+  chmod 444 "$readable"
+  cat >"$root/reader.yaml" <<EOF
+services:
+  reader:
+    image: docker.io/library/busybox@sha256:fd8d9aa63ba2f0982b5304e1ee8d3b90a210bc1ffb5314d980eb6962f1a9715d
+    user: "65534:65534"
+    cap_drop: [ALL]
+    command: ["sh", "-c", "sha256sum /run/secrets/probe | cut -d ' ' -f 1 > /tmp/digest; sleep 300"]
+    secrets:
+      - source: reader_secret
+        target: probe
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /tmp/digest"]
+      interval: 1s
+      timeout: 1s
+      retries: 20
+secrets:
+  reader_secret:
+    file: $readable
+EOF
+  chmod 600 "$root/reader.yaml"
+  assert_absent "$root/reader.yaml"
+  docker compose --file "$root/reader.yaml" --project-name "$project" up -d --wait --no-build >/dev/null
+  container=$(docker ps --quiet --filter "label=com.docker.compose.project=$project" --filter "label=com.docker.compose.service=reader")
+  [ -n "$container" ]
+  [ "$(docker exec "$container" id -u)" = 65534 ]
+  [ "$(docker exec "$container" cat /tmp/digest)" = "$digest1" ]
+  [ "$(stat -c '%a' "$kept")" = 700 ]
+  printf '%s\n' 'non-root-reader=file-0444-in-directory-0700'
+  docker rm --force "$container" >/dev/null
+  container=
+
   failed="$root/failed.secret"
   printf '%s' "$next" >"$failed"
   chmod 600 "$failed"
