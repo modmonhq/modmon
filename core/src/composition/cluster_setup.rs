@@ -123,7 +123,8 @@ pub(crate) fn cluster_setup_services_for(
     .with_pushed_commits(Arc::new(crate::adapters::remote::GitCommitBundles::new(
         document.root.clone(),
     )))
-    .with_secret_store(Arc::new(store_keeper(&home)));
+    .with_secret_store(Arc::new(store_keeper(&home)))
+    .with_host_binaries(super::host_binary_source(&home)?);
     let secrets = environment_services(start, explicit_home, clock)?.secrets;
     Ok(ClusterSetupServices {
         service,

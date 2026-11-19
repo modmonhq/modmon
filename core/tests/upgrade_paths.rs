@@ -248,11 +248,14 @@ struct Runs(Option<HostRelease>);
 
 #[async_trait::async_trait]
 impl mm::app::ports::HostReleaseReader for Runs {
-    async fn host_release(
+    async fn host_facts(
         &self,
         _: &mm::domain::target::TargetTransport,
-    ) -> Result<Option<HostRelease>, mm::MmError> {
-        Ok(self.0.clone())
+    ) -> Result<mm::domain::target::HostFacts, mm::MmError> {
+        Ok(mm::domain::target::HostFacts {
+            release: self.0.clone(),
+            cpu: Some("x86_64".to_owned()),
+        })
     }
 }
 
@@ -330,7 +333,7 @@ impl SingleHost {
                 )
                 .map_err(|message| mm::MmError::Target { message })?,
             ],
-            binaries: self.workspace.path().join("release"),
+            binaries: Some(self.workspace.path().join("release")),
             upgrade: consent.upgrade,
             downgrade: consent.downgrade,
         };

@@ -8,37 +8,12 @@ use std::path::PathBuf;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use super::host_binaries::{HostBinaries, is_lower_hex_digest, validate_host_binaries};
 use super::{BootstrapCapability, hash_field};
 use crate::domain::host_policy::{BreakGlassKey, parse_public_key, valid_user_name};
 
 /// At most this many break-glass keys per setup run.
 pub const MAX_BREAK_GLASS_KEYS: usize = 16;
-
-/// The CPUs a release builds `mm` and `mmd` for, as `uname -m` names them.
-pub const HOST_ARCHITECTURES: [&str; 2] = ["x86_64", "aarch64"];
-
-/// The CPU a Linux executable is built for, from the first bytes of its
-/// ELF header; why it is not one setup can install otherwise.
-pub fn linux_architecture(header: &[u8]) -> Result<&'static str, String> {
-    match header {
-        [0x7f, b'E', b'L', b'F', 2, 1, ..] if header.len() >= 20 => {
-            match u16::from_le_bytes([header[18], header[19]]) {
-                62 => Ok("x86_64"),
-                183 => Ok("aarch64"),
-                machine => Err(format!(
-                    "is a Linux executable for a CPU mm has no release for (ELF machine {machine})"
-                )),
-            }
-        }
-        [0x7f, b'E', b'L', b'F', ..] => {
-            Err("is not a 64-bit little-endian Linux executable".to_owned())
-        }
-        [0xcf, 0xfa, 0xed, 0xfe, ..] | [0xca, 0xfe, 0xba, 0xbe, ..] => {
-            Err("is built for macOS, not Linux".to_owned())
-        }
-        _ => Err("is not a Linux executable".to_owned()),
-    }
-}
 
 /// What the access step installs, as reviewed in the plan.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -56,15 +31,12 @@ pub struct BootstrapAccess {
     /// Recovery keys added to the host policy. They are admin on every
     /// project the host runs; keep their private halves offline.
     pub break_glass: Vec<BreakGlassKey>,
-    /// Local directory holding `mm` and `mmd` built for the host.
-    pub binaries: PathBuf,
-    /// BLAKE3 of `<binaries>/mm`.
-    pub mm_digest: String,
-    /// BLAKE3 of `<binaries>/mmd`.
-    pub mmd_digest: String,
-    /// The CPU `mm` and `mmd` are built for, as `uname -m` names it.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub architecture: String,
+    /// `mm` and `mmd` for the host's CPU, or for each CPU when the plan
+    /// could not read the host's and the play picks.
+    pub binaries: Vec<HostBinaries>,
+    /// `--host-binaries` as given, which the apply command repeats.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_binaries: Option<PathBuf>,
     /// `--upgrade`: install over another build or an older release.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub upgrade: bool,
@@ -121,33 +93,15 @@ impl BootstrapAccess {
                 return Err(format!("break-glass key '{}' is listed twice", entry.name));
             }
         }
-        let binaries = self
-            .binaries
-            .to_str()
-            .ok_or_else(|| "host binaries directory must be valid Unicode".to_owned())?;
-        if !self.binaries.is_absolute() || binaries.contains(['{', '}']) {
+        validate_host_binaries(&self.binaries)?;
+        if self.host_binaries.as_ref().is_some_and(|given| {
+            !given.is_absolute() || given.to_string_lossy().contains(['{', '}'])
+        }) {
             return Err(
                 "host binaries directory must be an absolute path without braces".to_owned(),
             );
         }
-        for digest in [&self.mm_digest, &self.mmd_digest] {
-            if !is_lower_hex_digest(digest) {
-                return Err("host binary digest must be a lowercase BLAKE3 digest".to_owned());
-            }
-        }
-        if !HOST_ARCHITECTURES.contains(&self.architecture.as_str()) {
-            return Err(format!(
-                "host binaries must be built for x86_64 or aarch64, not '{}'",
-                self.architecture
-            ));
-        }
         Ok(())
-    }
-
-    /// The local file for `name`, `mm` or `mmd`.
-    #[must_use]
-    pub fn binary(&self, name: &str) -> PathBuf {
-        self.binaries.join(name)
     }
 
     pub(super) fn hash(&self, hasher: &mut blake3::Hasher) -> Result<(), String> {
@@ -165,15 +119,26 @@ impl BootstrapAccess {
             hash_field(hasher, &entry.name);
             hash_field(hasher, &entry.key);
         }
-        hash_field(
-            hasher,
-            self.binaries
-                .to_str()
-                .ok_or_else(|| "host binaries directory must be valid Unicode".to_owned())?,
-        );
-        hash_field(hasher, &self.mm_digest);
-        hash_field(hasher, &self.mmd_digest);
-        hash_field(hasher, &self.architecture);
+        hasher.update(&(self.binaries.len() as u64).to_le_bytes());
+        for set in &self.binaries {
+            hash_field(hasher, &set.architecture);
+            hash_field(
+                hasher,
+                set.directory
+                    .to_str()
+                    .ok_or_else(|| "host binaries directory must be valid Unicode".to_owned())?,
+            );
+            hash_field(hasher, &set.mm_digest);
+            hash_field(hasher, &set.mmd_digest);
+            hash_field(hasher, &set.source);
+        }
+        match &self.host_binaries {
+            Some(given) => {
+                hash_field(hasher, "host-binaries");
+                hash_field(hasher, &given.to_string_lossy());
+            }
+            None => hash_field(hasher, "release-host-binaries"),
+        }
         for (set, flag) in [(self.upgrade, "upgrade"), (self.downgrade, "downgrade")] {
             if set {
                 hash_field(hasher, flag);
@@ -206,10 +171,12 @@ impl BootstrapAccess {
                 shell_word(&format!("{}={}", entry.name, entry.key)),
             ]);
         }
-        arguments.extend([
-            "--host-binaries".to_owned(),
-            shell_word(&self.binaries.display().to_string()),
-        ]);
+        if let Some(given) = &self.host_binaries {
+            arguments.extend([
+                "--host-binaries".to_owned(),
+                shell_word(&given.display().to_string()),
+            ]);
+        }
         for (set, flag) in [(self.upgrade, "--upgrade"), (self.downgrade, "--downgrade")] {
             if set {
                 arguments.push(flag.to_owned());
@@ -270,13 +237,6 @@ impl BootstrapAccessReport {
 pub struct BootstrapExecution {
     pub capabilities: Vec<BootstrapCapability>,
     pub access: Option<BootstrapAccessReport>,
-}
-
-fn is_lower_hex_digest(value: &str) -> bool {
-    value.len() == 64
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
 }
 
 /// Quotes `value` for a POSIX shell when it is not a plain word.

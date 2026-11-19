@@ -30,7 +30,6 @@ const REQUIRED_BOOTSTRAP_INPUTS: [&str; 2] = [
     ".config/ansible/ansible.cfg",
     ".config/ansible/bootstrap.yml",
 ];
-const MAX_HOST_BINARY_BYTES: u64 = 512 * 1024 * 1024;
 
 /// The remote access layer an operator asks `mm target setup` to install.
 #[derive(Debug, Clone)]
@@ -41,8 +40,9 @@ pub struct BootstrapAccessRequest {
     /// The git server's SSH host key, for SSH origins.
     pub origin_host_key: Option<String>,
     pub break_glass: Vec<BreakGlassKey>,
-    /// Directory with `mm` and `mmd` built for the host.
-    pub binaries: PathBuf,
+    /// `--host-binaries`: a directory with `mm` and `mmd` built for the
+    /// host. Without it, this mm's directory or this mm's release.
+    pub binaries: Option<PathBuf>,
     /// `--upgrade`: install over another build or an older release.
     pub upgrade: bool,
     /// `--downgrade`: install over a newer release.
@@ -81,6 +81,7 @@ pub struct TargetManager {
     documents: Arc<dyn ProjectDocumentStore>,
     targets: Arc<dyn TargetStore>,
     releases: Option<Arc<dyn HostReleaseReader>>,
+    host_binaries: Option<crate::app::HostBinarySource>,
 }
 
 impl std::fmt::Debug for TargetManager {
@@ -98,7 +99,15 @@ impl TargetManager {
             documents,
             targets,
             releases: None,
+            host_binaries: None,
         }
+    }
+
+    /// Where the host binaries come from without `--host-binaries`.
+    #[must_use]
+    pub fn with_host_binaries(mut self, source: crate::app::HostBinarySource) -> Self {
+        self.host_binaries = Some(source);
+        self
     }
 
     /// Reads the release a host's `mmd` reports, so a plan that installs
@@ -119,8 +128,30 @@ impl TargetManager {
         state: Option<&dyn StateStore>,
         access: Option<&BootstrapAccessRequest>,
     ) -> Result<TargetBootstrapPlan, MmError> {
-        let mut plan = self.bootstrap_plan(selection, state, access)?;
-        let (Some(releases), Some(installed)) = (&self.releases, plan.access.as_mut()) else {
+        let Some(request) = access else {
+            return self.bootstrap_plan(selection, state, None);
+        };
+        let target = self.bootstrap_plan(selection, state, None)?.target;
+        let facts = match &self.releases {
+            Some(releases) => releases.host_facts(&target.definition.transport).await?,
+            None => crate::domain::target::HostFacts::default(),
+        };
+        let hosts = [crate::app::HostCpu {
+            host: target.name.clone(),
+            cpu: facts.cpu.clone(),
+        }];
+        let binaries = match (&self.host_binaries, request.binaries.as_deref()) {
+            (Some(source), given) => {
+                source
+                    .resolve(given, &hosts, &crate::app::ports::NoProgress)
+                    .await?
+            }
+            (None, given) => vec![crate::app::host_binaries::given_host_binaries(
+                given, &hosts,
+            )?],
+        };
+        let mut plan = self.plan_reviewed(selection, state, Some((request, binaries)))?;
+        let (Some(_), Some(installed)) = (&self.releases, plan.access.as_mut()) else {
             return Ok(plan);
         };
         let document = self.documents.load_from(&selection.start)?;
@@ -129,13 +160,19 @@ impl TargetManager {
             pin.check_client(env!("CARGO_PKG_VERSION"))
                 .map_err(|message| MmError::Environment { message })?;
         }
-        let running = releases
-            .host_release(&plan.target.definition.transport)
-            .await?;
+        let running = facts.release;
         let this = crate::domain::cluster_setup::HostRelease {
             version: env!("CARGO_PKG_VERSION").to_owned(),
             protocol: crate::domain::remote::PROTOCOL_VERSION,
-            build: Some(installed.mmd_digest.clone()),
+            build: match crate::domain::target::binaries_for(
+                &installed.binaries,
+                facts.cpu.as_deref(),
+            )
+            .as_slice()
+            {
+                [set] => Some(set.mmd_digest.clone()),
+                _ => None,
+            },
         };
         let consent = crate::domain::cluster_setup::ReleaseConsent {
             downgrade: installed.downgrade,
@@ -249,6 +286,24 @@ impl TargetManager {
         state: Option<&dyn StateStore>,
         access: Option<&BootstrapAccessRequest>,
     ) -> Result<TargetBootstrapPlan, MmError> {
+        let access = access
+            .map(|request| {
+                crate::app::host_binaries::given_host_binaries(request.binaries.as_deref(), &[])
+                    .map(|binaries| (request, vec![binaries]))
+            })
+            .transpose()?;
+        self.plan_reviewed(selection, state, access)
+    }
+
+    fn plan_reviewed(
+        &self,
+        selection: &WorkspaceSelection,
+        state: Option<&dyn StateStore>,
+        access: Option<(
+            &BootstrapAccessRequest,
+            Vec<crate::domain::target::HostBinaries>,
+        )>,
+    ) -> Result<TargetBootstrapPlan, MmError> {
         let config_path = self.documents.discover(&selection.start)?;
         let config_directory = config_path.parent().ok_or_else(|| MmError::Target {
             message: "project configuration has no parent directory".to_owned(),
@@ -299,7 +354,9 @@ impl TargetManager {
             ensure_user_controlled_directory(directory)?;
         }
         let input_files = collect_bootstrap_inputs(&document.root)?;
-        let access = access.map(reviewed_access).transpose()?;
+        let access = access
+            .map(|(request, binaries)| reviewed_access(request, binaries))
+            .transpose()?;
         let mut plan = TargetBootstrapPlan {
             project_id: document.config.project.id,
             project_name: document.config.project.name,
@@ -322,22 +379,20 @@ impl TargetManager {
 }
 
 /// Binds the request to the exact `mm` and `mmd` files setup will install.
-fn reviewed_access(request: &BootstrapAccessRequest) -> Result<BootstrapAccess, MmError> {
-    let binaries = fs::canonicalize(&request.binaries).map_err(|source| MmError::Io {
-        context: format!(
-            "resolving the host binaries directory {}",
-            request.binaries.display()
-        ),
-        source,
-    })?;
+fn reviewed_access(
+    request: &BootstrapAccessRequest,
+    binaries: Vec<crate::domain::target::HostBinaries>,
+) -> Result<BootstrapAccess, MmError> {
+    let host_binaries = match binaries.as_slice() {
+        [set] if request.binaries.is_some() => Some(set.directory.clone()),
+        _ => None,
+    };
     let access = BootstrapAccess {
         origin: request.origin.clone(),
         origin_host_key: request.origin_host_key.clone(),
         break_glass: request.break_glass.clone(),
-        mm_digest: host_binary_digest(&binaries.join("mm"))?,
-        mmd_digest: host_binary_digest(&binaries.join("mmd"))?,
-        architecture: crate::app::host_binaries::host_binaries_architecture(&binaries)?,
         binaries,
+        host_binaries,
         upgrade: request.upgrade,
         downgrade: request.downgrade,
         notices: Vec::new(),
@@ -346,47 +401,6 @@ fn reviewed_access(request: &BootstrapAccessRequest) -> Result<BootstrapAccess, 
         .validate()
         .map_err(|message| MmError::Target { message })?;
     Ok(access)
-}
-
-/// BLAKE3 of a host binary, read without following a final symlink.
-pub fn host_binary_digest(path: &std::path::Path) -> Result<String, MmError> {
-    let metadata = fs::symlink_metadata(path).map_err(|source| MmError::Io {
-        context: format!(
-            "reading host binary {}; pass --host-binaries with mm and mmd built for the host",
-            path.display()
-        ),
-        source,
-    })?;
-    if !metadata.file_type().is_file() {
-        return Err(MmError::Target {
-            message: format!(
-                "host binary '{}' must be a regular file, not a link or directory",
-                path.display()
-            ),
-        });
-    }
-    if metadata.len() > MAX_HOST_BINARY_BYTES {
-        return Err(MmError::Target {
-            message: format!(
-                "host binary '{}' exceeds {MAX_HOST_BINARY_BYTES} bytes",
-                path.display()
-            ),
-        });
-    }
-    let file = fs::File::open(path).map_err(|source| MmError::Io {
-        context: format!("opening host binary {}", path.display()),
-        source,
-    })?;
-    let mut hasher = blake3::Hasher::new();
-    std::io::copy(
-        &mut std::io::Read::take(file, MAX_HOST_BINARY_BYTES),
-        &mut hasher,
-    )
-    .map_err(|source| MmError::Io {
-        context: format!("hashing host binary {}", path.display()),
-        source,
-    })?;
-    Ok(hasher.finalize().to_hex().to_string())
 }
 
 pub(crate) fn collect_bootstrap_inputs(

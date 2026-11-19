@@ -57,7 +57,8 @@ pub(crate) fn target_services(
     let documents = project_documents();
     Ok(TargetServices {
         manager: TargetManager::new(Arc::clone(&documents), Arc::clone(&targets))
-            .with_host_releases(Arc::new(SshHostReleaseReader::new(Arc::clone(&process)))),
+            .with_host_releases(Arc::new(SshHostReleaseReader::new(Arc::clone(&process))))
+            .with_host_binaries(super::host_binary_source(&home)?),
         documents,
         targets,
         home,

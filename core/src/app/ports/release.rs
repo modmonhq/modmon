@@ -60,3 +60,26 @@ pub trait InstallationFiles: Send + Sync {
 
     fn same_file_contents(&self, left: &Path, right: &Path) -> Result<bool, MmError>;
 }
+
+/// Release binaries for hosts, kept on this machine once checked.
+pub trait ReleaseCache: Send + Sync {
+    /// Where `target` of release `tag` is kept, and the digest of the
+    /// archive it came from when a complete copy is there.
+    fn entry(&self, tag: &str, target: &str) -> Result<(PathBuf, Option<String>), MmError>;
+
+    /// A new private directory on the cache's filesystem to stage `tag` in.
+    fn staging(&self, tag: &str) -> Result<PathBuf, MmError>;
+
+    /// Moves `unpacked` into the entry for `target` in one rename, with the
+    /// archive digest it was checked against, in place of what was there.
+    fn keep(
+        &self,
+        tag: &str,
+        target: &str,
+        unpacked: &Path,
+        sha256: &str,
+    ) -> Result<PathBuf, MmError>;
+
+    /// Removes a file or a directory; one that is gone is no error.
+    fn remove(&self, path: &Path) -> Result<(), MmError>;
+}

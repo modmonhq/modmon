@@ -562,7 +562,9 @@ pub struct BootstrapAccessArgs {
     #[arg(long = "break-glass", value_name = "NAME=KEY")]
     break_glass: Vec<String>,
     /// Directory with `mm` and `mmd` built for the host, such as an
-    /// extracted Linux release. Default: the directory of this `mm`.
+    /// extracted Linux release. Default: for each host's CPU, the directory
+    /// of this `mm` when it holds them, otherwise this mm's own release,
+    /// downloaded, checked, and kept under the mm home.
     #[arg(long, value_name = "DIR")]
     host_binaries: Option<std::path::PathBuf>,
 }
@@ -593,15 +595,11 @@ impl BootstrapAccessArgs {
             .map(|value| crate::domain::host_policy::parse_break_glass(value))
             .collect::<Result<Vec<_>, _>>()
             .map_err(|message| MmError::Target { message })?;
-        let binaries = match &self.host_binaries {
-            Some(directory) => directory.clone(),
-            None => super::target_cluster::default_host_binaries()?,
-        };
         Ok(Some(crate::app::BootstrapAccessRequest {
             origin,
             origin_host_key: self.origin_host_key.clone(),
             break_glass,
-            binaries,
+            binaries: self.host_binaries.clone(),
             upgrade: release.upgrade,
             downgrade: release.downgrade,
         }))

@@ -4,8 +4,10 @@ use std::sync::Arc;
 
 use crate::adapters::process::TokioProcessRunner;
 use crate::adapters::release::ReqwestReleaseClient;
+use crate::adapters::release_cache::FilesystemReleaseCache;
 use crate::adapters::self_update::LocalInstallation;
-use crate::app::{SelfUpdateService, UpdateCheckService};
+use crate::adapters::state::MmHome;
+use crate::app::{HostBinarySource, SelfUpdateService, UpdateCheckService};
 use crate::domain::error::MmError;
 use crate::domain::release::RELEASE_ORIGIN;
 
@@ -33,5 +35,21 @@ pub(crate) fn self_update_service() -> Result<SelfUpdateService, MmError> {
         release_client()?,
         Arc::new(LocalInstallation),
         Arc::new(TokioProcessRunner),
+    ))
+}
+
+/// Host binaries for setup without `--host-binaries`: the directory of this
+/// `mm`, or its release, kept under the mm home.
+pub(crate) fn host_binary_source(home: &MmHome) -> Result<HostBinarySource, MmError> {
+    let beside = std::env::current_exe()
+        .and_then(std::fs::canonicalize)
+        .ok()
+        .and_then(|executable| executable.parent().map(std::path::Path::to_path_buf));
+    Ok(HostBinarySource::new(
+        release_client()?,
+        Arc::new(LocalInstallation),
+        Arc::new(FilesystemReleaseCache::new(home.root.join("releases"))),
+        beside,
+        env!("CARGO_PKG_VERSION"),
     ))
 }

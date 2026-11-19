@@ -29,6 +29,7 @@ pub mod own_runtime;
 pub(crate) mod private_fs;
 pub mod process;
 pub mod release;
+pub mod release_cache;
 pub mod remote;
 pub mod runtime;
 pub mod secrets;

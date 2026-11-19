@@ -7138,7 +7138,7 @@ _arguments "${_arguments_options[@]}" : \
 '(--origin)--delivery=[\`push\`\: the host fetches nothing and mm sends it each commit'\''s files, so it needs no origin and no deploy key. Turns on the remote access layer, like --origin, and takes its place]:MODE:(push)' \
 '--origin-host-key=[The git server'\''s SSH host key, \`<type> <base64>\`, for SSH origins]:KEY:_default' \
 '*--break-glass=[A recovery key for the host policy, NAME='\''ssh-ed25519 AAAA… comment'\''. Repeat for more. Keep the private half offline]:NAME=KEY:_default' \
-'--host-binaries=[Directory with \`mm\` and \`mmd\` built for the host, such as an extracted Linux release. Default\: the directory of this \`mm\`]:DIR:_files' \
+'--host-binaries=[Directory with \`mm\` and \`mmd\` built for the host, such as an extracted Linux release. Default\: for each host'\''s CPU, the directory of this \`mm\` when it holds them, otherwise this mm'\''s own release, downloaded, checked, and kept under the mm home]:DIR:_files' \
 '--commit=[Commit every node syncs the users file from (default\: HEAD)]:SHA:_default' \
 '*--nodes=[Set up only these nodes, for example while another one cannot be reached. The others are not contacted and keep the version they run]:NODE,...:_default' \
 '--root=[Project root or a path inside the project]:PATH:_files' \
@@ -7164,7 +7164,7 @@ _arguments "${_arguments_options[@]}" : \
 '(--origin)--delivery=[\`push\`\: the host fetches nothing and mm sends it each commit'\''s files, so it needs no origin and no deploy key. Turns on the remote access layer, like --origin, and takes its place]:MODE:(push)' \
 '--origin-host-key=[The git server'\''s SSH host key, \`<type> <base64>\`, for SSH origins]:KEY:_default' \
 '*--break-glass=[A recovery key for the host policy, NAME='\''ssh-ed25519 AAAA… comment'\''. Repeat for more. Keep the private half offline]:NAME=KEY:_default' \
-'--host-binaries=[Directory with \`mm\` and \`mmd\` built for the host, such as an extracted Linux release. Default\: the directory of this \`mm\`]:DIR:_files' \
+'--host-binaries=[Directory with \`mm\` and \`mmd\` built for the host, such as an extracted Linux release. Default\: for each host'\''s CPU, the directory of this \`mm\` when it holds them, otherwise this mm'\''s own release, downloaded, checked, and kept under the mm home]:DIR:_files' \
 '--commit=[Commit every node syncs the users file from (default\: HEAD)]:SHA:_default' \
 '*--nodes=[Set up only these nodes, for example while another one cannot be reached. The others are not contacted and keep the version they run]:NODE,...:_default' \
 '--root=[Project root or a path inside the project]:PATH:_files' \

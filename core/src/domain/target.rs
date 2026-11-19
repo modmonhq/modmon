@@ -728,8 +728,14 @@ fn hash_optional_path(hasher: &mut blake3::Hasher, label: &str, value: Option<&s
 #[path = "target/bootstrap_access.rs"]
 mod bootstrap_access;
 pub use bootstrap_access::{
-    BootstrapAccess, BootstrapAccessReport, BootstrapExecution, HOST_ARCHITECTURES,
-    MAX_BREAK_GLASS_KEYS, linux_architecture,
+    BootstrapAccess, BootstrapAccessReport, BootstrapExecution, MAX_BREAK_GLASS_KEYS,
+};
+
+#[path = "target/host_binaries.rs"]
+mod host_binaries;
+pub use host_binaries::{
+    HOST_ARCHITECTURES, HostBinaries, HostFacts, binaries_for, host_cpu, linux_architecture,
+    split_machine, validate_host_binaries,
 };
 
 #[path = "target/nodes.rs"]

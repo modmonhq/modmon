@@ -160,7 +160,7 @@ pub use mesh::{
 };
 pub use metrics::container_metrics;
 pub(crate) use providers::*;
-pub(crate) use releases::{self_update_service, update_check_service};
+pub(crate) use releases::{host_binary_source, self_update_service, update_check_service};
 pub use remote::{DaemonUseCaseAdapter, serve_stdio_relay};
 pub(crate) use remote::{
     RemoteIdentity, remote_environment, remote_environment_as, remote_transport_context,

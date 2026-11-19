@@ -1,6 +1,8 @@
-# Print what this node holds for the mesh as JSON, without changing anything:
-# its WireGuard public key and the interface state mmd applied last.
+# Print this node's CPU (uname -m) on the first line, then what it holds for
+# the mesh as JSON, without changing anything: its WireGuard public key and
+# the interface state mmd applied last.
 set -eu
+uname -m
 if [ -x /usr/libexec/mmd ] && [ -f /etc/mm/mmd.json ] &&
     /usr/libexec/mmd mesh --help >/dev/null 2>&1; then
     exec /usr/libexec/mmd mesh show

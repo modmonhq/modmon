@@ -27,7 +27,7 @@ pub use development_units::{DevelopmentDocuments, DevelopmentUnitService};
 pub(crate) mod dockerfile;
 mod environment;
 mod gate;
-pub(crate) mod host_binaries;
+mod host_binaries;
 mod keys;
 pub use keys::{KeyOutcome, KeyService, KeyServiceDependencies, VaultPreference};
 mod metrics;
@@ -82,6 +82,7 @@ pub use gate::{
     GateLoginRequest, GateLoginResult, GateManager, GateManagerDependencies, GateSessionRotation,
     GateSessionValidation, GateUserMutation, PasswordCapGateDriver,
 };
+pub use host_binaries::{HostBinarySource, HostCpu, given_binaries};
 pub use observability::{
     DrainedRestart, LocalRuntimeOperationAuthorizer, RuntimeOperationsDependencies,
     RuntimeOperationsService,

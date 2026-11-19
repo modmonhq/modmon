@@ -13,19 +13,9 @@ same release.
 
 ## Before you start
 
-- Update `mm` on your machine: `mm update` (see
-  [update mm](../start/install.md#update-mm)). It also replaces the `mmd`
-  beside `mm`, if there is one. `mm --version` prints the new release. Setup
-  installs the `mm` and `mmd` from the directory of the `mm` you run, so that
-  directory needs `mmd`: run the installer with `--with-daemon` once, or pass
-  `--host-binaries DIRECTORY` to install others.
-- Use `mm` and `mmd` built for the hosts' CPU. Setup reads which CPU they are
-  built for, names it in the plan (`built for: x86_64`, or
-  `installs: mm and mmd for x86_64 from …` for a cluster), and refuses a host of
-  another CPU before it installs anything. From macOS, or for hosts whose CPU
-  differs from this machine's, unpack the Linux archive for the hosts' CPU,
-  such as `mm-v0.1.1-aarch64-unknown-linux-gnu.tar.gz`, and pass its directory
-  with `--host-binaries`.
+- Update `mm` on your machine with `mm update` (see
+  [update mm](../start/install.md#update-mm)). `mm --version` prints the new
+  release. This works from Linux or macOS, with or without `mmd` installed.
 - Check that no deployment runs: `mm deploy status`. A deployment that runs on
   a node while its `mmd` restarts fails at its current step and rolls back.
 - If the environment pins the release with
@@ -33,6 +23,34 @@ same release.
   change the pin to the new release in a reviewed commit first. A pinned
   environment refuses plans from any other `mm`, and the pin also lets setup
   install that release without `--upgrade`.
+
+## Where setup takes mm and mmd from
+
+Setup installs the release of the `mm` you run. While it plans, it reads
+each host's CPU (`uname -m`) over the same SSH session that reads its `mmd`,
+and takes `mm` and `mmd` for that CPU:
+
+- from the directory of the `mm` you run, when it holds a Linux `mm` and `mmd`
+  for that CPU, as after `./install.sh --with-daemon` or the installer's
+  `--with-daemon` on Linux;
+- otherwise from this `mm`'s release on GitHub: setup downloads the Linux
+  archive for that CPU, checks it against the release's `manifest.json` as
+  `mm update` does, and keeps `mm` and `mmd` in `~/.mm/releases/vX.Y.Z/`
+  (under `--mm-home` when you pass it). Later plans use that copy while it
+  matches the release.
+
+A host that setup cannot read yet, such as a new node or one planned with
+`--trust-new-host-keys`, gets the pairs for both CPUs, and it installs the one
+for its own CPU. The plan names where each host's pair comes from, such as
+`mm and mmd for aarch64: release v0.1.1 for aarch64, cached in …`, and lists
+their digests, so apply installs exactly what you reviewed.
+
+To install other binaries, pass `--host-binaries DIRECTORY` with a Linux `mm`
+and `mmd` to both `plan` and `apply`. Setup refuses a directory built for
+another CPU than a host it read, and the play refuses one built for another
+CPU than a host it could not read, before it installs anything. An `mm` built
+from a checkout of an unreleased version has no release to download: pass
+`--host-binaries`, or run setup from a released `mm` (`mm update`).
 
 ## Upgrade a cluster
 

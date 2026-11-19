@@ -134,10 +134,8 @@ impl ClusterSetupService {
                     key: entry.key.clone(),
                 })
                 .collect(),
-            binaries: plan.binaries.clone(),
-            mm_digest: plan.mm_digest.clone(),
-            mmd_digest: plan.mmd_digest.clone(),
-            architecture: plan.architecture.clone(),
+            binaries: plan.binaries_for(node),
+            host_binaries: plan.host_binaries.clone(),
             upgrade: false,
             downgrade: false,
             notices: Vec::new(),

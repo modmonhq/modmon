@@ -620,7 +620,7 @@ fn bootstrap_plans_bind_the_remote_access_layer() -> Result<(), Box<dyn std::err
         break_glass: vec![mm::domain::host_policy::parse_break_glass(&format!(
             "ops={OPS_KEY}"
         ))?],
-        binaries: binaries.clone(),
+        binaries: Some(binaries.clone()),
         upgrade: false,
         downgrade: false,
     };
@@ -647,7 +647,7 @@ fn bootstrap_plans_bind_the_remote_access_layer() -> Result<(), Box<dyn std::err
     );
     let access = plan.access.as_ref().ok_or("access was not planned")?;
     assert_eq!(
-        access.mmd_digest,
+        access.binaries[0].mmd_digest,
         blake3::hash(&linux_binary(b"mmd 0.1.0"))
             .to_hex()
             .to_string()
@@ -656,7 +656,7 @@ fn bootstrap_plans_bind_the_remote_access_layer() -> Result<(), Box<dyn std::err
     assert!(command.contains(" --origin git@github.com:acme/shop.git "));
     assert!(command.contains(&format!(" --break-glass 'ops={OPS_KEY}' ")));
     assert!(command.ends_with(&format!(" --host-binaries {}", binaries.display())));
-    assert_eq!(access.architecture, "x86_64");
+    assert_eq!(access.binaries[0].architecture, "x86_64");
 
     // Binaries for macOS, or for another CPU than each other, are refused.
     fs::write(binaries.join("mm"), [0xcf, 0xfa, 0xed, 0xfe, 7, 0, 0, 1])?;

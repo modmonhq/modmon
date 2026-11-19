@@ -5190,7 +5190,7 @@ Remote access (pass the same flags to plan and apply):
           A recovery key for the host policy, NAME='ssh-ed25519 AAAA… comment'. Repeat for more. Keep the private half offline
 
       --host-binaries <DIR>
-          Directory with `mm` and `mmd` built for the host, such as an extracted Linux release. Default: the directory of this `mm`
+          Directory with `mm` and `mmd` built for the host, such as an extracted Linux release. Default: for each host's CPU, the directory of this `mm` when it holds them, otherwise this mm's own release, downloaded, checked, and kept under the mm home
 
 Cluster targets (nodes:):
       --trust-new-host-keys
@@ -5243,7 +5243,7 @@ Remote access (pass the same flags to plan and apply):
           A recovery key for the host policy, NAME='ssh-ed25519 AAAA… comment'. Repeat for more. Keep the private half offline
 
       --host-binaries <DIR>
-          Directory with `mm` and `mmd` built for the host, such as an extracted Linux release. Default: the directory of this `mm`
+          Directory with `mm` and `mmd` built for the host, such as an extracted Linux release. Default: for each host's CPU, the directory of this `mm` when it holds them, otherwise this mm's own release, downloaded, checked, and kept under the mm home
 
 Cluster targets (nodes:):
       --trust-new-host-keys

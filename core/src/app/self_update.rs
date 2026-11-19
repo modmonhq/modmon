@@ -336,7 +336,11 @@ fn destination(plan: &Replacement, name: &str) -> PathBuf {
     }
 }
 
-fn check_download(download: &ReleaseDownload, sha256: &str, size: u64) -> Result<(), MmError> {
+pub(crate) fn check_download(
+    download: &ReleaseDownload,
+    sha256: &str,
+    size: u64,
+) -> Result<(), MmError> {
     if sha256 != download.sha256 || download.size.is_some_and(|expected| expected != size) {
         return Err(MmError::Security {
             message: format!(

@@ -51,9 +51,22 @@ impl FakeProcess {
             })?
             .to_owned();
         let files = PathBuf::from(variables["mm_access_files"].as_str().unwrap_or_default());
+        let staged_cpus = variables["mm_access_architectures"]
+            .as_array()
+            .map(|cpus| {
+                cpus.iter()
+                    .filter_map(serde_json::Value::as_str)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        if staged_cpus != ["x86_64"] {
+            return Err(MmError::State {
+                message: format!("access variables stage {staged_cpus:?}"),
+            });
+        }
         for name in [
-            "mm",
-            "mmd",
+            "x86_64/mm",
+            "x86_64/mmd",
             "mm-relay-shell",
             "90-mm-relay.conf",
             "mmd.service",
@@ -386,14 +399,18 @@ fn access_plan(
             name: "ops".to_owned(),
             key: DEPLOY_KEY.replace("mmd-deploy", "ops@offline"),
         }],
-        binaries: binaries.to_path_buf(),
-        mm_digest: blake3::hash(&fs::read(binaries.join("mm"))?)
-            .to_hex()
-            .to_string(),
-        mmd_digest: blake3::hash(&fs::read(binaries.join("mmd"))?)
-            .to_hex()
-            .to_string(),
-        architecture: "x86_64".to_owned(),
+        binaries: vec![crate::domain::target::HostBinaries {
+            architecture: "x86_64".to_owned(),
+            directory: binaries.to_path_buf(),
+            mm_digest: blake3::hash(&fs::read(binaries.join("mm"))?)
+                .to_hex()
+                .to_string(),
+            mmd_digest: blake3::hash(&fs::read(binaries.join("mmd"))?)
+                .to_hex()
+                .to_string(),
+            source: binaries.display().to_string(),
+        }],
+        host_binaries: Some(binaries.to_path_buf()),
         upgrade: false,
         downgrade: false,
         notices: Vec::new(),
