@@ -1,3 +1,7 @@
+//! Matching of `.dockerignore` patterns, ported from Docker's
+//! [patternmatcher](https://github.com/moby/patternmatcher) (Copyright
+//! Docker, Inc., Apache License 2.0) and modified for mm.
+
 use regex::Regex;
 
 /// The patterns of a `.dockerignore` file, matched the way BuildKit matches
