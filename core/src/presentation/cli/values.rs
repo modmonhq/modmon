@@ -129,19 +129,22 @@ pub(super) async fn generate_in_store(
     invocation: &super::dispatch::Invocation,
 ) -> Result<Option<u8>, MmError> {
     use super::secret::SecretCommand;
-    let document = composition::project_documents().load_from(&invocation.start)?;
-    let (names, rotate, stdin, batch) = match command {
-        SecretCommand::Generate { key, all, .. } => {
-            let environment = crate::domain::config::resolve_environment(
-                &document,
-                invocation.selection.environment.as_deref(),
-            )?;
-            let selection = super::secret::generation_selection(key.clone(), *all);
-            let names = crate::app::generated_secrets(&document, &environment, &selection)?;
-            (names, false, false, key.is_none())
-        }
-        SecretCommand::Rotate { key, stdin, .. } => (vec![key.clone()], true, *stdin, false),
+    let (requested, all, rotate, stdin) = match command {
+        SecretCommand::Generate { key, all, .. } => (key.clone(), *all, false, false),
+        SecretCommand::Rotate { key, stdin, .. } => (Some(key.clone()), false, true, *stdin),
         _ => return Ok(None),
+    };
+    let batch = !rotate && requested.is_none();
+    let document = composition::project_documents().load_from(&invocation.start)?;
+    let names = if rotate {
+        requested.into_iter().collect()
+    } else {
+        let environment = crate::domain::config::resolve_environment(
+            &document,
+            invocation.selection.environment.as_deref(),
+        )?;
+        let selection = super::secret::generation_selection(requested, all);
+        crate::app::generated_secrets(&document, &environment, &selection)?
     };
     let (names, outside): (Vec<_>, Vec<_>) = names
         .into_iter()
