@@ -12,6 +12,7 @@ use crate::adapters::private_fs::ensure_no_symlink_components;
 use crate::adapters::runtime::inspect::{
     ownership_label_args, parse_resource_ids, require_inspected_project_ownership,
 };
+use crate::adapters::runtime::launch_failure::{Launched, launch_error};
 use crate::adapters::runtime::observe::{
     normalize_observation, normalized_rendered_semantics,
     parse_compose_observation, parse_compose_service_names,
@@ -139,6 +140,29 @@ impl PodmanComposeRuntime {
             code: output.code,
             stderr: output.stderr.trim().to_owned(),
         })
+    }
+
+    /// Nothing when `compose up` of `services` of the target's stack
+    /// started them; otherwise why it could not.
+    fn ensure_started(
+        &self,
+        output: CommandOutput,
+        target: &RuntimeTarget,
+        services: &[String],
+    ) -> Result<(), MmError> {
+        if output.success() {
+            return Ok(());
+        }
+        Err(launch_error(
+            RuntimeKind::PodmanCompose,
+            self.executable.clone(),
+            &Launched::Services {
+                stack: &target.stack_name,
+                project: &target.project_name,
+                services,
+            },
+            &output,
+        ))
     }
 
     fn require_local_engine_environment(&self) -> Result<(), MmError> {

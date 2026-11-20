@@ -20,7 +20,8 @@ pub(super) fn command(engine: LocalImageEngine) -> CommandSpec {
 }
 
 /// Builds into the engine's own image store: `docker build` runs on the
-/// current Docker context's builder, `podman build` on Podman's storage.
+/// current Docker context's own builder, `podman build` on Podman's
+/// storage.
 pub(super) async fn build_variant(
     process: &dyn ProcessRunner,
     artifacts: &Path,
@@ -42,8 +43,17 @@ pub(super) async fn build_variant(
     let reference = tags.first().cloned().ok_or_else(|| MmError::Build {
         message: format!("module '{}' has no local image tag", unit.module),
     })?;
+    let builder = match engine {
+        LocalImageEngine::Docker => context_builder(process).await,
+        LocalImageEngine::Podman => None,
+    };
     let output = process
-        .run(build_command(engine, &request, &staging))
+        .run(build_command(
+            engine,
+            &request,
+            &staging,
+            builder.as_deref(),
+        ))
         .await
         .map_err(|error| super::failure::not_started(error, Builder::Engine(engine)))?;
     if !output.success() {
@@ -81,10 +91,35 @@ pub(super) async fn build_variant(
     })
 }
 
+/// The builder of the current Docker context's own engine, which has the
+/// context's name, whatever `docker buildx use` selected. `None` when
+/// Docker does not name its context.
+async fn context_builder(process: &dyn ProcessRunner) -> Option<String> {
+    let output = process
+        .run(
+            command(LocalImageEngine::Docker)
+                .args(["context", "show"])
+                .timeout(Duration::from_secs(30)),
+        )
+        .await
+        .ok()?;
+    let name = output.stdout.trim();
+    let named = output.success()
+        && name
+            .chars()
+            .next()
+            .is_some_and(|first| first.is_ascii_alphanumeric())
+        && name
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "_.+-".contains(character));
+    named.then(|| name.to_owned())
+}
+
 fn build_command(
     engine: LocalImageEngine,
     request: &BuildVariantRequest<'_>,
     staging: &BuildStaging,
+    builder: Option<&str>,
 ) -> CommandSpec {
     let mut command = command(engine)
         .arg("build")
@@ -96,6 +131,9 @@ fn build_command(
         .timeout(Duration::from_secs(2 * 60 * 60));
     if engine == LocalImageEngine::Docker {
         command = command.environment("DOCKER_BUILDKIT", "1");
+    }
+    if let Some(builder) = builder {
+        command = command.environment("BUILDX_BUILDER", builder);
     }
     if let Some(stage) = request.variant.dockerfile_stage() {
         command = command.arg("--target").arg(stage);

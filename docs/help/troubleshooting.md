@@ -246,6 +246,38 @@ mm build --publish plan
 
 A local build runs on the engine's own builder and does not need this.
 
+When the builder that Docker has selected was removed, the message names it.
+Select one that exists, then build again:
+
+```sh
+docker buildx ls
+docker buildx use default
+```
+
+## A container or job could not start
+
+When the engine refuses to start a service's or a job's container, mm says
+why with `MM_RUNTIME_LAUNCH`, names the service or job, and says what to
+change:
+
+- A mount puts a directory onto a file, or a file onto a directory. A volume is
+  always a directory, and a bind of a host path that does not exist creates a
+  directory there. Make both sides of the mount in the service's `volumes:` the
+  same kind.
+- The image is missing or cannot be pulled. The message says whether the
+  registry refused it, has no such tag, or could not be reached. An image under
+  `mm.invalid/` is a local build: `mm dev up` builds what is missing.
+- A network the service joins does not exist. Create a network the Compose
+  file marks `external: true` with `docker network create NAME`.
+- A host port is in use by another container or program, or another container
+  already has the name. Stop or remove what holds it, or change `ports:` or
+  `container_name`.
+
+A job that could not start ends `failed`, and `mm deploy logs` shows the same
+message as its output. For a cause mm does not recognize, the code is
+`MM_PROCESS_FAILED`; run the same command in a terminal to read what the engine
+printed.
+
 ## Configuration schema is rejected
 
 The project file must declare:

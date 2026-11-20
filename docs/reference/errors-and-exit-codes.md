@@ -59,6 +59,7 @@ Human output prints the corresponding quoted command. Other errors may have
 | `MM_PROCESS_FAILED`               |                       3 | A subprocess exited unsuccessfully.                                                                           |
 | `MM_RUNTIME_RESPONSE`             |                       3 | Runtime output could not be interpreted safely.                                                               |
 | `MM_RUNTIME_UNSUPPORTED`          |                       3 | The selected runtime lacks a required advertised capability.                                                  |
+| `MM_RUNTIME_LAUNCH`               |                       3 | The engine could not start a service's or a job's container, for a cause mm recognizes: a mount that puts a directory onto a file or a file onto a directory, an image that is missing or cannot be pulled, a network that does not exist, a host port that is in use, or a container name that is taken. The message names the service or job, the cause, and what to change. Any other cause is `MM_PROCESS_FAILED` with the engine's own output. |
 | `MM_IO`                           |                       1 | Other local filesystem or stream I/O failure.                                                                 |
 | `MM_STATE`                        |                       1 | Private state-store failure, or state that a newer release wrote: the message names the file and says to run `mm update`, or on a host `mm target setup plan --upgrade`. See [stored state](./compatibility.md#stored-state). |
 | `MM_PLACEMENT`                    |                       2 | A service cannot be placed on the environment's cluster target: a `placement` name is not a node or group, a Compose service has no entry under `modules`, two services that share an engine are on different nodes, `--nodes` leaves out a node a service moves to, or a job's `placement` names a node where its service does not run. |
@@ -87,11 +88,13 @@ through the MCP server. See
 
 `MM_BUILD` is also the code of a build that cannot run, with a message that
 says why and what to run: Docker, its Buildx component, or Podman is not
-installed; the engine is not running; or the Buildx builder uses the `docker`
-driver, which cannot build several platforms at once, attach the attestations
-of a published build, or write an OCI archive, so `docker buildx create --use`
-makes one that can. Any other failure of the builder keeps
-`MM_PROCESS_FAILED` and the builder's own output.
+installed; the engine is not running; the Buildx builder that Docker has
+selected no longer exists (the message names it, and `docker buildx use
+default` or `docker buildx ls` is the next step); or the Buildx builder uses
+the `docker` driver, which cannot build several platforms at once, attach the
+attestations of a published build, or write an OCI archive, so
+`docker buildx create --use` makes one that can. Any other failure of the
+builder keeps `MM_PROCESS_FAILED` and the builder's own output.
 
 Validation and status payloads also contain specific `MM_*` diagnostic codes.
 Those codes identify individual findings; process status is determined from

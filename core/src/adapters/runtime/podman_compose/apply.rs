@@ -567,8 +567,7 @@ impl PodmanComposeRuntime {
                     .timeout(Duration::from_secs(120)),
             )
             .await?;
-        self.ensure_success(output)?;
-        Ok(())
+        self.ensure_started(output, target, only)
     }
 }
 

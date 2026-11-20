@@ -493,11 +493,8 @@ impl JobSchedulerService {
             Ok(RuntimeJobState::Missing) => {}
         }
 
-        let runtime_id = self
-            .launch_claim(document, selection, target, &claim, output_limit)
+        self.start(document, selection, target, &claim, output_limit)
             .await?;
-        self.repository
-            .mark_run_running(&claim, &runtime_id, self.clock.now_unix_ms())?;
         Ok(false)
     }
 
@@ -530,68 +527,6 @@ impl JobSchedulerService {
                 &claim.run.runtime_name,
                 claim.run.runtime_id.as_deref(),
             )
-            .await
-    }
-
-    async fn launch_claim(
-        &self,
-        document: &ConfigDocument,
-        selection: &WorkspaceSelection,
-        target: &crate::domain::runtime::RuntimeTarget,
-        claim: &ClaimedJobRun,
-        output_limit: usize,
-    ) -> Result<String, MmError> {
-        let prepared = match &self.launch_targets {
-            Some(targets) => {
-                targets
-                    .prepare(selection, &target.stack_name, claim.run.id)
-                    .await?
-            }
-            None => None,
-        };
-        let (target, release) = match prepared {
-            Some(prepared) => (prepared.target, Some(prepared.release)),
-            None => (target.clone(), None),
-        };
-        let launched = self.launch_on(document, target, claim, output_limit).await;
-        // The container exists or never will: what was staged for it goes.
-        let released = release.map_or(Ok(()), |release| release());
-        let runtime_id = launched?;
-        released?;
-        Ok(runtime_id)
-    }
-
-    async fn launch_on(
-        &self,
-        document: &ConfigDocument,
-        target: crate::domain::runtime::RuntimeTarget,
-        claim: &ClaimedJobRun,
-        output_limit: usize,
-    ) -> Result<String, MmError> {
-        let environment = BTreeMap::from([
-            ("MM_JOB_RUN_ID".to_owned(), claim.run.id.to_string()),
-            ("MM_JOB_ATTEMPT".to_owned(), claim.run.attempt.to_string()),
-            (
-                "MM_JOB_FENCE_TOKEN".to_owned(),
-                claim.run.fence_token.to_string(),
-            ),
-        ]);
-        self.runtime
-            .launch(JobLaunch {
-                run_id: claim.run.id,
-                fence_token: claim.run.fence_token,
-                runtime_name: claim.run.runtime_name.clone(),
-                runtime: self.application.runtime_kind(),
-                target,
-                module: claim.job_definition.module.clone(),
-                service: claim.job_definition.service.clone(),
-                argv: claim.job_definition.command.clone(),
-                user: claim.job_definition.user.clone(),
-                timeout: effective_timeout(claim)?,
-                output_limit_bytes: output_limit,
-                environment: crate::domain::observability::environment_values(environment),
-                redactions: self.redactions(document, &claim.run.environment).await?,
-            })
             .await
     }
 
@@ -643,7 +578,7 @@ impl JobSchedulerService {
 
     /// `exit` is how the attempt ended: its exit code, its output, and
     /// whether that output was cut. The last attempt's output is kept.
-    async fn fail_or_retry(
+    pub(super) async fn fail_or_retry(
         &self,
         target: &crate::domain::runtime::RuntimeTarget,
         claim: &ClaimedJobRun,
@@ -710,7 +645,7 @@ impl JobSchedulerService {
         })
     }
 
-    async fn redactions(
+    pub(super) async fn redactions(
         &self,
         document: &ConfigDocument,
         environment: &str,

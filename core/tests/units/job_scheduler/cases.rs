@@ -364,3 +364,86 @@ async fn a_deployment_cancels_a_run_an_earlier_deployment_left_instead_of_relaun
     assert_eq!(run.state, JobRunState::Cancelled);
     Ok(())
 }
+
+fn launching(sequence: u128, attempt: u16) -> ClaimedJobRun {
+    let mut claim = claimed_run(sequence, JobRunState::Launching, attempt);
+    claim.run.runtime_id = None;
+    claim.run.started_at_unix_ms = None;
+    claim
+}
+
+#[tokio::test]
+async fn a_container_that_cannot_start_ends_the_run_failed_with_why()
+-> Result<(), Box<dyn std::error::Error>> {
+    let setup = setup(true)?;
+    setup.repository.queue_run(launching(12, 2))?;
+    setup.runtime.observe(Ok(RuntimeJobState::Missing))?;
+    setup.runtime.refuse(MmError::Launch {
+        message: "job 'task' (service 'worker') could not start: the network 'edge' does not exist on this host".to_owned(),
+    })?;
+    let error = setup
+        .service
+        .cycle(&setup.selection, &approval())
+        .await
+        .err()
+        .ok_or("the cycle hid the launch failure")?;
+    assert_eq!(error.code(), "MM_RUNTIME_LAUNCH");
+    let run = setup
+        .repository
+        .lock()?
+        .runs
+        .get(&Uuid::from_u128(112))
+        .cloned()
+        .ok_or("the run is gone")?;
+    assert_eq!(run.state, JobRunState::Failed);
+    assert_eq!(run.exit_code, None);
+    assert_eq!(run.error_code.as_deref(), Some("MM_RUNTIME_LAUNCH"));
+    assert_eq!(
+        run.output,
+        "job 'task' (service 'worker') could not start: the network 'edge' does not exist on this host"
+    );
+    let events = ordered(&setup)?;
+    let cleanup = events
+        .iter()
+        .position(|event| event == "runtime:cleanup")
+        .ok_or("the container was not cleaned up")?;
+    let complete = events
+        .iter()
+        .position(|event| event == "repo:complete:Failed")
+        .ok_or("the run was not completed")?;
+    assert!(cleanup < complete, "{events:?}");
+    assert!(
+        !events.iter().any(|event| event == "repo:mark_running"),
+        "{events:?}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_container_that_cannot_start_with_an_attempt_left_is_retried()
+-> Result<(), Box<dyn std::error::Error>> {
+    let setup = setup(true)?;
+    setup.repository.queue_run(launching(13, 1))?;
+    setup.runtime.observe(Ok(RuntimeJobState::Missing))?;
+    setup.runtime.refuse(MmError::ProcessFailed {
+        program: "docker (launch one-shot job)".to_owned(),
+        code: Some(1),
+        stderr: "an answer no recognizer knows".to_owned(),
+    })?;
+    setup.service.cycle(&setup.selection, &approval()).await?;
+    let run = setup
+        .repository
+        .lock()?
+        .runs
+        .get(&Uuid::from_u128(113))
+        .cloned()
+        .ok_or("the run is gone")?;
+    assert_eq!(run.state, JobRunState::RetryWait);
+    assert_eq!(run.error_code.as_deref(), Some("MM_PROCESS_FAILED"));
+    assert!(
+        ordered(&setup)?
+            .iter()
+            .any(|event| event == "repo:retry:MM_PROCESS_FAILED")
+    );
+    Ok(())
+}

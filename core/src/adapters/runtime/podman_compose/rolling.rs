@@ -74,8 +74,7 @@ impl PodmanComposeRuntime {
                     .timeout(Duration::from_secs(300)),
             )
             .await?;
-        self.ensure_success(output)?;
-        Ok(())
+        self.ensure_started(output, target, &[service.to_owned()])
     }
 
     async fn outdated(
@@ -153,7 +152,7 @@ impl PodmanComposeRuntime {
                         .timeout(Duration::from_secs(300)),
                 )
                 .await?;
-            self.ensure_success(output)?;
+            self.ensure_started(output, target, std::slice::from_ref(service))?;
             started.push(service.clone());
         }
         Ok(started)

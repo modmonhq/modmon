@@ -264,6 +264,15 @@ It works before the environment's first deployment has finished: when the
 first one fails, `mm deploy logs`, `mm job history`, and `mm status` read
 the hosts' record of that attempt, so you can see why it failed.
 
+When the engine cannot start a job's container, the run ends `failed`
+without an exit code, and its output says why. For a cause mm recognizes, the
+code is `MM_RUNTIME_LAUNCH` and the output names the job, the cause, and what
+to change: a mount that puts a directory onto a file, an image that is missing
+or cannot be pulled, a network that does not exist, a host port or a container
+name that is already taken. The deployment or `mm job run` fails with the same
+message. For any other cause the code is `MM_PROCESS_FAILED`, and the command
+shows what the engine printed. A job with retries left tries again.
+
 ## After an interruption
 
 A job container left behind by a run that was cut off (its client or the

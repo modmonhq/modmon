@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A container or a job that the engine cannot start fails with
+  `MM_RUNTIME_LAUNCH` and says why in mm's words when the cause is one mm
+  recognizes: a mount that puts a directory onto a file, an image that is
+  missing or cannot be pulled, a network that does not exist, a host port or a
+  container name that is taken. It names the service or job and what to
+  change, also over MCP. A job run that could not start ends `failed` with
+  that message as its output instead of staying `launching`.
+- A build whose Buildx builder no longer exists fails with `MM_BUILD`, naming
+  the builder and `docker buildx use default`. A local Docker build runs on the
+  current Docker context's own builder, so a builder that `docker buildx use`
+  selected, or that was removed since, no longer affects it.
+
 ## [0.1.1] - 2026-11-19
 
 Remote protocol: 1. This release is the baseline: from it on, `mm` and the

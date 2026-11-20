@@ -115,6 +115,7 @@ pub struct JobLaunch {
     pub runtime_name: String,
     pub runtime: RuntimeKind,
     pub target: crate::domain::runtime::RuntimeTarget,
+    pub job: String,
     pub module: String,
     pub service: String,
     pub argv: Vec<String>,
@@ -134,6 +135,7 @@ impl std::fmt::Debug for JobLaunch {
             .field("fence_token", &self.fence_token)
             .field("runtime_name", &self.runtime_name)
             .field("runtime", &self.runtime)
+            .field("job", &self.job)
             .field("module", &self.module)
             .field("service", &self.service)
             .field("argv_count", &self.argv.len())

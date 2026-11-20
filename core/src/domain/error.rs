@@ -116,6 +116,12 @@ pub enum MmError {
     #[error("runtime response was invalid: {}", printed(.message))]
     RuntimeResponse { message: String },
 
+    /// A service's or a job's container that the engine could not start,
+    /// for a cause mm recognized. The message names what, why, and what
+    /// to change.
+    #[error("{message}")]
+    Launch { message: String },
+
     /// A remote host, or its `mmd`, that mm could not reach or talk to.
     /// `subject` names it with its address, `help` says what to run next.
     /// `problem` starts with mm's own words for what happened; anything
@@ -304,6 +310,7 @@ impl MmError {
             Self::ProcessTimeout { .. } => "MM_PROCESS_TIMEOUT",
             Self::ProcessFailed { .. } => "MM_PROCESS_FAILED",
             Self::RuntimeResponse { .. } => "MM_RUNTIME_RESPONSE",
+            Self::Launch { .. } => "MM_RUNTIME_LAUNCH",
             Self::Unreachable { .. } => "MM_UNREACHABLE",
             Self::Timeout { .. } => "MM_TIMEOUT",
             Self::Cancelled { .. } => "MM_CANCELLED",
@@ -345,6 +352,7 @@ impl MmError {
             | Self::ProcessTimeout { .. }
             | Self::ProcessFailed { .. }
             | Self::RuntimeResponse { .. }
+            | Self::Launch { .. }
             | Self::Unreachable { .. }
             | Self::Timeout { .. }
             | Self::Cancelled { .. }
