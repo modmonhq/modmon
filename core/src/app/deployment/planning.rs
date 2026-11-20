@@ -343,9 +343,7 @@ impl DeploymentManager {
             networks: compiled.networks.clone(),
             expected_route_generation: current.generation,
             expected_route_config_digest: current.config_digest,
-            expected_previous_plan_hash: previous_deployment
-                .as_ref()
-                .map(|previous| previous.plan_hash.clone()),
+            expected_previous_plan_hash: previous_deployment.map(|previous| previous.plan_hash),
             stacks,
             removed_stacks: removals.removed_stacks,
             preserved_volumes: removals.preserved_volumes,
@@ -375,6 +373,7 @@ impl DeploymentManager {
             config_files: compiled.placement.config_files,
             runtime_changes: Vec::new(),
             unknown_config_keys: compiled.unknown_keys,
+            secret_file_owners: Vec::new(),
             release: compiled.release,
             plan_hash: String::new(),
         };

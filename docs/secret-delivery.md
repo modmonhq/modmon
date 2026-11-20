@@ -100,11 +100,12 @@ new plan.
 
 Runtime behavior differs:
 
-| Runtime                          | File delivery                         | Important constraint                                    |
-| -------------------------------- | ------------------------------------- | ------------------------------------------------------- |
-| Podman Compose, your own machine | Versioned native Podman secret        | Native store; UID/GID/mode supported                    |
-| Podman on a remote host          | File per version, the consumer's copy | No native store; UID/GID/mode supported                 |
-| Docker Compose                   | Private file per version              | No native store; requires UID `0`, GID `0`, mode `0444` |
+| Runtime                          | File delivery                         | Important constraint                               |
+| -------------------------------- | ------------------------------------- | -------------------------------------------------- |
+| Podman Compose, your own machine | Versioned native Podman secret        | Native store; UID/GID/mode supported               |
+| Podman on a remote host          | File per version, the consumer's copy | No native store; UID/GID/mode supported            |
+| Docker Compose on a remote host  | File per version, a copy per owner    | No native store; UID/GID/mode supported            |
+| Docker Compose, your own machine | File per version, a copy per mode     | No native store; mode supported, the file is yours |
 
 Podman receives material on standard input. Rotation creates a new
 owned revision, updates workloads, and retains the previous revision for
@@ -114,11 +115,23 @@ content.
 Docker Compose has no secret store, so mm keeps one file per version of a
 secret under its own home on the machine that runs the containers
 (`run/runtime-secrets-files`, `/var/lib/mm-home/run/runtime-secrets-files` on
-a remote host). The directories are `0700` and the files `0600`, owned by the
-user mm runs as. A file's name is a keyed digest of the store's version, made
-with a key that never leaves the machine; it says nothing about the value.
-Compose cannot enforce requested file ownership or mode, so other values fail
-before material is written.
+a remote host), in directories that are `0700` and belong to the user mm runs
+as: no other user of the machine can reach the files. A file's name is a keyed
+digest of the store's version, made with a key that never leaves the machine;
+it says nothing about the value.
+
+Docker bind-mounts the file into the container and ignores the owner and mode
+a Compose secret asks for, so mm gives the file the entry's `mode` itself, in
+a copy for each mode and owner the services ask for. With the default `0444`
+every user in the container can read the file, whatever user the image runs
+as, without `user: "0:0"` or extra capabilities. On a remote host, where `mmd`
+runs as root, the copy also belongs to the entry's `uid` and `gid`, which are
+the container's ids on Docker Engine. On your own machine mm runs as you, and
+only root can give a file to other ids: the file is yours, with the entry's
+`mode`. When an entry names other ids and that can matter, such as
+`uid: "999"` or a mode that lets no other user read the file, the plan says so
+for that service and file, and so does `mm config validate` when the
+environment runs on Docker on this machine (`MM_SECRET_FILE_OWNER`).
 
 On a remote host that runs [Podman](./remote-daemon.md#run-podman-on-the-hosts),
 whose Compose provider is Docker Compose too, mm keeps the same files, and

@@ -3458,6 +3458,72 @@ async fn docker_compose_runtime_secrets_are_staged_applied_reconciled_and_dispos
     Ok(())
 }
 
+/// The user these tests run as, whom a workstation's secret files belong to.
+fn this_user() -> mm::domain::runtime_secret::HostIds {
+    mm::domain::runtime_secret::HostIds::unprivileged()
+        .unwrap_or(mm::domain::runtime_secret::HostIds { uid: 0, gid: 0 })
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_local_plan_names_the_secret_files_that_belong_to_you_instead_of_their_ids()
+-> Result<(), Box<dyn std::error::Error>> {
+    use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+    let fixture = Fixture::new(false)?;
+    fixture.configure_runtime_secret().await?;
+    let config_path = fixture.project.join(".config/mm.yaml");
+    let config = fs::read_to_string(&config_path)?.replace(
+        "            secret: database.password\n",
+        "            secret: database.password\n            uid: \"999\"\n            gid: \"999\"\n            mode: 0o400\n",
+    );
+    fs::write(&config_path, config)?;
+
+    let plan = fixture.service.plan(&fixture.selection).await?;
+    assert_eq!(
+        plan.secret_file_owners,
+        [mm::domain::runtime_secret::SecretFileOwnerNote {
+            service: "web".to_owned(),
+            file: "database-password".to_owned(),
+            uid: "999".to_owned(),
+            gid: "999".to_owned(),
+            mode: 0o400,
+            kept_for: this_user(),
+        }]
+    );
+    assert_eq!(
+        serde_json::to_value(&plan)?["secret_file_owners"][0]["service"],
+        "web"
+    );
+    fixture
+        .service
+        .apply_reviewed(&fixture.selection, &plan.plan_hash)
+        .await?;
+
+    // The file the service mounts has the entry's mode and is the user's.
+    let root = fixture
+        .runtime_secret_directory
+        .with_file_name("runtime-secrets-files");
+    let mut pending = vec![root];
+    let mut files = Vec::new();
+    while let Some(directory) = pending.pop() {
+        for entry in fs::read_dir(directory)? {
+            let entry = entry?;
+            if entry.file_type()?.is_dir() {
+                pending.push(entry.path());
+            } else if entry.file_name() != "name.key" {
+                files.push(fs::metadata(entry.path())?);
+            }
+        }
+    }
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].permissions().mode() & 0o777, 0o400);
+    assert_eq!(
+        (files[0].uid(), files[0].gid()),
+        (this_user().uid, this_user().gid)
+    );
+    Ok(())
+}
+
 #[tokio::test]
 async fn runtime_secret_failures_clean_artifacts_and_preserve_mutation_truth()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -5167,8 +5233,9 @@ impl Fixture {
         let rootless = Arc::new(FakeRootlessInstaller::default());
         let privileged = Arc::new(FakePrivilegedInstaller::default());
         let runtime_secrets = Arc::new(FailingRuntimeSecretDelivery {
-            inner: mm::adapters::secrets::DockerComposeFileSecretDelivery::new(
+            inner: mm::adapters::secrets::DockerComposeFileSecretDelivery::kept_for(
                 runtime_secret_directory.clone(),
+                Some(this_user()),
             )?,
             fail_prepare: AtomicBool::new(false),
             fail_dispose: AtomicBool::new(false),

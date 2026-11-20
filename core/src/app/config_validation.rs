@@ -48,6 +48,7 @@ mod project;
 mod release_inputs;
 mod rollout;
 mod scaling;
+mod secret_file_owners;
 mod secret_store;
 mod secrets_bindings;
 mod shared_volumes;
@@ -77,6 +78,7 @@ pub use project::{
 use release_inputs::validate_release_inputs;
 use rollout::validate_rollout;
 use scaling::validate_scaling;
+pub(crate) use secret_file_owners::validate_secret_file_owners;
 use secret_store::validate_secret_store;
 use secrets_bindings::*;
 use shared_volumes::validate_shared_volumes;

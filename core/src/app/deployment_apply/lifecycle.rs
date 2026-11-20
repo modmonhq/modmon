@@ -70,6 +70,12 @@ impl DeploymentService {
         let mut plan = self.planner.plan(selection).await?;
         let (_, scheduler) = self.scheduler_reconciliation(selection, &plan)?;
         plan.scheduler_reconciliation = Some(scheduler);
+        if let (Some(user), Some(secrets)) = (
+            self.ports.runtime_secrets.capability().files_kept_for,
+            &plan.runtime_secret_plan,
+        ) {
+            plan.secret_file_owners = secrets.kept_for(user);
+        }
         plan.plan_hash = plan
             .canonical_hash()
             .map_err(|message| MmError::Security { message })?;

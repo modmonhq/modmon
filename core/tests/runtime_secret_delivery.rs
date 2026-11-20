@@ -11,8 +11,8 @@ use mm::app::ports::RuntimeSecretDelivery;
 use mm::domain::operation::OperationId;
 use mm::domain::runtime::RuntimeKind;
 use mm::domain::runtime_secret::{
-    RuntimeSecretConsumer, RuntimeSecretMaterial, RuntimeSecretPlan, RuntimeSecretPlanItem,
-    RuntimeSecretStoreKind,
+    HostIds, RuntimeSecretConsumer, RuntimeSecretMaterial, RuntimeSecretPlan,
+    RuntimeSecretPlanItem, RuntimeSecretStoreKind,
 };
 use mm::domain::secret::SecretMaterial;
 use mm::domain::secret_contract::DeliveryDriverId;
@@ -20,6 +20,13 @@ use mm::domain::secret_contract::DeliveryDriverId;
 mod temp_dirs;
 
 const SENTINEL: &str = "mm-compose-secret-sentinel-f938de";
+
+fn this_user() -> HostIds {
+    HostIds {
+        uid: rustix::process::geteuid().as_raw(),
+        gid: rustix::process::getegid().as_raw(),
+    }
+}
 
 #[test]
 fn capability_matrix_is_exact() -> Result<(), Box<dyn std::error::Error>> {
@@ -38,7 +45,9 @@ fn capability_matrix_is_exact() -> Result<(), Box<dyn std::error::Error>> {
     let home = temp_dirs::tempdir()?;
     let process: Arc<dyn mm::app::ports::ProcessRunner> = Arc::new(NoProcess);
     let podman = PodmanSecretDelivery::new(process, home.path().join("podman"))?;
-    let compose = DockerComposeFileSecretDelivery::new(home.path().join("compose"))?;
+    let compose =
+        DockerComposeFileSecretDelivery::kept_for(home.path().join("compose"), Some(this_user()))?;
+    let as_root = DockerComposeFileSecretDelivery::kept_for(home.path().join("root"), None)?;
 
     assert_eq!(podman.capability().runtime, RuntimeKind::PodmanCompose);
     assert_eq!(podman.capability().store, RuntimeSecretStoreKind::Podman);
@@ -50,7 +59,16 @@ fn capability_matrix_is_exact() -> Result<(), Box<dyn std::error::Error>> {
     assert!(!compose.capability().native_storage);
     assert!(compose.capability().immutable_revisions);
     assert!(!compose.capability().supports_uid_gid_mode);
+    assert_eq!(compose.capability().files_kept_for, Some(this_user()));
     assert!(compose.capability().plaintext_file_lifetime.is_some());
+    assert!(as_root.capability().supports_uid_gid_mode);
+    assert_eq!(as_root.capability().files_kept_for, None);
+    assert_eq!(
+        DockerComposeFileSecretDelivery::new(home.path().join("default"))?
+            .capability()
+            .files_kept_for,
+        HostIds::unprivileged()
+    );
     Ok(())
 }
 
@@ -145,11 +163,11 @@ fn two_secrets(
 }
 
 #[tokio::test]
-async fn compose_file_delivery_keeps_one_private_file_per_revision()
+async fn compose_file_delivery_keeps_one_file_per_revision_in_a_private_directory()
 -> Result<(), Box<dyn std::error::Error>> {
     let home = temp_dirs::tempdir()?;
     let run = home.path().join("run");
-    let driver = DockerComposeFileSecretDelivery::new(run.clone())?;
+    let driver = DockerComposeFileSecretDelivery::kept_for(run.clone(), Some(this_user()))?;
     let plan = plan(
         RuntimeKind::DockerCompose,
         "compose-file-secret",
@@ -169,7 +187,7 @@ async fn compose_file_delivery_keeps_one_private_file_per_revision()
     let rendered = overlay(&prepared.overlays[0].1)?;
     let (key, file) = mounted(&rendered, "api")?;
     assert_eq!(revision_files(&run)?, std::slice::from_ref(&file));
-    assert_eq!(fs::metadata(&file)?.permissions().mode() & 0o777, 0o600);
+    assert_eq!(fs::metadata(&file)?.permissions().mode() & 0o777, 0o444);
     assert_eq!(fs::read_to_string(&file)?, SENTINEL);
     let mut directory = file.parent();
     while let Some(parent) = directory.filter(|parent| *parent != home.path()) {
@@ -203,7 +221,7 @@ async fn compose_file_delivery_keeps_one_private_file_per_revision()
 
     // The same revision again is the same file, also for a driver started
     // later; the same revision with other content is refused.
-    let later = DockerComposeFileSecretDelivery::new(run.clone())?;
+    let later = DockerComposeFileSecretDelivery::kept_for(run.clone(), Some(this_user()))?;
     let again = later
         .prepare(
             OperationId::new(),
@@ -360,17 +378,17 @@ async fn a_rotated_file_secret_changes_only_its_consumers_and_keeps_the_old_revi
 }
 
 #[tokio::test]
-async fn compose_failure_cleanup_recovery_and_unsupported_permissions_fail_closed()
+async fn compose_failure_cleanup_recovery_and_impossible_owners_fail_closed()
 -> Result<(), Box<dyn std::error::Error>> {
     let home = temp_dirs::tempdir()?;
     let run = home.path().join("run");
-    let driver = DockerComposeFileSecretDelivery::new(run.clone())?;
+    let driver = DockerComposeFileSecretDelivery::kept_for(run.clone(), None)?;
     let mut unsupported = plan(
         RuntimeKind::DockerCompose,
         "compose-file-secret",
         "revision-1",
     )?;
-    unsupported.items[0].consumers[0].mode = 0o400;
+    unsupported.items[0].consumers[0].uid = "4294967296".to_owned();
     unsupported.plan_hash = unsupported.canonical_hash()?;
     let result = driver
         .prepare(

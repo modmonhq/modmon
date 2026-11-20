@@ -863,9 +863,6 @@ fn a_file_secret_names_one_of_the_ids_of_the_services_containers() -> TestResult
             .contains("uid 65536 is none of the ids its containers have, 0 to 65535"),
         "{error}"
     );
-    // Docker Engine is unchanged: one root file, owner and mode refused.
-    let docker = DockerComposeFileSecretDelivery::new(home.path().join("docker-run"))?;
-    assert!(!docker.capability().supports_uid_gid_mode);
     Ok(())
 }
 

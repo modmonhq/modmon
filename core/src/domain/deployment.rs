@@ -145,6 +145,11 @@ pub struct DeploymentPlan {
     /// of the plan's hash.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub unknown_config_keys: Vec<crate::domain::config::UnknownConfigKey>,
+    /// Secret files that belong to the user mm runs as on this machine, not
+    /// to the ids their entries name, where that can matter. They say who
+    /// applies the plan, so they are not part of its hash.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub secret_file_owners: Vec<crate::domain::runtime_secret::SecretFileOwnerNote>,
     pub plan_hash: String,
 }
 
