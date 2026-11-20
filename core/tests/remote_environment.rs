@@ -1756,6 +1756,7 @@ fn hardened_node_plan() -> mm::domain::deployment::DeploymentPlan {
             service: "vpn".to_owned(),
             reason: None,
         }],
+        masked_paths: Vec::new(),
         artifact_hash: "e".repeat(64),
     };
     let artifact_root = std::path::PathBuf::from("/var/lib/mm-home/compose/app");

@@ -31,6 +31,7 @@ fn manifest() -> StackArtifactManifest {
         security: Vec::new(),
         low_ports: Vec::new(),
         host_network: Vec::new(),
+        masked_paths: Vec::new(),
         artifact_hash: String::new(),
     }
 }

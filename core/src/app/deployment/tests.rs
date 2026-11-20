@@ -194,6 +194,7 @@ fn artifact(stack: &str) -> PreparedStackArtifact {
             security: Vec::new(),
             low_ports: Vec::new(),
             host_network: Vec::new(),
+            masked_paths: Vec::new(),
             artifact_hash: format!("artifact-{stack}"),
         },
     }

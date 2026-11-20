@@ -289,8 +289,9 @@ pub fn local_plan_card(plan: &DeploymentPlan, with: &[String]) -> Card {
     card
 }
 
-/// The services the plan leaves off on this machine, and the secret files
-/// that belong to the user mm runs as instead of the ids they name.
+/// The services the plan leaves off on this machine, the secret files that
+/// belong to the user mm runs as instead of the ids they name, and what the
+/// development mounts mask.
 fn local_notes(plan: &DeploymentPlan) -> Vec<(Tone, String)> {
     let mut notes = (plan.adopted_routes_line().into_iter())
         .map(|line| (Tone::Warn, format!("The plan {line}")))
@@ -308,7 +309,22 @@ fn local_notes(plan: &DeploymentPlan) -> Vec<(Tone, String)> {
         };
         (tone, file.line())
     }));
+    notes.extend(masked_notes(plan));
     notes
+}
+
+/// What the development mounts mask, path by path.
+fn masked_notes(plan: &DeploymentPlan) -> impl Iterator<Item = (Tone, String)> + '_ {
+    plan.stacks
+        .iter()
+        .flat_map(|stack| &stack.artifact.manifest.masked_paths)
+        .map(|path| {
+            let tone = match path.kind {
+                crate::domain::development_mount::MaskedPathKind::Missing => Tone::Warn,
+                _ => Tone::Idle,
+            };
+            (tone, path.line())
+        })
 }
 
 /// What one engine's apply did.

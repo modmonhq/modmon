@@ -370,7 +370,7 @@ fn finish_stack_artifact(input: StackArtifactInput<'_>) -> Result<CompiledStackA
         &input.source_files,
         &routed,
     )?;
-    let (generated_overlay, preserved_volumes) = generated_overlay(GeneratedOverlayInput {
+    let overlay = generated_overlay(GeneratedOverlayInput {
         document: input.document,
         environment: input.environment,
         stack: input.stack_name,
@@ -400,24 +400,26 @@ fn finish_stack_artifact(input: StackArtifactInput<'_>) -> Result<CompiledStackA
             .iter()
             .map(|file| file.manifest.clone())
             .collect(),
-        generated_overlay_digest: blake3::hash(&generated_overlay).to_hex().to_string(),
+        generated_overlay_digest: blake3::hash(&overlay.bytes).to_hex().to_string(),
         services: input.services,
         routes: input.routes,
         middleware_inputs: input.middlewares.inputs.clone(),
-        preserved_volumes,
+        preserved_volumes: overlay.preserved_volumes,
         security: security.services,
         low_ports: input.host.low_ports.iter().cloned().collect(),
         host_network: input.host_network.uses,
+        masked_paths: overlay.masked_paths,
         artifact_hash: String::new(),
     };
     manifest.artifact_hash = manifest
         .canonical_hash()
         .map_err(|message| MmError::Environment { message })?;
+    let masks_a_file = manifest.masks_a_file();
     Ok(CompiledStackArtifact {
         user_files: input.source_files,
         manifest,
-        generated_overlay,
-        config_files: input.host.config_files.compiled(),
+        generated_overlay: overlay.bytes,
+        config_files: input.host.config_files.compiled(masks_a_file),
     })
 }
 

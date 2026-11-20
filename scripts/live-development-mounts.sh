@@ -168,6 +168,30 @@ printf '%s\n' after >"$project/app/live.txt"
 test "$("$engine" exec "$container" cat /app/live.txt)" = after
 test "$("$engine" volume inspect --format '{{ index .Labels "io.mm.resource-kind" }}' "$volume")" = volume
 
+printf '%s\n' LOCAL_ONLY=1 >"$project/app/.env"
+sed -i 's|^      target: /app$|      target: /app\n      protected: [.env, config/local.env]\n      excludes: [logs]|' "$project/.config/mm.yaml"
+grep -q '^      protected: \[.env, config/local.env\]$' "$project/.config/mm.yaml"
+"$MM_BIN" --root "$project" --mm-home "$home" deploy plan >"$root/masked-plan.txt"
+grep -q 'masked: /app/.env (module app) is a file; an empty read-only file covers it' "$root/masked-plan.txt"
+grep -q 'not masked: /app/logs (module app) is not in the source' "$root/masked-plan.txt"
+"$MM_BIN" --root "$project" --mm-home "$home" --output json deploy plan >"$deploy"
+deploy_hash=$(jq -r .plan_hash "$deploy")
+masked_deploy_hash=$deploy_hash
+"$MM_BIN" --root "$project" --mm-home "$home" deploy --yes apply --plan "$deploy_hash" >/dev/null
+container=$("$engine" ps --quiet --filter "label=com.docker.compose.project=$compose_project" --filter label=com.docker.compose.service=web)
+test -n "$container"
+"$engine" exec "$container" test -f /app/.env
+test -z "$("$engine" exec "$container" cat /app/.env)"
+if "$engine" exec "$container" sh -c 'printf x >/app/.env' 2>/dev/null; then
+  printf '%s\n' "the file over a protected file is writable" >&2
+  exit 1
+fi
+test "$("$engine" exec "$container" cat /app/live.txt)" = after
+test "$(cat "$project/app/.env")" = LOCAL_ONLY=1
+test ! -e "$project/app/logs"
+test ! -e "$project/app/config"
+rm "$project/app/.env"
+
 "$MM_BIN" --root "$project" --mm-home "$home" --output json \
   dev mounts plan app >"$plan"
 mount_hash=$(jq -r .plan_hash "$plan")
@@ -374,9 +398,11 @@ cleanup_hostnet
 
 printf '%s\n' \
   "reviewed Laravel proposal, immediate live edit, owned preservation, disable, and cleanup passed ($runtime)" \
+  "protected file covered by an empty read-only file, missing paths left out of the checkout ($runtime)" \
   "optional unit off by default, enabled with its dependency and job, disabled with its volume kept, routes following it, and the dependency refusal passed ($runtime)" \
   "host network refused without host-network, then declared, planned with its reason, and started with network_mode host ($runtime)" \
   "mount plan: $proposal_hash" \
   "live deployment plan: $first_deploy_hash" \
+  "masked deployment plan: $masked_deploy_hash" \
   "cleanup deployment plan: $cleanup_deploy_hash" \
   "owned volume removed: $volume"

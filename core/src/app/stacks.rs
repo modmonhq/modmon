@@ -378,11 +378,18 @@ impl StackManager {
         &self,
         plan: &crate::domain::deployment::DeploymentPlan,
     ) -> Result<Vec<String>, MmError> {
-        let keep = plan
+        let mut keep = plan
             .config_files
             .iter()
             .map(|file| file.version.clone())
-            .collect();
+            .collect::<BTreeSet<_>>();
+        if plan
+            .stacks
+            .iter()
+            .any(|stack| stack.artifact.manifest.masks_a_file())
+        {
+            keep.insert(crate::domain::development_mount::mask_file_version());
+        }
         self.artifacts
             .prune_config_files(plan.target_id, plan.project_id, &plan.environment, &keep)
     }

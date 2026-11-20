@@ -159,6 +159,56 @@ pub struct PreservedVolumeManifest {
     pub resource: String,
 }
 
+/// The mode of the empty file that covers a masked file.
+pub const MASK_FILE_MODE: u32 = 0o444;
+
+/// The config file version of the empty file that covers a masked file.
+#[must_use]
+pub fn mask_file_version() -> String {
+    crate::domain::config_file::version(&[], MASK_FILE_MODE, None, None)
+}
+
+/// What the source has at an `excludes` or `protected` path.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum MaskedPathKind {
+    Directory,
+    File,
+    Missing,
+}
+
+/// An `excludes` or `protected` path of a module, and what the deployment
+/// mounts over it.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+pub struct MaskedPath {
+    pub module: String,
+    pub container_path: String,
+    pub kind: MaskedPathKind,
+}
+
+impl MaskedPath {
+    /// The line a plan shows for the path.
+    #[must_use]
+    pub fn line(&self) -> String {
+        let (path, module) = (&self.container_path, &self.module);
+        match self.kind {
+            MaskedPathKind::Directory => {
+                format!(
+                    "masked: {path} (module {module}) is a directory; an empty volume covers it"
+                )
+            }
+            MaskedPathKind::File => format!(
+                "masked: {path} (module {module}) is a file; an empty read-only file covers it"
+            ),
+            MaskedPathKind::Missing => format!(
+                "not masked: {path} (module {module}) is not in the source, so nothing is mounted there; if it is created, the containers see it until the next deployment"
+            ),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HostPlatform {
     Unix,
