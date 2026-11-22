@@ -34,6 +34,7 @@ mod held;
 mod leaving;
 mod listeners;
 mod metered;
+mod newcomer;
 mod scaling;
 mod upstream;
 
@@ -125,6 +126,7 @@ struct State {
     scaling: Vec<crate::domain::autoscale::ScaleReport>,
     /// The engine ids of this node's containers past their restart limit.
     held: std::collections::BTreeSet<String>,
+    strangers: newcomer::Strangers,
 }
 
 impl State {
@@ -143,6 +145,28 @@ impl State {
             Some(problem) => self.problems.insert(about.to_owned(), problem),
             None => self.problems.remove(about),
         };
+    }
+
+    fn knows(&self, source: Ipv4Addr) -> bool {
+        self.local.containers.iter().any(|container| {
+            container
+                .endpoints
+                .iter()
+                .any(|endpoint| endpoint.address == source)
+        })
+    }
+
+    fn take_observed(
+        &mut self,
+        networks: &NodeNetworks,
+        mut observed: Vec<crate::domain::discovery::ObservedContainer>,
+    ) {
+        observed.retain(|container| !self.leaves.is_own(&container.id));
+        self.local = NodeRecords::observed(networks, observed);
+        let held = self.held.clone();
+        self.local.hold(&held);
+        self.unseen = 0;
+        self.note("containers", None);
     }
 }
 
@@ -167,6 +191,9 @@ pub struct NameResolver {
     /// One settling of the bridges at a time (a look, or a new container's
     /// first lookup).
     settling: tokio::sync::Mutex<()>,
+    /// One listing of the engine's containers at a time, and when the
+    /// last one started.
+    listing: tokio::sync::Mutex<Option<Instant>>,
 }
 
 impl std::fmt::Debug for NameResolver {
@@ -230,6 +257,7 @@ impl NameResolver {
             rotation: AtomicUsize::new(0),
             sockets,
             settling: tokio::sync::Mutex::new(()),
+            listing: tokio::sync::Mutex::new(None),
         })
     }
 
@@ -347,21 +375,15 @@ impl NameResolver {
             .into_iter()
             .map(|network| network.network)
             .collect::<Vec<_>>();
+        let mut listing = self.listing.lock().await;
+        *listing = Some(Instant::now());
         let observed = self.runtime.network_containers(&engine_networks).await;
         let mut state = self.write();
         let before = leaving::answers(&state);
         state.note("listen", unbound);
         state.local.node.clone_from(&networks.node);
         match observed {
-            Ok(mut observed) => {
-                // A leaving container stays out until its leave is over.
-                observed.retain(|container| !state.leaves.is_own(&container.id));
-                state.local = NodeRecords::observed(&networks, observed);
-                let held = state.held.clone();
-                state.local.hold(&held);
-                state.unseen = 0;
-                state.note("containers", None);
-            }
+            Ok(observed) => state.take_observed(&networks, observed),
             Err(error) => {
                 // One failed look keeps what was seen last; an engine that
                 // stays away has stopped its containers with it.
@@ -384,6 +406,7 @@ impl NameResolver {
         state.refresh_fresh();
         self.settle(&mut state, before);
         drop(state);
+        drop(listing);
         self.looked.notify_one();
         waiting
     }
@@ -498,37 +521,23 @@ impl NameResolver {
         {
             tracing::debug!("answering a lookup before every node was asked");
         }
-        let (question, resolution, newcomer) = {
-            let state = self.read();
-            let map = ServiceMap {
-                networks: state.networks.as_ref()?,
-                local: &state.local,
-                peers: &state.fresh,
-            };
-            match wire::parse(message) {
-                Query::Noise => return None,
-                Query::Refused { reply } => {
-                    return (map.resolve(source, "") != Resolution::NotAsked).then_some(reply);
-                }
-                Query::Question(question) => {
-                    let resolution = map.resolve(source, &question.name);
-                    let newcomer = !state.local.containers.iter().any(|container| {
-                        container
-                            .endpoints
-                            .iter()
-                            .any(|endpoint| endpoint.address == source)
-                    });
-                    (question, resolution, newcomer)
-                }
+        let question = match wire::parse(message) {
+            Query::Noise => return None,
+            Query::Refused { reply } => {
+                return (self.resolve(source, "")?.0 != Resolution::NotAsked).then_some(reply);
             }
+            Query::Question(question) => question,
         };
+        let (mut resolution, newcomer) = self.resolve(source, &question.name)?;
         // A container this node has not looked at yet is new, and so may be
         // its network's bridge (Podman creates it with the network's first
         // container, which asks for a name at once). The bridge gets its
         // settings before the answer, so the container's first connection
         // to another node's member finds it.
         if newcomer && resolution != Resolution::NotAsked {
+            self.meet(source).await;
             self.settle_bridges().await;
+            resolution = self.resolve(source, &question.name)?.0;
         }
         match resolution {
             Resolution::NotAsked => None,
@@ -556,6 +565,20 @@ impl NameResolver {
                 },
             ),
         }
+    }
+}
+
+impl NameResolver {
+    /// What a lookup of `name` from `source` gets now, and whether no
+    /// container of this node is known at `source`.
+    fn resolve(&self, source: Ipv4Addr, name: &str) -> Option<(Resolution, bool)> {
+        let state = self.read();
+        let map = ServiceMap {
+            networks: state.networks.as_ref()?,
+            local: &state.local,
+            peers: &state.fresh,
+        };
+        Some((map.resolve(source, name), !state.knows(source)))
     }
 }
 
