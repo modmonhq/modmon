@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- A container that resolves its own `tasks.<service>` name as soon as it
+  starts finds itself: `mmd` reads the engine for a lookup from a container it
+  has not seen yet before answering it, instead of letting the name fall
+  through to the host's resolvers.
 - An `internal: true` network that spans cluster nodes no longer takes a
   container's default route, which cut a container that is also on an
   ordinary network off from the internet and from the other nodes. Podman
