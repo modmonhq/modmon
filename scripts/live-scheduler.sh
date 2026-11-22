@@ -108,6 +108,12 @@ jobs:
     command: ["false"]
     timeout: 30s
     retry: { attempts: 2, backoff: 1s, max-backoff: 1s }
+  slow:
+    module: fixture
+    service: worker
+    command: ["sh", "-c", "echo slow-live-started; sleep 120"]
+    timeout: 3s
+    retry: { attempts: 1, backoff: 1s, max-backoff: 1s }
 schedules:
   every-minute:
     job: print
@@ -143,6 +149,18 @@ let value="";process.stdin.on("data",chunk=>value+=chunk);process.stdin.on("end"
   const run=JSON.parse(value);
   if(run.state!=="failed"||run.attempt!==2||run.exit_code===0) process.exit(1);
   console.log(`failure run ${run.id} attempts=${run.attempt} state=${run.state}`);
+});'
+
+set +e
+slow=$("$binary" $common job run slow)
+slow_status=$?
+set -e
+[ "$slow_status" -ne 0 ]
+printf '%s' "$slow" | node -e '
+let value="";process.stdin.on("data",chunk=>value+=chunk);process.stdin.on("end",()=>{
+  const run=JSON.parse(value);
+  if(run.state!=="timed_out"||run.error_code!=="MM_JOB_TIMEOUT"||!run.output.includes("slow-live-started")) process.exit(1);
+  console.log(`timed-out run ${run.id} state=${run.state} kept its output`);
 });'
 
 seconds=$(date -u +%-S)

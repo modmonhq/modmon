@@ -258,7 +258,9 @@ app-2 migrate | Migrated: 2026_11_01_000000_create_orders_table
 
 With `--output json` it prints the runs, each with its `node`, `state`,
 `exit_code`, and `output`. Output is bounded by `output-limit-bytes` and
-redacted against the environment's secrets.
+redacted against the environment's secrets. A job stopped at its `timeout`
+keeps what it wrote until then: the run ends `timed_out` with exit code 124
+and `MM_JOB_TIMEOUT`, and its output is there as for any other run.
 
 It works before the environment's first deployment has finished: when the
 first one fails, `mm deploy logs`, `mm job history`, and `mm status` read

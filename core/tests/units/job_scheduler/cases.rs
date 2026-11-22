@@ -209,6 +209,11 @@ async fn cycle_reconciles_every_runtime_state_with_ordered_terminal_effects()
         .repository
         .queue_run(claimed_run(4, JobRunState::Running, 2))?;
     setup.runtime.observe(Ok(RuntimeJobState::Running))?;
+    setup.runtime.observe(Ok(RuntimeJobState::Exited {
+        exit_code: 143,
+        output: String::new(),
+        truncated: false,
+    }))?;
     setup
         .repository
         .queue_run(claimed_run(5, JobRunState::Running, 1))?;
@@ -329,6 +334,44 @@ async fn a_last_attempt_that_fails_keeps_its_output() -> Result<(), Box<dyn std:
     assert_eq!(run.exit_code, Some(3));
     assert_eq!(run.output, "connecting\ncannot-migrate\n");
     assert!(run.output_truncated);
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_run_stopped_at_its_timeout_keeps_its_output() -> Result<(), Box<dyn std::error::Error>> {
+    let setup = setup(true)?;
+    setup
+        .repository
+        .queue_run(claimed_run(12, JobRunState::Running, 2))?;
+    setup.runtime.observe(Ok(RuntimeJobState::Running))?;
+    setup.runtime.observe(Ok(RuntimeJobState::Exited {
+        exit_code: 143,
+        output: "migrating\nwaiting for lock\n".to_owned(),
+        truncated: false,
+    }))?;
+    setup.service.cycle(&setup.selection, &approval()).await?;
+    let events = ordered(&setup)?;
+    assert!(
+        events.windows(4).any(|events| events
+            == [
+                "runtime:cancel",
+                "runtime:inspect",
+                "runtime:cleanup",
+                "repo:complete:TimedOut"
+            ]),
+        "{events:?}"
+    );
+    let run = setup
+        .repository
+        .lock()?
+        .runs
+        .get(&Uuid::from_u128(112))
+        .cloned()
+        .ok_or("the run is gone")?;
+    assert_eq!(run.state, JobRunState::TimedOut);
+    assert_eq!(run.exit_code, Some(124));
+    assert_eq!(run.error_code.as_deref(), Some("MM_JOB_TIMEOUT"));
+    assert_eq!(run.output, "migrating\nwaiting for lock\n");
     Ok(())
 }
 
