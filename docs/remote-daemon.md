@@ -1732,7 +1732,10 @@ another machine on the provider's network.
 
 Containers keep their way out to the internet, through their node's address.
 A network marked `internal: true` has none: its containers reach the members
-of the network and nothing else.
+of the network and nothing else. It never carries a container's default
+route, so a service on an internal network and an ordinary one keeps its way
+out through the ordinary one. The engine creates it that way: Podman with
+`--opt no_default_route=true`, Docker Engine with `--internal`.
 
 ```yaml
 networks:
@@ -1779,6 +1782,15 @@ The plan says so before anything happens:
 ```text
   networks:
     backend: created again on 10.64.0.0/24 of 10.64.0.0/20 (was 172.19.0.0/16); restarts web
+```
+
+An internal network that an earlier mm created with a default route is
+created again the same way, and the plan says `with a default route` after
+its old addresses:
+
+```text
+  networks:
+    vault: created again on 10.64.17.0/24 of 10.64.16.0/20, internal (was 10.64.16.0/20, range 10.64.17.2-10.64.17.254, with a default route); restarts api
 ```
 
 This happens once per network and node, at the first deployment after
