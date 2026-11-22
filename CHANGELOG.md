@@ -12,6 +12,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   starts finds itself: `mmd` reads the engine for a lookup from a container it
   has not seen yet before answering it, instead of letting the name fall
   through to the host's resolvers.
+- A build context reaches the engine with directories at 0755 and files at
+  0644, or 0755 when executable, whatever the umask `mm build` runs under, so
+  a non-root user in the image can read what `COPY` put there. The context
+  hash now records these modes, so every module rebuilds once after the
+  upgrade. A receipt promotes to another environment only when it and the
+  hosts' `mmd` are both on this release or later; otherwise build that
+  environment again.
 - An `internal: true` network that spans cluster nodes no longer takes a
   container's default route, which cut a container that is also on an
   ordinary network off from the internet and from the other nodes. Podman
