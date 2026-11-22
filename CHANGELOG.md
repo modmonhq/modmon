@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- On Podman hosts, a config file or secret file of a service whose Compose
+  file sets its own `userns_mode`, such as `auto`, no longer reaches the
+  container owned by an unknown id: `mm config validate` and the plan refuse
+  an entry whose owner or mode cannot hold there (`MM_USER_NAMESPACE`) and say
+  to remove `userns_mode`, which gives the service ids of its own.
+
 ## [0.1.1] - 2026-11-19
 
 Remote protocol: 1. This release is the baseline: from it on, `mm` and the

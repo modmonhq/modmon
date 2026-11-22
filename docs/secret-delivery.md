@@ -138,7 +138,12 @@ whose Compose provider is Docker Compose too, mm keeps the same files, and
 each service that mounts a secret gets its own copy: given to the host ids
 that the entry's `uid` and `gid` are in the service's user namespace, with the
 entry's `mode`, in the same root-only directories. A rotation replaces only
-the services that mount the secret there as well.
+the services that mount the secret there as well. A service whose Compose
+file sets its own `userns_mode`, such as `auto`, gets its user ids from
+Podman when its container is created, too late for mm to give the copy to
+them: its entries have to use `uid` 0, `gid` 0 and a mode every user can
+read, and the plan refuses others (`MM_USER_NAMESPACE`) until you remove
+`userns_mode` from the service.
 
 Rotating a secret gives the services that mount it another file, so only they
 are replaced. The previous version stays until the deployment has succeeded,
