@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- An `internal: true` network that spans cluster nodes no longer takes a
+  container's default route, which cut a container that is also on an
+  ordinary network off from the internet and from the other nodes. Podman
+  creates it with `no_default_route=true` and Docker Engine as an internal
+  network; the first deployment after upgrading creates an existing one
+  again and restarts the services on it.
+
 ## [0.1.1] - 2026-11-19
 
 Remote protocol: 1. This release is the baseline: from it on, `mm` and the
