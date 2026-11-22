@@ -18,6 +18,10 @@ pub const DEFAULT_CONVERGENCE_TIMEOUT: Duration = Duration::from_secs(600);
 /// host when the environment sets no `deploy.progress-timeout`.
 pub const DEFAULT_PROGRESS_TIMEOUT: Duration = Duration::from_secs(120);
 
+/// How long a host may take to pull the images a stack or a job needs
+/// when the environment sets no `deploy.pull-timeout`.
+pub const DEFAULT_PULL_TIMEOUT: Duration = Duration::from_secs(20 * 60);
+
 /// The shortest `deploy.progress-timeout`: a host is asked how it is doing
 /// every 15 seconds, and one late answer is not yet a stuck host.
 pub const MIN_PROGRESS_TIMEOUT: Duration = Duration::from_secs(30);
@@ -86,6 +90,11 @@ pub struct DeployConfig {
     /// and the operation, such as `5m`. The default is `2m`; at least `30s`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub progress_timeout: Option<DurationSpec>,
+    /// How long a host may take to pull the images of a stack, or of a
+    /// job, before anything of it starts, such as `45m`. The default is
+    /// `20m`; at least `1s`. Starting the containers keeps its own limit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pull_timeout: Option<DurationSpec>,
     /// The releases of mm that may plan deployments here, and that the
     /// hosts' mmd must be: `0.9` is any 0.9 release, `=0.9.3` exactly that
     /// one. A plan from another mm, or for a host that runs another mmd,
@@ -100,6 +109,20 @@ impl DeployConfig {
     pub fn convergence_timeout(config: Option<&Self>) -> Result<Duration, String> {
         match config.and_then(|deploy| deploy.convergence_timeout.as_ref()) {
             None => Ok(DEFAULT_CONVERGENCE_TIMEOUT),
+            Some(spec) => {
+                let timeout = spec.parse()?;
+                if timeout < Duration::from_secs(1) {
+                    return Err("must be at least 1s".to_owned());
+                }
+                Ok(timeout)
+            }
+        }
+    }
+
+    /// The configured time to pull images, or the default.
+    pub fn pull_timeout(config: Option<&Self>) -> Result<Duration, String> {
+        match config.and_then(|deploy| deploy.pull_timeout.as_ref()) {
+            None => Ok(DEFAULT_PULL_TIMEOUT),
             Some(spec) => {
                 let timeout = spec.parse()?;
                 if timeout < Duration::from_secs(1) {

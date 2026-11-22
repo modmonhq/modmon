@@ -71,8 +71,8 @@ pub use ingress::{CloudflaredConfig, EnvironmentIngressConfig, IngressType};
 #[path = "config/update.rs"]
 mod update;
 pub use update::{
-    DEFAULT_CONVERGENCE_TIMEOUT, DEFAULT_PROGRESS_TIMEOUT, DeployConfig, UpdateConfig,
-    UpdateFailure, UpdateOrder,
+    DEFAULT_CONVERGENCE_TIMEOUT, DEFAULT_PROGRESS_TIMEOUT, DEFAULT_PULL_TIMEOUT, DeployConfig,
+    UpdateConfig, UpdateFailure, UpdateOrder,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

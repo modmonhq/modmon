@@ -315,6 +315,17 @@ pub trait LocalDeploymentRuntime: Send + Sync {
             message: "runtime adapter does not implement owned volume-file removal".to_owned(),
         })
     }
+    /// Pulls the images of `services` (every service when `None`) that
+    /// the engine does not have yet, within `limit` for all of them, so
+    /// that starting them pulls nothing.
+    async fn pull_images(
+        &self,
+        _target: &RuntimeTarget,
+        _services: Option<&[String]>,
+        _limit: std::time::Duration,
+    ) -> Result<(), MmError> {
+        Ok(())
+    }
     async fn apply(&self, target: &RuntimeTarget) -> Result<(), MmError>;
     async fn remove(&self, target: &RuntimeTarget) -> Result<(), MmError>;
     /// Like `apply`, but containers of services the project no longer lists

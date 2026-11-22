@@ -434,6 +434,25 @@ impl LocalDeploymentRuntime for PodmanComposeRuntime {
         self.start_more(target, service, count).await
     }
 
+    async fn pull_images(
+        &self,
+        target: &RuntimeTarget,
+        services: Option<&[String]>,
+        limit: Duration,
+    ) -> Result<(), MmError> {
+        require_local_target(target)?;
+        self.require_local_engine_environment()?;
+        let base = |args: Vec<String>| self.command_spec(args);
+        crate::adapters::runtime::image_pull::ImagePuller {
+            process: self.process.as_ref(),
+            kind: crate::domain::runtime::RuntimeKind::PodmanCompose,
+            program: &self.executable,
+            base: &base,
+        }
+        .pull(target, self.compose_args(target)?, services, limit)
+        .await
+    }
+
     async fn service_container_ids(
         &self,
         target: &RuntimeTarget,

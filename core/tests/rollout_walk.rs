@@ -500,6 +500,7 @@ impl Cluster {
                 networks: None,
                 rollout: Some(ClusterRollout {
                     convergence_timeout_seconds: 60,
+                    pull_timeout_seconds: None,
                     stages,
                     ran_once: Default::default(),
                     once: Vec::new(),
