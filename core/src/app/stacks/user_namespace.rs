@@ -19,7 +19,9 @@ use crate::app::ports::ServiceUserIds;
 use crate::domain::config::ConfigDocument;
 use crate::domain::error::MmError;
 use crate::domain::stack::{CompiledComposeSource, StackServiceManifest};
-use crate::domain::user_namespace::{ServiceIds, ServiceIdsChoice, ServiceIdsOwner};
+use crate::domain::user_namespace::{
+    ServiceIds, ServiceIdsChoice, ServiceIdsOwner, holds_in_any_namespace,
+};
 
 /// The services of `stack` in `environment` that say why they keep the
 /// host's user ids.
@@ -92,7 +94,25 @@ impl<'a> ServiceHost<'a> {
         sources: &[CompiledComposeSource],
         shared: &super::shared_volumes::NodeVolumes,
     ) -> Result<StackHost, MmError> {
-        let user_ids = self.user_ids(stack, sources, shared)?;
+        let models = match self.user_ids {
+            Some(_) => compose_models(sources)?,
+            None => Vec::new(),
+        };
+        let user_ids = self.user_ids(stack, &models, shared)?;
+        if self.user_ids.is_some() {
+            let found = files_in_chosen_namespaces(
+                self.document,
+                self.environment,
+                stack,
+                &chosen_user_namespaces(&models),
+            );
+            if !found.is_empty() {
+                return Err(MmError::Remote {
+                    code: "MM_USER_NAMESPACE",
+                    message: found.join("; "),
+                });
+            }
+        }
         let config_files = super::config_files::stack_config_files(
             self.document,
             self.environment,
@@ -115,14 +135,14 @@ impl<'a> ServiceHost<'a> {
     fn user_ids(
         &self,
         stack: &str,
-        sources: &[CompiledComposeSource],
+        models: &[Value],
         shared: &super::shared_volumes::NodeVolumes,
     ) -> Result<StackUserIds, MmError> {
         let Some(user_ids) = self.user_ids else {
             return Ok(StackUserIds::default());
         };
         let keeps_host_ids = host_user_namespaces(self.document, self.environment, stack);
-        let wanted = services_without_own_userns(sources)?
+        let wanted = services_without_own_userns(models)
             .into_iter()
             .filter(|service| !keeps_host_ids.contains(service))
             .map(|service| ServiceIdsOwner {
@@ -154,33 +174,96 @@ impl<'a> ServiceHost<'a> {
     }
 }
 
+fn compose_models(sources: &[CompiledComposeSource]) -> Result<Vec<Value>, MmError> {
+    sources
+        .iter()
+        .map(|source| {
+            let invalid = |cause: serde_yaml_ng::Error| MmError::Environment {
+                message: format!("Compose file '{}': {cause}", source.manifest.path.display()),
+            };
+            let mut model: Value = serde_yaml_ng::from_slice(&source.bytes).map_err(invalid)?;
+            model.apply_merge().map_err(invalid)?;
+            Ok(model)
+        })
+        .collect()
+}
+
+fn compose_services(models: &[Value]) -> impl Iterator<Item = (&str, &Value)> {
+    models
+        .iter()
+        .filter_map(|model| model.get("services").and_then(Value::as_mapping))
+        .flatten()
+        .filter_map(|(name, service)| name.as_str().map(|name| (name, service)))
+}
+
 /// The services of the stack's Compose files that do not set
 /// `userns_mode` themselves and are not on the host's network.
-fn services_without_own_userns(sources: &[CompiledComposeSource]) -> Result<Vec<String>, MmError> {
+fn services_without_own_userns(models: &[Value]) -> Vec<String> {
     let mut services = BTreeMap::<String, bool>::new();
-    for source in sources {
-        let invalid = |cause: serde_yaml_ng::Error| MmError::Environment {
-            message: format!("Compose file '{}': {cause}", source.manifest.path.display()),
-        };
-        let mut model: Value = serde_yaml_ng::from_slice(&source.bytes).map_err(invalid)?;
-        model.apply_merge().map_err(invalid)?;
-        let Some(listed) = model.get("services").and_then(Value::as_mapping) else {
-            continue;
-        };
-        for (name, service) in listed {
-            let Some(name) = name.as_str() else {
-                continue;
-            };
-            let own = service.get("userns_mode").is_some()
-                || super::host_network::on_host_network(service);
-            *services.entry(name.to_owned()).or_default() |= own;
-        }
+    for (name, service) in compose_services(models) {
+        let own =
+            service.get("userns_mode").is_some() || super::host_network::on_host_network(service);
+        *services.entry(name.to_owned()).or_default() |= own;
     }
-    Ok(services
+    services
         .into_iter()
         .filter(|(_, own)| !own)
         .map(|(name, _)| name)
-        .collect())
+        .collect()
+}
+
+/// The services whose Compose files set a `userns_mode` other than
+/// `host`, with that mode: Podman chooses their user ids.
+pub(crate) fn chosen_user_namespaces(models: &[Value]) -> BTreeMap<String, String> {
+    compose_services(models)
+        .filter_map(|(name, service)| {
+            let mode = service.get("userns_mode")?;
+            let mode = mode
+                .as_str()
+                .map_or_else(|| format!("{mode:?}"), str::to_owned);
+            (mode != "host").then(|| (name.to_owned(), mode))
+        })
+        .collect()
+}
+
+/// The secret files and config files of `stack`'s services in
+/// `environment` whose owner or mode would not hold in the user namespace
+/// `chosen` says Podman picks for their service, each as what to change.
+pub(crate) fn files_in_chosen_namespaces(
+    document: &ConfigDocument,
+    environment: &str,
+    stack: &str,
+    chosen: &BTreeMap<String, String>,
+) -> Vec<String> {
+    let mut found = Vec::new();
+    for (module, config) in &document.config.modules {
+        for (service, config) in &config.services {
+            let Some(mode) = chosen.get(service) else {
+                continue;
+            };
+            if config.stack != stack
+                || config.host_user_namespace.is_some()
+                || !config.is_in_environment(environment)
+            {
+                continue;
+            }
+            let secrets = config.secret_files_in(environment).map(|(path, file)| {
+                let holds = holds_in_any_namespace(Some(&file.uid), Some(&file.gid), file.mode);
+                ("secret-files", path, holds)
+            });
+            let configs = config.config_files_in(environment).map(|(path, file)| {
+                let holds =
+                    holds_in_any_namespace(file.uid.as_deref(), file.gid.as_deref(), file.mode);
+                ("config-files", path, holds)
+            });
+            for (key, path, _) in secrets.chain(configs).filter(|(_, _, holds)| !holds) {
+                found.push(format!(
+                    "modules.{module}.services.{service}.{key}.\"{path}\" names an owner or a mode that holds only where mm knows the service's user ids, and its Compose file sets `userns_mode: {mode}`, so Podman picks them when it creates a container, after mm wrote the file. Remove `userns_mode` from service '{service}' (mm then gives it fixed ids of its own and the file to its uid and gid), or give the file uid \"0\", gid \"0\" and a mode every user can read, such as 0o444"
+                ));
+            }
+        }
+    }
+    found
 }
 
 /// A service on a shared volume reaches its files from every node with
