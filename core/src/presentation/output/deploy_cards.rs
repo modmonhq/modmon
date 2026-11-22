@@ -401,7 +401,7 @@ pub fn apply_report_card<T: Serialize>(
                 format!(
                     "{}, last log lines of the failed container: {}",
                     node.node,
-                    node.log.join(" ⏎ ")
+                    crate::domain::rollout::failure_log_summary(&node.log).join(" ⏎ ")
                 ),
             ));
         }

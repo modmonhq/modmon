@@ -5,9 +5,9 @@ use std::collections::BTreeMap;
 
 use mm::domain::config::{MmConfig, UpdateFailure, UpdateOrder};
 use mm::domain::rollout::{
-    ClusterRollout, DeploymentRecord, DeploymentStatus, NodeDeploymentStatus, NodeRollout,
-    NodeRolloutInput, NodeStatusRow, RolloutPolicy, RolloutState, StepFailure, rollback_target,
-    stack_order,
+    ClusterRollout, DeploymentRecord, DeploymentStatus, FAILURE_LOG_BYTES, NodeDeploymentStatus,
+    NodeRollout, NodeRolloutInput, NodeStatusRow, RolloutPolicy, RolloutState, StepFailure,
+    kept_failure_log, rollback_target, stack_order,
 };
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -549,6 +549,73 @@ fn a_failure_reads_as_one_line_and_keeps_its_log_apart() {
     };
     assert_eq!(whole.to_string(), "stack 'app': its health check fails");
     assert_eq!(whole.with_log(), whole.to_string());
+}
+
+#[test]
+fn a_failed_container_keeps_200_lines_by_default_and_never_more_than_its_byte_bound() -> TestResult
+{
+    let plain = config(THREE, "{}", "      web: {stack: app}")?;
+    let policy = RolloutPolicy::from_config(&plain, "production")?;
+    assert_eq!(policy.failure_log_lines(), 200);
+    assert_eq!(
+        policy.failure_log_lines, None,
+        "the default is not in the plan"
+    );
+
+    let set = config(
+        THREE,
+        "{deploy: {failure-log-lines: 500}}",
+        "      web: {stack: app}",
+    )?;
+    assert_eq!(
+        RolloutPolicy::from_config(&set, "production")?.failure_log_lines(),
+        500
+    );
+    for lines in [0, 1001] {
+        let wrong = config(
+            THREE,
+            &format!("{{deploy: {{failure-log-lines: {lines}}}}}"),
+            "      web: {stack: app}",
+        )?;
+        let error = RolloutPolicy::from_config(&wrong, "production")
+            .err()
+            .unwrap_or_default();
+        assert!(
+            error.contains(
+                "environments.production.deploy.failure-log-lines must be between 1 and 1000"
+            ),
+            "{error}"
+        );
+    }
+
+    let log = (1..=300)
+        .map(|line| format!("line {line}"))
+        .collect::<Vec<_>>();
+    let kept = kept_failure_log(&log, 200);
+    assert_eq!(kept.len(), 200);
+    assert_eq!(kept.first().map(String::as_str), Some("line 101"));
+    assert_eq!(kept.last().map(String::as_str), Some("line 300"));
+
+    let wide = vec!["x".repeat(399); 1000];
+    let kept = kept_failure_log(&wide, 1000);
+    assert!(kept.iter().map(|line| line.len() + 1).sum::<usize>() <= FAILURE_LOG_BYTES);
+    assert!(kept.len() < 1000);
+
+    let failure = StepFailure {
+        stack: "app".to_owned(),
+        service: Some("db".to_owned()),
+        reason: "it exited".to_owned(),
+        log: log.clone(),
+        code: None,
+    };
+    assert!(
+        failure
+            .with_log()
+            .ends_with("Its last log lines: line 281 | line 282 | line 283 | line 284 | line 285 | line 286 | line 287 | line 288 | line 289 | line 290 | line 291 | line 292 | line 293 | line 294 | line 295 | line 296 | line 297 | line 298 | line 299 | line 300"),
+        "{}",
+        failure.with_log()
+    );
+    Ok(())
 }
 
 #[test]

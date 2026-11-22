@@ -407,6 +407,16 @@
             "null"
           ]
         },
+        "failure-log-lines": {
+          "description": "How many last lines of a failed container's log a host keeps for\n`mm deploy status` and the deployment's report. The default is 200;\nat most 1000, and never more than 64 KiB.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "maximum": 1000,
+          "minimum": 1
+        },
         "mm-version": {
           "description": "The releases of mm that may plan deployments here, and that the\nhosts' mmd must be: `0.9` is any 0.9 release, `=0.9.3` exactly that\none. A plan from another mm, or for a host that runs another mmd,\nis refused, and `mm doctor` reports both. Not set: any mm that\nspeaks the hosts' protocol.",
           "type": [

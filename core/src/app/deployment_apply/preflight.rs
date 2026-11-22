@@ -212,10 +212,12 @@ impl DeploymentService {
             });
             members.first().map(|container| container.id.clone())
         });
+        let lines = plan.rollout.failure_log_lines();
         let log = match container.filter(|id| !id.is_empty()) {
             Some(container) => inspector
-                .container_log_tail(&container, crate::domain::rollout::FAILURE_LOG_LINES)
+                .container_log_tail(&container, lines)
                 .await
+                .map(|log| crate::domain::rollout::kept_failure_log(&log, lines))
                 .unwrap_or_else(|error| {
                     vec![format!("(the container's log could not be read: {error})")]
                 }),

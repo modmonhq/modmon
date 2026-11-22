@@ -159,7 +159,8 @@ container read it. See [file delivery](../secret-delivery.md#file-delivery).
 `userns_mode` other than `host`, or a `parallelism` of 0. `MM_STACK_ORDER` is the finding for a stack's
 `after:` that names no stack, the stack itself, or a loop,
 `MM_DEPLOY_TIMEOUT` for a `deploy.convergence-timeout` or
-`deploy.progress-timeout` that is not a time, `MM_DEPLOY_MM_VERSION` for a
+`deploy.progress-timeout` that is not a time, `MM_DEPLOY_FAILURE_LOG_LINES`
+for a `deploy.failure-log-lines` outside 1 to 1000, `MM_DEPLOY_MM_VERSION` for a
 `deploy.mm-version` that is not a version requirement, and `MM_DRAIN` for a
 service's `drain` that is not a time or is longer than `15m`. `MM_SCALE` is
 the finding for a service's `replicas` or `autoscale` that cannot work: on a

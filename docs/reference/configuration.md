@@ -676,6 +676,7 @@ environments:
     deploy:
       convergence-timeout: 10m # default; how long a stack may take to become healthy
       progress-timeout: 2m # default; how long a deployment waits for a sign of progress from a host
+      failure-log-lines: 200 # default; how much of a failed container's log a host keeps
   production:
     target: production
     tls: { certificate: tls.certificate, key: tls.key } # optional
@@ -740,6 +741,15 @@ default is `2m`. While a step runs, the command prints a line every 15
 seconds. A step that takes long while its host is at work, such as a
 `before-deploy` job, a container's `drain`, or a large `delivery: push`
 upload, shows progress the whole time and is not stopped by this timeout.
+
+`deploy.failure-log-lines` is how many last lines of a failed container's log
+a host keeps when a stack does not become healthy: 1 to 1000, and the default
+is `200`. The deployment's report and `mm deploy status` show them, also after
+a rollback removed the container, until the host's next deployment. A host
+keeps at most 64 KiB of them, so very long lines leave fewer. A `before-deploy`
+job that fails keeps the same number of its last output lines in the report;
+`mm deploy logs` shows its whole output. Outside 1 to 1000 it fails validation
+with `MM_DEPLOY_FAILURE_LOG_LINES`.
 
 `deploy.mm-version` pins the release of mm that may plan deployments to the
 environment and of `mmd` on its hosts. It is written as Cargo writes a

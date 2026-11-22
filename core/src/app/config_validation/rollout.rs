@@ -81,8 +81,8 @@ pub(super) fn validate_rollout(context: &ValidationContext<'_>, report: &mut Val
     }
 }
 
-/// The environment's `deploy:` keys: its two timeouts and its pinned
-/// release of mm.
+/// The environment's `deploy:` keys: its two timeouts, its failed-log
+/// lines, and its pinned release of mm.
 fn validate_deploy_settings(context: &ValidationContext<'_>, report: &mut ValidationReport) {
     let document = context.document;
     let environment = context.environment;
@@ -109,6 +109,15 @@ fn validate_deploy_settings(context: &ValidationContext<'_>, report: &mut Valida
                 .at_path(document.source("environments")),
             );
         }
+    }
+    if let Err(problem) = DeployConfig::failure_log_lines(deploy) {
+        report.push(
+            Diagnostic::error(
+                "MM_DEPLOY_FAILURE_LOG_LINES",
+                format!("environments.{environment}.deploy.failure-log-lines {problem}"),
+            )
+            .at_path(document.source("environments")),
+        );
     }
     if let Some(Err(problem)) = deploy
         .and_then(|deploy| deploy.mm_version.as_deref())

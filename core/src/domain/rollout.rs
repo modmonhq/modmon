@@ -38,14 +38,19 @@ pub use operations::{
 #[path = "rollout/steps.rs"]
 mod steps;
 pub use steps::{
-    LOCK_LEASE_MS, LOCK_RENEW_MS, RolloutAnswer, RolloutChanges, RolloutStep, StepFailure,
-    unhealthy_code,
+    DEFAULT_FAILURE_LOG_LINES, FAILURE_LOG_BYTES, FAILURE_SUMMARY_LINES, LOCK_LEASE_MS,
+    LOCK_RENEW_MS, MAX_FAILURE_LOG_LINES, RolloutAnswer, RolloutChanges, RolloutStep, StepFailure,
+    failure_log_summary, kept_failure_log, unhealthy_code,
 };
 
 /// What a job that did not succeed in a rollout tells the client: the
-/// stack it ran before, how it ended, and its last lines of output.
+/// stack it ran before, how it ended, and the last `lines` of its output.
 #[must_use]
-pub fn job_failure(stack: &str, run: &crate::domain::scheduler::JobRun) -> StepFailure {
+pub fn job_failure(
+    stack: &str,
+    run: &crate::domain::scheduler::JobRun,
+    lines: usize,
+) -> StepFailure {
     use crate::domain::scheduler::JobRunState;
     let ended = match (run.state, run.exit_code) {
         (JobRunState::TimedOut, _) => "ran past its timeout".to_owned(),
@@ -53,7 +58,6 @@ pub fn job_failure(stack: &str, run: &crate::domain::scheduler::JobRun) -> StepF
         (_, Some(code)) => format!("exited with {code}"),
         (state, None) => format!("ended {}", format!("{state:?}").to_lowercase()),
     };
-    let lines = run.output.lines().collect::<Vec<_>>();
     StepFailure {
         stack: stack.to_owned(),
         service: None,
@@ -61,10 +65,7 @@ pub fn job_failure(stack: &str, run: &crate::domain::scheduler::JobRun) -> StepF
             "job '{}' {ended}, so the stack was not rolled out. `mm deploy logs` shows its output",
             run.job
         ),
-        log: lines[lines.len().saturating_sub(FAILURE_LOG_LINES)..]
-            .iter()
-            .map(|line| (*line).to_owned())
-            .collect(),
+        log: kept_failure_log(&run.output.lines().collect::<Vec<_>>(), lines),
         code: run.error_code.clone(),
     }
 }
@@ -72,9 +73,6 @@ pub fn job_failure(stack: &str, run: &crate::domain::scheduler::JobRun) -> StepF
 /// How long the client waits for every node to resolve a node's new
 /// containers before it calls the node's step failed.
 pub const DISCOVERY_PATIENCE: Duration = Duration::from_secs(30);
-
-/// How many last log lines of a failed container a deployment reports.
-pub const FAILURE_LOG_LINES: usize = 20;
 
 /// One service's `update:` settings, where they differ from the defaults.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
@@ -134,6 +132,10 @@ pub struct RolloutPolicy {
     /// `before-deploy` jobs, because a job's service depends on them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub ahead: Vec<crate::domain::placement::PlacedService>,
+    /// How many last lines of a failed container's log this host keeps,
+    /// when the environment sets `deploy.failure-log-lines`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_log_lines: Option<u32>,
 }
 
 /// One service's `drain`, where it differs from the default.
@@ -155,6 +157,9 @@ impl RolloutPolicy {
             .and_then(|environment| environment.deploy.as_ref());
         let timeout = DeployConfig::convergence_timeout(deploy).map_err(|problem| {
             format!("environments.{environment}.deploy.convergence-timeout {problem}")
+        })?;
+        let failure_log_lines = DeployConfig::failure_log_lines(deploy).map_err(|problem| {
+            format!("environments.{environment}.deploy.failure-log-lines {problem}")
         })?;
         let mut services = Vec::new();
         let mut drains = Vec::new();
@@ -197,7 +202,17 @@ impl RolloutPolicy {
             jobs: deploy_jobs(config, environment)?,
             drains,
             ahead: Vec::new(),
+            failure_log_lines: deploy
+                .and_then(|deploy| deploy.failure_log_lines)
+                .map(|_| failure_log_lines),
         })
+    }
+
+    /// How many last lines of a failed container's log this host keeps.
+    #[must_use]
+    pub fn failure_log_lines(&self) -> usize {
+        usize::try_from(self.failure_log_lines.unwrap_or(DEFAULT_FAILURE_LOG_LINES))
+            .unwrap_or(usize::MAX)
     }
 
     /// How long a container of `service` that leaves keeps serving once

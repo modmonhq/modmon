@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `deploy.failure-log-lines` sets how many last lines of a failed container's
+  log a deployment keeps; `mm deploy status` shows them after a rollback
+  removed the container.
+
+### Changed
+
+- A deployment keeps the last 200 lines of a failed container's log, bounded
+  to 64 KiB, instead of 20.
+
+### Fixed
+
+- A job stopped at its timeout keeps the output it wrote, and `mm deploy logs`
+  and `mm job history` show it.
+
 ## [0.1.1] - 2026-11-19
 
 Remote protocol: 1. This release is the baseline: from it on, `mm` and the

@@ -1285,8 +1285,10 @@ Deployment 8a41… on production [production]
 error[MM_APPLY_STOPPED]: plan 8a41… failed on node 'app-2': service 'web' of stack 'app': its health check fails (MM_RUNTIME_UNHEALTHY). Its last log lines: … Rolled back to what they ran before: app-1, app-2. Not changed: db-1. Fix the cause, then run `mm deploy plan` again
 ```
 
-The report names the node, the service, and the last twenty lines its
-container logged. A node that was not reached keeps its containers as they
+The report names the node, the service, and the last lines its container
+logged: 200 by default, set with `deploy.failure-log-lines`. A rollback
+removes the failed container, but `mm deploy status` still shows those lines
+until the node's next deployment. The one-line error shows the last twenty. A node that was not reached keeps its containers as they
 were; the network addresses the plan gave out stay reserved. A deployment also fails at once, without waiting for the
 window, when a container exits or the engine keeps restarting it. The access
 change of the plan is not rolled back: a key the commit removed stays removed
@@ -1323,6 +1325,7 @@ modules:
 | --------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `deploy.convergence-timeout`      | `10m`        | How long a stack may take on a node to become healthy: `90s`, `15m`, `1h`. The plan shows it. A stack that is not healthy in time fails the deployment like any other failure.         |
 | `deploy.progress-timeout`         | `2m`         | How long `mm deploy apply` waits without any sign of progress from a host before it stops with `MM_TIMEOUT`, naming the host, the step, and the operation. At least `30s`.            |
+| `deploy.failure-log-lines`        | `200`        | How many last lines of a failed container's log a node keeps for the report and `mm deploy status`: 1 to 1000, and never more than 64 KiB.                                           |
 | `stacks.<stack>.after`            | none         | Stacks that roll out before this one, on every node, so that a database is healthy before the application that needs it starts.                                                      |
 | `update.order`                    | `stop-first` | `start-first` starts the new container next to the old one; see below.                                                                                                               |
 | `update.parallelism`              | `1`          | How many nodes replace the service's stack at the same time. A stack takes the smallest value among its services.                                                                    |
