@@ -94,3 +94,24 @@ GitHub container registry accepts no other kind:
 expiration", or the longest your organization allows, and authorize the token
 for single sign-on if the organization requires it. Prefer a machine account,
 so the token does not depend on one person's access.
+
+## Large images and slow registries
+
+Before a host starts or replaces a stack's containers, or launches a job, it
+pulls the images it does not have yet, with the registry logins above. This
+step has its own limit, 20 minutes by default, so starting the containers
+keeps its short one. While a remote host pulls, the line `mm deploy apply`
+prints every 15 seconds names the image, and so does `mm deploy status`.
+
+When a pull needs longer, raise the limit for the environment:
+
+```yaml
+environments:
+  production:
+    deploy:
+      pull-timeout: 45m
+```
+
+A pull that runs past the limit stops the deployment with `MM_TIMEOUT` before
+anything of the stack was stopped or started. The layers that arrived stay on
+the host, so the next `mm deploy apply` carries on from them.

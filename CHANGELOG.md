@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A host pulls the images a stack or a job lacks in a step of its own before
+  anything starts, with the registry logins, under `deploy.pull-timeout`
+  (default `20m`). A large image on a slow registry no longer fails the
+  deployment with `MM_PROCESS_TIMEOUT` after 120 seconds. `mm deploy apply`
+  and `mm deploy status` show which image a host is pulling.
+
 ## [0.1.1] - 2026-11-19
 
 Remote protocol: 1. This release is the baseline: from it on, `mm` and the
