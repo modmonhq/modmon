@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A container that resolves its own `tasks.<service>` name as soon as it
+  starts finds itself: `mmd` reads the engine for a lookup from a container it
+  has not seen yet before answering it, instead of letting the name fall
+  through to the host's resolvers.
+
 ## [0.1.1] - 2026-11-19
 
 Remote protocol: 1. This release is the baseline: from it on, `mm` and the
