@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- A container that resolves its own `tasks.<service>` name as soon as it
+  starts finds itself: `mmd` reads the engine for a lookup from a container it
+  has not seen yet before answering it, instead of letting the name fall
+  through to the host's resolvers.
 - On Podman hosts, a config file or secret file of a service whose Compose
   file sets its own `userns_mode`, such as `auto`, no longer reaches the
   container owned by an unknown id: `mm config validate` and the plan refuse

@@ -2004,7 +2004,10 @@ Each node's `mmd` answers the lookups of the containers on its own node. It
 listens on the node's own address on each network (the first address of the
 node's slice, such as `10.64.0.1`), and the containers of the network's
 services get an `/etc/resolv.conf` that names that address. `mmd` knows the
-containers of its own node by watching the engine. It learns the containers of
+containers of its own node by watching the engine. A lookup from an address
+where `mmd` knows no container yet waits up to a second for the engine to show
+one there, so a container that resolves its own `tasks.<service>` name as its
+entrypoint's first step finds itself in the first answer. It learns the containers of
 the other nodes by asking each node every two seconds, over the mesh, what it
 runs. Nothing is stored and no deployment pushes anything: what runs decides
 the answers. Because each node answers its own containers, it can prefer the
