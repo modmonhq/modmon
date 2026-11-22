@@ -750,7 +750,14 @@ modules:
 ```
 
 A Compose file that sets `userns_mode` on a service keeps it (`host` needs the
-`userns-host` exception in the host policy). A [shared
+`userns-host` exception in the host policy). With a mode other than `host`,
+such as `auto`, Podman picks the service's ids when it creates a container,
+after mm wrote the service's files, so each config file and `secret-files`
+entry of that service has to read the same for any owner: `uid` and `gid` 0
+(or left out) and a mode every user can read, such as the default 0o444.
+`mm config validate` and the plan refuse an entry that asks for more
+(`MM_USER_NAMESPACE`). Remove `userns_mode` from the service to give it ids of
+its own, and the file is given to its `uid` and `gid` again. A [shared
 volume](#shared-volumes-across-nodes) has to reach a service with the same ids
 on every node: a node where another service already has that service's first
 choice refuses the plan and names that service.
