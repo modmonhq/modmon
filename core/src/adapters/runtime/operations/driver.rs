@@ -514,6 +514,28 @@ impl RuntimeOperationDriver for RuntimeOperationsAdapter {
 
 #[async_trait]
 impl RuntimeJobDriver for RuntimeOperationsAdapter {
+    async fn pull_image(
+        &self,
+        target: &RuntimeTarget,
+        service: &str,
+        limit: Duration,
+    ) -> Result<(), MmError> {
+        let base = |args: Vec<String>| self.base_spec(args);
+        crate::adapters::runtime::image_pull::ImagePuller {
+            process: self.process.as_ref(),
+            kind: self.kind,
+            program: self.program(),
+            base: &base,
+        }
+        .pull(
+            target,
+            self.compose_prefix(target)?,
+            Some(&[service.to_owned()]),
+            limit,
+        )
+        .await
+    }
+
     async fn launch(&self, launch: JobLaunch) -> Result<String, MmError> {
         if let Some(existing) = self
             .owned_job_container(&launch.target, &launch.runtime_name)
