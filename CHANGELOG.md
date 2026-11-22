@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- A container that resolves its own `tasks.<service>` name as soon as it
+  starts finds itself: `mmd` reads the engine for a lookup from a container it
+  has not seen yet before answering it, instead of letting the name fall
+  through to the host's resolvers.
 - A host pulls the images a stack or a job lacks in a step of its own before
   anything starts, with the registry logins, under `deploy.pull-timeout`
   (default `20m`). A large image on a slow registry no longer fails the
