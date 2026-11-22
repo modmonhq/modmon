@@ -143,7 +143,10 @@ message names the file, the service, and what to change.
 reason, and, on Podman hosts, where each service has [user ids of its
 own](../remote-daemon.md#run-podman-on-the-hosts), for two services with ids
 of their own that mount one volume and for a `uid` or `gid` of a config
-file or secret file outside the service's ids 0 to 65535. A plan on such a
+file or secret file outside the service's ids 0 to 65535, and for a config
+file or secret file that names an owner other than root or a mode not every
+user can read, of a service whose Compose file sets a `userns_mode` other than
+`host`. A plan on such a
 host fails with it when the host has no `mm-services` range in `/etc/subuid`
 (run `mm target setup`), when the range is full, and when a service on a
 shared volume cannot have the ids every other node gives it.

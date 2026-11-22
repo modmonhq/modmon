@@ -61,6 +61,14 @@ pub(super) fn validate_user_namespaces(
             continue;
         };
         let chosen = own_userns_modes(&models);
+        for finding in crate::app::stacks::files_in_chosen_namespaces(
+            document,
+            environment,
+            stack_name,
+            &crate::app::stacks::chosen_user_namespaces(&models),
+        ) {
+            report.push(Diagnostic::error("MM_USER_NAMESPACE", finding));
+        }
         for (volume, users) in crate::app::stacks::volume_users(&models) {
             let users = users
                 .into_iter()
