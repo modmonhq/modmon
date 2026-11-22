@@ -24,6 +24,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   container owned by an unknown id: `mm config validate` and the plan refuse
   an entry whose owner or mode cannot hold there (`MM_USER_NAMESPACE`) and say
   to remove `userns_mode`, which gives the service ids of its own.
+- An `internal: true` network that spans cluster nodes no longer takes a
+  container's default route, which cut a container that is also on an
+  ordinary network off from the internet and from the other nodes. Podman
+  creates it with `no_default_route=true` and Docker Engine as an internal
+  network; the first deployment after upgrading creates an existing one
+  again and restarts the services on it.
 - A host pulls the images a stack or a job lacks in a step of its own before
   anything starts, with the registry logins, under `deploy.pull-timeout`
   (default `20m`). A large image on a slow registry no longer fails the
