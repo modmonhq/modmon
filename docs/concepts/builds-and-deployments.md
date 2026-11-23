@@ -180,9 +180,9 @@ excludes it at any depth. `*` matches within one directory, and a later
 `!pattern` sends again what an earlier pattern excluded. `.git` at the top of
 the context is never sent.
 
-The context keeps only one mode bit from your checkout: whether a file is
-executable. Directories reach the engine as 0755, executable files as 0755,
-and other files as 0644, whatever your umask, so a non-root user in the image
+The context keeps only one mode bit from your checkout: whether a file's owner
+may execute it, which is the bit Git records. Directories reach the engine as
+0755, files executable by their owner as 0755, and other files as 0644, whatever your umask, so a non-root user in the image
 can read what `COPY` put there. Set other modes in the Dockerfile with
 `COPY --chmod`. Making a file executable, or no longer executable, rebuilds
 the image.
@@ -277,7 +277,9 @@ was built for.
 
 The build context is hashed from the files in the checkout, so files that are
 not committed but are not excluded by the context's ignore file also make the
-units differ.
+units differ. A receipt written by an older mm release can differ in its build
+context alone, because the way mm hashes file modes changed; build the target
+environment again with `mm -e production build --publish`.
 
 ### Import a build
 

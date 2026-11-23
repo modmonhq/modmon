@@ -14,12 +14,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   a second to list its containers, instead of letting the name fall through
   to the host's resolvers.
 - A build context reaches the engine with directories at 0755 and files at
-  0644, or 0755 when executable, whatever the umask `mm build` runs under, so
-  a non-root user in the image can read what `COPY` put there. The context
-  hash now records these modes, so every module rebuilds once after the
-  upgrade. A receipt promotes to another environment only when it and the
-  hosts' `mmd` are both on this release or later; otherwise build that
-  environment again.
+  0644, or 0755 when its owner may execute it (the bit Git records), whatever
+  the umask `mm build` runs under, so a non-root user in the image can read
+  what `COPY` put there. The context hash now records these modes, so every
+  module rebuilds once after the upgrade. A receipt promotes to another
+  environment only when it and the hosts' `mmd` are both on this release or
+  later; otherwise build that environment again.
 - On Podman hosts, a config file or secret file of a service whose Compose
   file sets its own `userns_mode`, such as `auto`, no longer reaches the
   container owned by an unknown id: `mm config validate` and the plan refuse

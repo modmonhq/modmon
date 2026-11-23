@@ -263,7 +263,10 @@ fn unit_difference(built: &ImageBuildUnitPlan, current: &ImageBuildUnitPlan) -> 
         return Some("Dockerfile contents".to_owned());
     }
     if built.context_hash != current.context_hash {
-        return Some("build context contents".to_owned());
+        return Some(
+            "build context contents (files changed, or an older mm hashed the context in the receipt)"
+                .to_owned(),
+        );
     }
     let compared = |unit: &ImageBuildUnitPlan| -> BTreeMap<String, String> {
         unit.args
