@@ -45,6 +45,7 @@ pub(crate) fn built_images_line(result: &ImageBuildResult) -> String {
 
 pub(crate) fn write_image_build_plan(
     plan: &ImageBuildPlan,
+    published_for: &std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
     format: OutputFormat,
 ) -> Result<(), MmError> {
     if format == OutputFormat::Json {
@@ -82,6 +83,15 @@ pub(crate) fn write_image_build_plan(
             terminal_safe(&unit.context_hash)
         )
         .map_err(output_error)?;
+        if let Some(environments) = published_for.get(&unit.module) {
+            let environments = environments.iter().cloned().collect::<Vec<_>>();
+            writeln!(
+                writer,
+                "    for: {}",
+                terminal_safe(&environments.join(", "))
+            )
+            .map_err(output_error)?;
+        }
         if !unit.dependencies.is_empty() {
             let deps = unit
                 .dependencies

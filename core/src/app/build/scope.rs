@@ -45,6 +45,65 @@ pub(super) fn modules_in_scope(document: &ConfigDocument, environment: &str) -> 
     scope
 }
 
+/// The modules a published build of `environment` covers, each with the
+/// environments it is for: `environment`, and every other environment on a
+/// remote target that runs it and builds the same variant of it.
+pub(super) fn publish_scope(
+    document: &ConfigDocument,
+    environment: &str,
+) -> BTreeMap<String, BTreeSet<String>> {
+    let development = document.config.project.development_environment.as_deref();
+    let mut scope = BTreeMap::<String, BTreeSet<String>>::new();
+    for module in modules_in_scope(document, environment) {
+        scope
+            .entry(module)
+            .or_default()
+            .insert(environment.to_owned());
+    }
+    for other in document.config.environments.keys() {
+        if other == environment
+            || development == Some(other.as_str())
+            || document.config.on_local_target(other)
+        {
+            continue;
+        }
+        for module in modules_in_scope(document, other) {
+            if builds_same_variant(document, &module, (environment, other)) {
+                scope.entry(module).or_default().insert(other.clone());
+            }
+        }
+    }
+    scope
+}
+
+fn builds_same_variant(
+    document: &ConfigDocument,
+    module: &str,
+    (built, other): (&str, &str),
+) -> bool {
+    let Some(build) = document
+        .config
+        .modules
+        .get(module)
+        .and_then(|module| module.build.as_ref())
+    else {
+        return true;
+    };
+    let selected = |environment: &str| {
+        let variant = document
+            .config
+            .environments
+            .get(environment)
+            .and_then(|config| config.build_variant.clone());
+        match build.select_target(variant.as_deref()) {
+            BuildTargetSelection::Selected(name) => Some(name.to_owned()),
+            _ => None,
+        }
+    };
+    let built = selected(built);
+    built.is_none() || built == selected(other)
+}
+
 fn configured_producers(document: &ConfigDocument) -> BTreeMap<String, Vec<String>> {
     let mut producers = BTreeMap::<String, Vec<String>>::new();
     for (name, module) in &document.config.modules {

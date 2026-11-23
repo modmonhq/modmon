@@ -1307,7 +1307,7 @@ json\t''"
 complete -c mm -n "__fish_mm_using_subcommand build; and not __fish_seen_subcommand_from plan apply receipt import help" -l publish -d 'Push a multi-platform image index and reviewed tags to the registry'
 complete -c mm -n "__fish_mm_using_subcommand build; and not __fish_seen_subcommand_from plan apply receipt import help" -l all -d 'Build every module that has a build, not only the ones the selected environment runs and the bases they build FROM'
 complete -c mm -n "__fish_mm_using_subcommand build; and not __fish_seen_subcommand_from plan apply receipt import help" -l yes -d 'Skip the build confirmation prompt'
-complete -c mm -n "__fish_mm_using_subcommand build; and not __fish_seen_subcommand_from plan apply receipt import help" -s h -l help -d 'Print help'
+complete -c mm -n "__fish_mm_using_subcommand build; and not __fish_seen_subcommand_from plan apply receipt import help" -s h -l help -d 'Print help (see more with \'--help\')'
 complete -c mm -n "__fish_mm_using_subcommand build; and not __fish_seen_subcommand_from plan apply receipt import help" -s V -l version -d 'Print version'
 complete -c mm -n "__fish_mm_using_subcommand build; and not __fish_seen_subcommand_from plan apply receipt import help" -f -a "plan" -d 'Print the deterministic image build plan without running Docker'
 complete -c mm -n "__fish_mm_using_subcommand build; and not __fish_seen_subcommand_from plan apply receipt import help" -f -a "apply" -d 'Execute an exact plan hash printed by `mm build plan`'
@@ -1325,7 +1325,7 @@ json\t''"
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from plan" -l publish -d 'Push a multi-platform image index and reviewed tags to the registry'
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from plan" -l all -d 'Build every module that has a build, not only the ones the selected environment runs and the bases they build FROM'
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from plan" -l yes -d 'Skip the build confirmation prompt'
-complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from plan" -s h -l help -d 'Print help'
+complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from plan" -s h -l help -d 'Print help (see more with \'--help\')'
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from plan" -s V -l version -d 'Print version'
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from apply" -l plan -d 'Hash printed by `mm build plan`' -r
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from apply" -l root -d 'Project root or a path inside the project' -r -F
@@ -1339,7 +1339,7 @@ json\t''"
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from apply" -l publish -d 'Push a multi-platform image index and reviewed tags to the registry'
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from apply" -l all -d 'Build every module that has a build, not only the ones the selected environment runs and the bases they build FROM'
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from apply" -l yes -d 'Skip the build confirmation prompt'
-complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from apply" -s h -l help -d 'Print help'
+complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from apply" -s h -l help -d 'Print help (see more with \'--help\')'
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from apply" -s V -l version -d 'Print version'
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from receipt" -l root -d 'Project root or a path inside the project' -r -F
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from receipt" -s e -l environment -d 'Environment to operate on (overrides MM_ENVIRONMENT and default-environment)' -r
@@ -1352,7 +1352,7 @@ json\t''"
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from receipt" -l publish -d 'Push a multi-platform image index and reviewed tags to the registry'
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from receipt" -l all -d 'Build every module that has a build, not only the ones the selected environment runs and the bases they build FROM'
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from receipt" -l yes -d 'Skip the build confirmation prompt'
-complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from receipt" -s h -l help -d 'Print help'
+complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from receipt" -s h -l help -d 'Print help (see more with \'--help\')'
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from receipt" -s V -l version -d 'Print version'
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from import" -l plan -d 'Apply the import with this hash, printed by the review' -r
 complete -c mm -n "__fish_mm_using_subcommand build; and __fish_seen_subcommand_from import" -l root -d 'Project root or a path inside the project' -r -F

@@ -130,7 +130,7 @@ pub(super) async fn run_deploy_command(request: DeployCommandRequest<'_>) -> Res
         composition::remote_environment(selection, explicit_home, runtime_kind)?
     {
         return run_remote_deploy(
-            &selection.start,
+            (selection, runtime),
             (command, &release.unwrap_or_default()),
             (yes, format),
             &environment,
@@ -481,7 +481,7 @@ async fn remote_status(
 /// Plans and applies on a remote environment: one host, or every node of a
 /// cluster target under one plan hash.
 pub(super) async fn run_remote_deploy(
-    start: &std::path::Path,
+    (selection, runtime): (&WorkspaceSelection, &RuntimeComposition),
     (command, release): (Option<DeployCommand>, &ReleaseRequest),
     (yes, format): (bool, OutputFormat),
     environment: &crate::app::RemoteEnvironment,
@@ -548,7 +548,7 @@ pub(super) async fn run_remote_deploy(
         Some(DeployCommand::Plan { commit, receipt }) => (commit.as_deref(), receipt.as_deref()),
         _ => (None, None),
     };
-    let commit = composition::resolve_commit(start, explicit)?;
+    let commit = composition::resolve_commit(&selection.start, explicit)?;
     let receipt = receipt.map(super::build::read_receipt).transpose()?;
     if let Some(receipt) = &receipt
         && receipt.source_commit() != commit
@@ -560,6 +560,10 @@ pub(super) async fn run_remote_deploy(
                 receipt.source_commit()
             ),
         });
+    }
+    if let Some(receipt) = &receipt {
+        let planner = runtime.build_manager();
+        planner.check_receipt_covers(selection, receipt).await?;
     }
     let progress = Progress::new(format);
     let preview = environment

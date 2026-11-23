@@ -117,7 +117,7 @@ pub(super) async fn run_build_command(request: BuildCommandRequest<'_>) -> Resul
     .await?;
     progress.finish();
     if matches!(command, Some(BuildCommand::Plan)) {
-        output::write_image_build_plan(&preview, format)?;
+        show_build_plan(&planner, selection, &preview, format)?;
         return Ok(0);
     }
     if format == OutputFormat::Json && !yes {
@@ -144,7 +144,7 @@ pub(super) async fn run_build_command(request: BuildCommandRequest<'_>) -> Resul
         None => preview.plan_hash.clone(),
     };
     if format == OutputFormat::Human {
-        output::write_image_build_plan(&preview, format)?;
+        show_build_plan(&planner, selection, &preview, format)?;
     }
     if !yes
         && !confirm(&format!(
@@ -163,6 +163,21 @@ pub(super) async fn run_build_command(request: BuildCommandRequest<'_>) -> Resul
         format,
     )
     .await
+}
+
+/// The plan, with the environments each module of a published build is for.
+fn show_build_plan(
+    planner: &crate::app::BuildManager,
+    selection: &WorkspaceSelection,
+    plan: &crate::domain::build::ImageBuildPlan,
+    format: OutputFormat,
+) -> Result<(), MmError> {
+    let published_for = if plan.publish && format == OutputFormat::Human {
+        planner.publish_scope(selection)?
+    } else {
+        std::collections::BTreeMap::new()
+    };
+    output::write_image_build_plan(plan, &published_for, format)
 }
 
 /// `mm build receipt FILE`.

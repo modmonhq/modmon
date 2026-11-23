@@ -11,6 +11,17 @@ impl MmConfig {
             .filter(move |(_, service)| service.is_active(environment))
     }
 
+    /// Whether `environment`'s target, its own or the project's, is
+    /// `local`: this machine.
+    #[must_use]
+    pub fn on_local_target(&self, environment: &str) -> bool {
+        self.environments
+            .get(environment)
+            .and_then(|environment| environment.target.as_deref())
+            .unwrap_or(&self.target)
+            == "local"
+    }
+
     /// Modules with a service active in `environment`.
     pub fn active_modules<'a>(
         &'a self,

@@ -485,3 +485,186 @@ fn the_string_form_and_an_unknown_variant_key_read_clearly()
     assert_eq!(build.targets["production"].suffix("production"), "");
     Ok(())
 }
+
+const DEPLOY_ENVIRONMENTS: &str = r#"schema-version: 1
+project:
+  id: 019c527b-6242-7b43-bfd4-bd60e27c1de4
+  name: publish-scope
+default-environment: ci
+target: local
+stacks:
+  app:
+    files: [compose.yaml]
+modules:
+  web:
+    path: web
+    services:
+      web:
+        stack: app
+    build:
+      image: registry.example.com/acme/web
+  backup:
+    path: backup
+    services:
+      backup:
+        stack: app
+        environments: [uat, production]
+    build:
+      image: registry.example.com/acme/backup
+      default-variant: production
+      targets: {production: "", development: development}
+  photos:
+    path: photos
+    services:
+      photos:
+        stack: app
+        environments: [preview]
+    build:
+      image: registry.example.com/acme/photos
+      targets: {production: "", development: development}
+environments:
+  ci:
+    build-variant: production
+  local: {}
+  uat:
+    target: remote
+    build-variant: production
+  production:
+    target: remote
+    build-variant: production
+  preview:
+    target: remote
+    build-variant: development
+"#;
+
+fn deploy_environments(config: &str) -> Result<Project, Box<dyn std::error::Error>> {
+    let project = Project::new(config)?;
+    let root = project.root.path();
+    for module in ["backup", "photos"] {
+        fs::create_dir(root.join(module))?;
+        fs::write(
+            root.join(module).join("Dockerfile"),
+            "FROM scratch AS production\nFROM scratch AS development\n",
+        )?;
+    }
+    fs::write(
+        root.join("compose.yaml"),
+        "services:\n  web:\n    image: registry.example.com/acme/web:old\n  backup:\n    image: registry.example.com/acme/backup:old\n  photos:\n    image: registry.example.com/acme/photos:old\n",
+    )?;
+    Ok(project)
+}
+
+fn modules(plan: &mm::domain::build::ImageBuildPlan) -> Vec<&str> {
+    let mut modules = plan
+        .units
+        .iter()
+        .map(|unit| unit.module.as_str())
+        .collect::<Vec<_>>();
+    modules.sort_unstable();
+    modules
+}
+
+#[tokio::test]
+async fn a_published_build_covers_the_modules_of_the_environments_it_deploys_to()
+-> Result<(), Box<dyn std::error::Error>> {
+    let project = deploy_environments(DEPLOY_ENVIRONMENTS)?;
+    let service = project.service(Arc::new(Builder::default()));
+    let ci = project.select("ci");
+    let plan = service.plan(&ci, true).await?;
+    assert_eq!(modules(&plan), ["backup", "web"]);
+
+    let manager = BuildManager::new(Arc::new(ConfigLoader), Arc::new(Source));
+    let published_for = manager.publish_scope(&ci)?;
+    assert_eq!(
+        published_for["backup"].iter().collect::<Vec<_>>(),
+        ["production", "uat"]
+    );
+    assert_eq!(
+        published_for["web"].iter().collect::<Vec<_>>(),
+        ["ci", "preview", "production", "uat"]
+    );
+    assert!(!published_for.contains_key("photos"));
+
+    service.apply_reviewed(&ci, true, &plan.plan_hash).await?;
+    let receipt = service.receipt(&ci)?;
+    let review = service
+        .review_import(&project.select("uat"), &receipt, false)
+        .await?;
+    assert_eq!(review.environment, "uat");
+    manager
+        .check_receipt_covers(&project.select("production"), &receipt)
+        .await?;
+
+    let refused = manager
+        .check_receipt_covers(&project.select("preview"), &receipt)
+        .await;
+    assert!(
+        matches!(&refused, Err(MmError::Build { message })
+            if message.contains("from environment 'ci' has no image of module 'photos', which 'preview' runs")
+                && message.contains("`mm -e preview build --publish`")),
+        "{refused:?}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn builds_that_do_not_publish_build_only_what_the_environment_runs()
+-> Result<(), Box<dyn std::error::Error>> {
+    let project = deploy_environments(DEPLOY_ENVIRONMENTS)?;
+    let manager = BuildManager::new(Arc::new(ConfigLoader), Arc::new(Source));
+    let archive = manager
+        .plan(
+            &project.select("ci"),
+            mm::app::BuildRequest::new(false, false),
+        )
+        .await?;
+    assert_eq!(modules(&archive), ["web"]);
+    let uat = manager
+        .plan(
+            &project.select("uat"),
+            mm::app::BuildRequest::new(false, false),
+        )
+        .await?;
+    assert_eq!(modules(&uat), ["backup", "web"]);
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_receipt_without_a_module_the_environment_runs_is_refused_before_any_host()
+-> Result<(), Box<dyn std::error::Error>> {
+    let unused = DEPLOY_ENVIRONMENTS.replace(
+        "        environments: [uat, production]\n",
+        "        environments: [preview]\n",
+    );
+    let project = deploy_environments(&unused)?;
+    let service = project.service(Arc::new(Builder::default()));
+    let ci = project.select("ci");
+    let plan = service.plan(&ci, true).await?;
+    assert_eq!(modules(&plan), ["web"]);
+    service.apply_reviewed(&ci, true, &plan.plan_hash).await?;
+    let receipt = service.receipt(&ci)?;
+
+    fs::write(
+        project.root.path().join(".config/mm.yaml"),
+        DEPLOY_ENVIRONMENTS,
+    )?;
+    let manager = BuildManager::new(Arc::new(ConfigLoader), Arc::new(Source));
+    let refused = manager
+        .check_receipt_covers(&project.select("uat"), &receipt)
+        .await;
+    assert!(
+        matches!(&refused, Err(MmError::Build { message })
+            if message.contains("from environment 'ci' has no image of module 'backup', which 'uat' runs")
+                && message.contains("`mm -e ci build --publish`")),
+        "{refused:?}"
+    );
+    let imported = service
+        .review_import(&project.select("uat"), &receipt, false)
+        .await;
+    assert!(
+        matches!(&imported, Err(MmError::Build { message })
+            if message.contains("no image of module 'backup'")),
+        "{imported:?}"
+    );
+    Ok(())
+}
