@@ -38,13 +38,10 @@ pub(super) fn check_service(
         };
         if mode == "host" {
             push(findings, subject, feature, format!("{key}: host"));
-        } else if mode.contains('$') {
-            push(
-                findings,
-                subject,
-                feature,
-                format!("{key}: {mode} in {file} comes from a variable; write the mode itself"),
-            );
+        } else if super::interpolates(mode) {
+            let joinable = JOINABLE.iter().any(|(joins, _)| *joins == key);
+            let refused = if joinable { CONTAINER_JOIN } else { feature };
+            super::push_variable(findings, (subject, refused), (key, mode), file);
         } else if mode.starts_with("container:") {
             push(
                 findings,
@@ -123,7 +120,7 @@ fn reaches_host<'a>(modes: &'a Modes, start: &'a str) -> Option<(&'a str, &'a st
             continue;
         }
         for mode in modes.get(service).into_iter().flat_map(BTreeMap::keys) {
-            if mode == "host" || mode.contains('$') {
+            if mode == "host" || super::interpolates(mode) {
                 return Some((service, mode));
             }
             if let Some(joined) = mode.strip_prefix("service:") {

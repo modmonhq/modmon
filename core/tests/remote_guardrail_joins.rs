@@ -1,6 +1,7 @@
-//! Namespaces a service reaches through another: a remote host refuses a
-//! container joined by name, and a `service:` join that reaches a host
-//! namespace needs the same exception as the service it joins.
+//! What a remote host refuses beyond the literal Compose keys: a container
+//! joined by name, a `service:` join that reaches a host namespace without
+//! the same exception as the service it joins, and a checked key whose value
+//! comes from a variable.
 
 mod daemon_host;
 mod temp_dirs;
@@ -156,7 +157,7 @@ fn joining_a_container_by_name_is_refused_even_with_an_exception() -> TestResult
     assert!(
         findings
             .iter()
-            .all(|line| line.ends_with("| no host exception allows this; join a service of the same stack with `service:<service>`")),
+            .all(|line| line.ends_with("| no host exception allows this: write the mode itself, and `service:<service>` to join a service of the same stack")),
         "{findings:?}"
     );
     Ok(())
@@ -283,7 +284,7 @@ fn a_namespace_mode_from_a_variable_counts_as_the_hosts() -> TestResult {
         has(
             &findings,
             REFUSED,
-            "app/web uses pid-host (pid: ${PID_MODE:-host} in compose.yaml comes from a variable; write the mode itself)"
+            "app/web uses container-join (pid: ${PID_MODE:-host} in compose.yaml comes from a variable; write the value itself)"
         ),
         "{findings:?}"
     );
@@ -295,6 +296,90 @@ fn a_namespace_mode_from_a_variable_counts_as_the_hosts() -> TestResult {
         ),
         "{findings:?}"
     );
+    Ok(())
+}
+
+#[test]
+fn every_checked_key_set_from_a_variable_is_refused() -> TestResult {
+    let temporary = project(
+        &["web", "loud"],
+        &[(
+            "compose.yaml",
+            r#"services:
+  web:
+    image: example/web:${TAG:-1}
+    environment: {LEVEL: "${LEVEL:-debug}"}
+    privileged: ${PRIVILEGED:-true}
+    cap_add: ["${CAP:-SYS_ADMIN}"]
+    security_opt: ["${SECCOMP:-seccomp:unconfined}"]
+    sysctls: ["${SYSCTL:-kernel.shmmax}=1", "net.core.somaxconn=${CONNECTIONS:-1024}"]
+    uts: ${UTS:-host}
+  loud:
+    image: example/web
+    privileged: "true"
+volumes:
+  data: {external: "${EXTERNAL:-true}"}
+  bound: {driver_opts: {o: "${OPTS:-bind}"}}
+  legacy: {external: {name: shared}}
+  plain: {driver_opts: {size: "${SIZE:-1g}"}}
+networks:
+  outside: {external: "${NET_EXTERNAL:-true}"}
+secrets:
+  key: {file: "${KEY_FILE:-/etc/shadow}"}
+configs:
+  literal: {file: "./conf$$.txt"}
+"#,
+        )],
+    )?;
+    let (status, findings) = validate(temporary.path(), &[])?;
+    assert_eq!(status, 2, "{findings:?}");
+    let mut reported = findings
+        .iter()
+        .filter_map(|line| line.strip_prefix(REFUSED))
+        .map(|line| line.split(" | ").next().unwrap_or_default().to_owned())
+        .collect::<Vec<_>>();
+    reported.sort();
+    let variable = |subject: &str, feature: &str, written: &str| {
+        format!(
+            "{subject} uses {feature} ({written} in compose.yaml comes from a variable; write the value itself)"
+        )
+    };
+    let mut expected = vec![
+        variable(
+            "app/network:outside",
+            "external-network",
+            "external: ${NET_EXTERNAL:-true}",
+        ),
+        variable(
+            "app/secrets:key",
+            "file-outside-project",
+            "secrets.key.file: ${KEY_FILE:-/etc/shadow}",
+        ),
+        variable(
+            "app/volume:bound",
+            "volume-bind",
+            "driver_opts.o: ${OPTS:-bind}",
+        ),
+        variable(
+            "app/volume:data",
+            "external-volume",
+            "external: ${EXTERNAL:-true}",
+        ),
+        "app/volume:legacy uses external-volume (external is set)".to_owned(),
+        "app/loud uses privileged (privileged: true)".to_owned(),
+        variable("app/web", "privileged", "privileged: ${PRIVILEGED:-true}"),
+        variable("app/web", "cap-add", "cap_add: ${CAP:-SYS_ADMIN}"),
+        variable(
+            "app/web",
+            "security-opt",
+            "security_opt: ${SECCOMP:-seccomp:unconfined}",
+        ),
+        variable("app/web", "sysctls", "sysctls: ${SYSCTL:-kernel.shmmax}"),
+        variable("app/web", "uts-host", "uts: ${UTS:-host}"),
+    ];
+    expected.sort();
+    assert_eq!(reported, expected, "{findings:?}");
+    assert_eq!(findings.len(), expected.len(), "{findings:?}");
     Ok(())
 }
 
