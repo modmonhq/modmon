@@ -12,6 +12,8 @@ pub enum MutationStatus {
     NotStarted,
     Unknown,
     Applied,
+    /// Part of it ran and is kept as it is, for a look.
+    Kept,
 }
 
 impl std::fmt::Display for MutationStatus {
@@ -20,6 +22,7 @@ impl std::fmt::Display for MutationStatus {
             Self::NotStarted => formatter.write_str("not started"),
             Self::Unknown => formatter.write_str("unknown"),
             Self::Applied => formatter.write_str("applied"),
+            Self::Kept => formatter.write_str("partly applied and kept"),
         }
     }
 }
@@ -532,6 +535,19 @@ impl MmError {
             .split_once(" (")
             .map_or(problem.as_str(), |(own, _)| own);
         Some((format!("{subject} {own}"), help.clone()))
+    }
+
+    /// Whether a partly applied operation was kept as it is rather than
+    /// undone.
+    #[must_use]
+    pub const fn kept(&self) -> bool {
+        matches!(
+            self,
+            Self::OperationFailure {
+                mutation_status: MutationStatus::Kept,
+                ..
+            }
+        )
     }
 
     #[must_use]

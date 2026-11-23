@@ -676,13 +676,13 @@ fn the_rules_accept_one_network_over_the_mesh_and_drop_the_rest() -> TestResult 
     assert_eq!(
         firewall.filter,
         [
+            format!("-A MM-CLUSTER -s 10.64.16.0/20 -d 10.64.16.0/20 -i mm0 -o {frontend} -m comment --comment \"mm network mm-frontend\" -j ACCEPT"),
+            format!("-A MM-CLUSTER -s 10.64.16.0/20 -d 10.64.16.0/20 -i {frontend} -o mm0 -m comment --comment \"mm network mm-frontend\" -j ACCEPT"),
             "-A MM-CLUSTER -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment \"mm replies\" -j RETURN".to_owned(),
             "-A MM-CLUSTER -m conntrack --ctstate DNAT -m comment --comment \"mm published ports\" -j RETURN".to_owned(),
             format!("-A MM-CLUSTER -s 10.64.0.0/20 -d 10.64.0.0/20 -i mm0 -o {backend} -m comment --comment \"mm network mm-backend\" -j ACCEPT"),
             format!("-A MM-CLUSTER -s 10.64.0.0/20 -d 10.64.0.0/20 -i {backend} -o mm0 -m comment --comment \"mm network mm-backend\" -j ACCEPT"),
             format!("-A MM-CLUSTER -i {backend} -o {backend} -m comment --comment \"mm network mm-backend\" -j RETURN"),
-            format!("-A MM-CLUSTER -s 10.64.16.0/20 -d 10.64.16.0/20 -i mm0 -o {frontend} -m comment --comment \"mm network mm-frontend\" -j ACCEPT"),
-            format!("-A MM-CLUSTER -s 10.64.16.0/20 -d 10.64.16.0/20 -i {frontend} -o mm0 -m comment --comment \"mm network mm-frontend\" -j ACCEPT"),
             format!("-A MM-CLUSTER -i {frontend} -o {frontend} -m comment --comment \"mm network mm-frontend\" -j RETURN"),
             format!("-A MM-CLUSTER -i {frontend} -m comment --comment \"mm internal network mm-frontend\" -j DROP"),
             "-A MM-CLUSTER -d 10.64.0.0/12 -m comment --comment \"mm cluster networks\" -j DROP".to_owned(),

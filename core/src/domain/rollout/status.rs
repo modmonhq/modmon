@@ -191,6 +191,18 @@ impl DeploymentStatus {
             .collect()
     }
 
+    /// Whether every host answered and none has finished a deployment of
+    /// the environment: nothing serves it yet.
+    #[must_use]
+    pub fn never_deployed(&self) -> bool {
+        !self.nodes.is_empty()
+            && self.nodes.iter().all(|row| {
+                row.status
+                    .as_ref()
+                    .is_some_and(|status| status.current.is_none() && status.previous.is_none())
+            })
+    }
+
     /// Whether there are hosts and none of them answered.
     #[must_use]
     pub fn none_answered(&self) -> bool {

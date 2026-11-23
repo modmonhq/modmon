@@ -80,7 +80,7 @@ pub(crate) fn plan_lines(plan: &ClusterDeploymentPlan) -> Vec<String> {
     lines.extend(job_lines(&jobs, &ran_once));
     for unfinished in &plan.unfinished {
         lines.push(format!(
-            "  unfinished: node {} holds a rollout of plan {} (commit {}) that {} started at {} and nobody finished; applying this plan first returns the node to what it ran before",
+            "  unfinished: node {} holds a rollout of plan {} (commit {}) that {} started at {} and nobody finished; applying this plan first returns the node to what it ran before, or, where it never finished a deployment, applies over what that rollout left",
             unfinished.node,
             short(&unfinished.plan_hash),
             short(&unfinished.commit),

@@ -56,3 +56,11 @@ impl RemoteEnvironment {
 pub(super) fn nodes(count: usize) -> String {
     format!("{count} node{}", if count == 1 { "" } else { "s" })
 }
+
+/// What a failed first deployment left on the nodes, and what to run next.
+pub(super) fn kept_first(environment: &str, service: Option<&str>) -> String {
+    let service = service.unwrap_or("SERVICE");
+    format!(
+        ". Nothing ran before this first deployment of '{environment}', so nothing was rolled back: every node keeps the stacks it started as they are, the one that failed too. `mm service status --environment {environment}` shows each container and `mm service logs {service} --environment {environment}` its log; fix what failed, then `mm deploy plan --environment {environment}` deploys over them"
+    )
+}

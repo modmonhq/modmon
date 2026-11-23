@@ -62,6 +62,9 @@ mod support;
 #[path = "deployment/route_adoption.rs"]
 mod route_adoption;
 
+#[path = "deployment/first_failure.rs"]
+mod first_failure;
+
 const PROJECT_ID: &str = "019c527b-6242-7b43-bfd4-bd60e27c1de3";
 const TARGET_ID: &str = "319c527b-6242-7b43-bfd4-bd60e27c1de3";
 const BUILD_COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
@@ -2093,7 +2096,9 @@ async fn deployment_plan_canonical_contract_rejects_cross_owner_and_inconsistent
         plan.stacks[0].artifact.manifest.artifact_hash = "f".repeat(64);
     });
     rejects!(|plan: &mut mm::domain::deployment::DeploymentPlan| {
-        plan.removed_stacks.push(plan.stacks[0].clone());
+        let mut foreign = plan.stacks[0].clone();
+        foreign.artifact.manifest.environment = "other".to_owned();
+        plan.removed_stacks.push(foreign);
         plan.stacks.clear();
     });
     rejects!(|plan: &mut mm::domain::deployment::DeploymentPlan| plan
@@ -2829,6 +2834,10 @@ async fn failure_injection_preflight_first_mutation_mid_apply_and_verification_i
             Err(MmError::RuntimeResponse { .. })
         ));
         let calls = fixture.runtime.calls()?;
+        assert!(
+            !calls.contains(&"apply:app".to_owned()),
+            "mutation {mutation} fails before any stack starts: {calls:?}"
+        );
         assert!(calls.contains(&"remove:app".to_owned()));
         assert!(calls.contains(&"remove:ingress".to_owned()));
         assert!(
@@ -2846,18 +2855,14 @@ async fn failure_injection_preflight_first_mutation_mid_apply_and_verification_i
         );
     }
 
-    let verification = Fixture::new(false)?;
+    let verification = Fixture::new(true)?;
     let plan = verification.service.plan(&verification.selection).await?;
-    verification
-        .runtime
-        .fail_convergence
-        .store(true, Ordering::SeqCst);
     assert!(matches!(
         verification
             .service
             .apply_reviewed(&verification.selection, &plan.plan_hash)
             .await,
-        Err(error) if error.code() == "MM_RUNTIME_RESPONSE" && error.step_failure().is_some()
+        Err(MmError::RuntimeResponse { .. })
     ));
     assert!(
         verification
@@ -2892,6 +2897,7 @@ async fn a_failed_container_keeps_the_configured_lines_with_secrets_hidden()
         .err()
         .ok_or("an unhealthy deployment succeeded")?;
     assert_eq!(fixture.runtime.log_lines_asked.load(Ordering::SeqCst), 3);
+    assert!(error.kept(), "a failed first deployment is kept: {error:?}");
     let failure = error.step_failure().ok_or("the error lost its failure")?;
     assert_eq!(failure.service.as_deref(), Some("web"));
     assert_eq!(failure.log.len(), 3, "{:?}", failure.log);
@@ -3381,12 +3387,8 @@ async fn deployment_finish_journal_failures_preserve_applied_or_unknown_status()
     ));
     assert_eq!(applied.routes.route_set(applied.target_id)?.claims.len(), 1);
 
-    let unknown = Fixture::new(false)?;
+    let unknown = Fixture::new(true)?;
     let plan = unknown.service.plan(&unknown.selection).await?;
-    unknown
-        .runtime
-        .fail_convergence
-        .store(true, Ordering::SeqCst);
     let connection = rusqlite::Connection::open(&unknown.state_path)?;
     connection.execute_batch(
         "CREATE TRIGGER fail_deployment_failure BEFORE UPDATE ON operations
@@ -3418,12 +3420,8 @@ async fn deployment_finish_journal_failures_preserve_applied_or_unknown_status()
 #[tokio::test]
 async fn rollback_phase_journal_failure_does_not_skip_runtime_rollback()
 -> Result<(), Box<dyn std::error::Error>> {
-    let fixture = Fixture::new(false)?;
+    let fixture = Fixture::new(true)?;
     let plan = fixture.service.plan(&fixture.selection).await?;
-    fixture
-        .runtime
-        .fail_convergence
-        .store(true, Ordering::SeqCst);
     let connection = rusqlite::Connection::open(&fixture.state_path)?;
     connection.execute_batch(
         "CREATE TRIGGER fail_rollback_phase BEFORE INSERT ON operation_events
@@ -3501,12 +3499,8 @@ async fn environment_publication_and_cleanup_failures_preserve_mutation_status()
         1
     );
 
-    let unknown = Fixture::new(false)?;
+    let unknown = Fixture::new(true)?;
     let plan = unknown.service.plan(&unknown.selection).await?;
-    unknown
-        .runtime
-        .fail_convergence
-        .store(true, Ordering::SeqCst);
     unknown
         .environment_artifacts
         .fail_dispose
@@ -5938,6 +5932,10 @@ impl LocalDeploymentRuntime for FakeRuntime {
                 std::future::pending::<()>().await;
             }
         }
+        self.running()?
+            .entry(target.project_name.clone())
+            .or_default()
+            .insert(target.stack_name.clone());
         Ok(())
     }
 
