@@ -46,6 +46,9 @@ pub struct GuardrailFinding {
     pub detail: String,
     host_path: Option<std::path::PathBuf>,
     outright: bool,
+    /// The `name:` of a volume or network: a host decides it against the
+    /// stack's Compose project name there.
+    resource_name: Option<String>,
 }
 
 impl GuardrailFinding {
@@ -75,7 +78,41 @@ pub fn check_project(
     allowed: &[GuardrailException],
 ) -> Result<Vec<GuardrailFinding>, crate::domain::error::MmError> {
     let mut findings = project_findings(document, environment)?;
-    findings.retain(|finding| !allows(allowed, finding));
+    findings.retain(|finding| finding.resource_name.is_none() && !allows(allowed, finding));
+    Ok(findings)
+}
+
+/// The `name:` of each volume or network in `environment` that is not
+/// under its stack's Compose project name in `project_names`, which only
+/// the host that plans knows, minus host exceptions. A stack missing from
+/// `project_names` does not run there.
+pub fn check_named_resources(
+    document: &crate::domain::config::ConfigDocument,
+    environment: &str,
+    project_names: &std::collections::BTreeMap<String, String>,
+    allowed: &[GuardrailException],
+) -> Result<Vec<GuardrailFinding>, crate::domain::error::MmError> {
+    let mut findings = project_findings(document, environment)?;
+    findings.retain(|finding| {
+        let Some(name) = &finding.resource_name else {
+            return false;
+        };
+        let stack = finding.subject.split('/').next().unwrap_or_default();
+        project_names
+            .get(stack)
+            .is_some_and(|project| name != project && !name.starts_with(&format!("{project}_")))
+            && !allows(allowed, finding)
+    });
+    for finding in &mut findings {
+        let project = project_names
+            .get(finding.subject.split('/').next().unwrap_or_default())
+            .cloned()
+            .unwrap_or_default();
+        finding.detail = format!(
+            "{} is outside this stack's Compose project `{project}`; leaving `name:` out makes Compose create a new, empty one, so to keep an existing volume's data a host admin allows {} for {}",
+            finding.detail, finding.feature, finding.subject
+        );
+    }
     Ok(findings)
 }
 
@@ -204,6 +241,7 @@ fn push(findings: &mut Vec<GuardrailFinding>, subject: &str, feature: &str, deta
         detail,
         host_path: None,
         outright: false,
+        resource_name: None,
     });
 }
 
@@ -388,14 +426,14 @@ fn check_external(
                 if interpolates(&name) {
                     push_variable(findings, (subject, feature), ("name", &name), file);
                 } else {
-                    push(
-                        findings,
-                        subject,
-                        feature,
-                        format!(
-                            "name: {name} in {file} is a host-wide name that any project can use; leave `name:` out so Compose names it after the stack"
-                        ),
-                    );
+                    findings.push(GuardrailFinding {
+                        subject: subject.to_owned(),
+                        feature: feature.to_owned(),
+                        detail: format!("name: {name} in {file}"),
+                        host_path: None,
+                        outright: false,
+                        resource_name: Some(name),
+                    });
                 }
             }
         }

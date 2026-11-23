@@ -47,6 +47,17 @@ pub fn remote_guardrail_diagnostics(
                     )
                     .at_path(*path)
                 }
+                _ if finding.resource_name.is_some() => Diagnostic::warning(
+                    "MM_REMOTE_GUARDRAIL_NAME",
+                    format!(
+                        "a remote host may refuse this in environment '{environment}': {finding}"
+                    ),
+                )
+                .at_path(document.source("stacks"))
+                .with_help(format!(
+                    "a host runs it only when the name is the stack's Compose project name on that host or starts with it and `_`, or when the host admin allows {} for {}. Leaving `name:` out makes Compose create a new, empty one, so keep it until any data is moved",
+                    finding.feature, finding.subject
+                )),
                 _ if finding.feature == super::namespaces::CONTAINER_JOIN => {
                     refused(document, environment, &finding).with_help(
                         "no host exception allows this: write the mode itself, and `service:<service>` to join a service of the same stack",

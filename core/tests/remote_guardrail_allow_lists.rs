@@ -91,10 +91,10 @@ fn capabilities_are_compared_in_upper_case() -> TestResult {
 #[test]
 fn a_namespace_mode_must_be_one_a_host_runs() -> TestResult {
     let temporary = project(
-        &["web", "proxy", "probe", "mapped"],
+        &["web", "proxy", "probe", "mapped", "rootless", "slirp"],
         &[(
             "compose.yaml",
-            "services:\n  proxy:\n    image: example/proxy\n    network_mode: bridge\n    ipc: shareable\n    pid: private\n    uts: private\n    cgroup: private\n    userns_mode: auto\n  web:\n    image: example/web\n    network_mode: service:proxy\n    ipc: none\n  probe:\n    image: example/probe\n    network_mode: ns:/proc/1/ns/net\n    uts: container:other-db-1\n  mapped:\n    image: example/web\n    userns_mode: 'auto:uidmapping=0:0:65536'\n",
+            "services:\n  proxy:\n    image: example/proxy\n    network_mode: bridge\n    ipc: shareable\n    pid: private\n    uts: private\n    cgroup: private\n    userns_mode: auto\n  web:\n    image: example/web\n    network_mode: service:proxy\n    ipc: none\n  probe:\n    image: example/probe\n    network_mode: ns:/proc/1/ns/net\n    uts: container:other-db-1\n  mapped:\n    image: example/web\n    userns_mode: 'auto:uidmapping=0:0:65536'\n  rootless:\n    image: example/web\n    userns_mode: 'keep-id:uid=1000'\n    network_mode: pasta\n  slirp:\n    image: example/web\n    userns_mode: nomap\n    network_mode: 'slirp4netns:allow_host_loopback=true'\n",
         )],
     )?;
     let (_, findings) = validate(temporary.path(), &[])?;
@@ -104,13 +104,32 @@ fn a_namespace_mode_must_be_one_a_host_runs() -> TestResult {
             "app/probe uses container-join (network_mode: ns:/proc/1/ns/net in compose.yaml is not a mode a host runs; write `bridge`, `none`, `default`, `private`, `service:<service>`, or leave `network_mode` out)",
             "app/probe uses container-join (uts: container:other-db-1 in compose.yaml is not a mode a host runs; write `private`, or leave `uts` out)",
             "app/mapped uses container-join (userns_mode: auto:uidmapping=0:0:65536 in compose.yaml is not a mode a host runs; write `auto`, `private`, or leave `userns_mode` out)",
+            "app/rootless uses userns-host (userns_mode: keep-id:uid=1000 in compose.yaml keeps part of the host's namespace)",
+            "app/rootless uses network-host (network_mode: pasta in compose.yaml keeps part of the host's namespace)",
+            "app/slirp uses userns-host (userns_mode: nomap in compose.yaml keeps part of the host's namespace)",
+            "app/slirp uses network-host (network_mode: slirp4netns:allow_host_loopback=true in compose.yaml keeps part of the host's namespace)",
         ])
+    );
+
+    let policy = host_policy(
+        temporary.path(),
+        "      - service: app/rootless\n        features: [userns-host, network-host]\n      - service: app/slirp\n        features: [userns-host, network-host]\n",
+    )?;
+    let (_, findings) = validate(temporary.path(), &["--host-policy", &policy])?;
+    assert_eq!(refused(&findings).len(), 3, "{findings:?}");
+    assert_eq!(
+        findings
+            .iter()
+            .filter(|line| line.starts_with(ALLOWED))
+            .count(),
+        4,
+        "{findings:?}"
     );
     Ok(())
 }
 
 #[test]
-fn a_named_volume_or_network_is_refused_like_an_external_one() -> TestResult {
+fn a_named_volume_or_network_is_left_to_the_host_that_plans_it() -> TestResult {
     let temporary = project(
         &["web"],
         &[(
@@ -118,13 +137,29 @@ fn a_named_volume_or_network_is_refused_like_an_external_one() -> TestResult {
             "services:\n  web:\n    image: example/web\n    volumes: [data:/data, shared:/shared]\n    networks: [back, other]\nvolumes:\n  data: {}\n  shared: {name: otherproject_data}\nnetworks:\n  back: {}\n  other: {name: otherproject_default}\n",
         )],
     )?;
-    let (_, findings) = validate(temporary.path(), &[])?;
+    let (status, findings) = validate(temporary.path(), &[])?;
+    assert_eq!(status, 0, "{findings:?}");
+    assert!(refused(&findings).is_empty(), "{findings:?}");
+    let warned =
+        "MM_REMOTE_GUARDRAIL_NAME a remote host may refuse this in environment 'staging': ";
+    let mut warnings = findings
+        .iter()
+        .filter_map(|line| line.strip_prefix(warned))
+        .map(|line| line.split(" | ").next().unwrap_or_default().to_owned())
+        .collect::<Vec<_>>();
+    warnings.sort();
     assert_eq!(
-        refused(&findings),
+        warnings,
         sorted(&[
-            "app/volume:shared uses external-volume (name: otherproject_data in compose.yaml is a host-wide name that any project can use; leave `name:` out so Compose names it after the stack)",
-            "app/network:other uses external-network (name: otherproject_default in compose.yaml is a host-wide name that any project can use; leave `name:` out so Compose names it after the stack)",
+            "app/volume:shared uses external-volume (name: otherproject_data in compose.yaml)",
+            "app/network:other uses external-network (name: otherproject_default in compose.yaml)",
         ])
+    );
+    assert!(
+        findings
+            .iter()
+            .all(|line| line.contains("Leaving `name:` out makes Compose create a new, empty one")),
+        "{findings:?}"
     );
     Ok(())
 }
@@ -162,6 +197,44 @@ fn a_config_or_secret_file_must_stay_in_the_project() -> TestResult {
                 "app/secrets:escaped uses file-outside-project (secrets.escaped.file: ./secrets/../../outside.txt in compose.yaml {outside})"
             ),
         ])
+    );
+    Ok(())
+}
+
+#[test]
+fn the_planning_host_runs_a_name_under_the_stacks_compose_project_only() -> TestResult {
+    let temporary = project(
+        &["web"],
+        &[(
+            "compose.yaml",
+            "services:\n  web:\n    image: example/web\n    volumes: [own:/own, whole:/whole, other:/other]\nvolumes:\n  own: {name: example-mm-0123456789abcdef_own}\n  whole: {name: example-mm-0123456789abcdef}\n  other: {name: example-mm-0123456789abcdefx_data}\n",
+        )],
+    )?;
+    let document =
+        mm::adapters::config::ConfigLoader.load_from(&temporary.path().join("project"))?;
+    let names = std::collections::BTreeMap::from([(
+        "app".to_owned(),
+        "example-mm-0123456789abcdef".to_owned(),
+    )]);
+    let findings = mm::app::named_resource_guardrails(&document, "staging", &names, &[])?;
+    assert_eq!(
+        findings.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        [
+            "app/volume:other uses external-volume (name: example-mm-0123456789abcdefx_data in compose.yaml is outside this stack's Compose project `example-mm-0123456789abcdef`; leaving `name:` out makes Compose create a new, empty one, so to keep an existing volume's data a host admin allows external-volume for app/volume:other)"
+        ]
+    );
+
+    let allowed = mm::domain::host_policy::GuardrailException {
+        service: "app/volume:other".to_owned(),
+        features: std::collections::BTreeSet::from(["external-volume".to_owned()]),
+        paths: std::collections::BTreeSet::new(),
+    };
+    assert!(
+        mm::app::named_resource_guardrails(&document, "staging", &names, &[allowed])?.is_empty()
+    );
+    assert!(
+        mm::app::workload_guardrails(&document, "staging", &[])?.is_empty(),
+        "names wait for the plan"
     );
     Ok(())
 }

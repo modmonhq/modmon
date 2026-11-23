@@ -31,6 +31,20 @@ const PRIVATE_MODES: [(&str, &[&str]); 6] = [
     ("network_mode", &["bridge", "none", "default", "private"]),
 ];
 
+/// Podman modes that keep part of the host's namespace for that key: a
+/// host runs them under the key's host feature.
+const HOST_REACHING: [(&str, &[&str]); 2] = [
+    ("userns_mode", &["keep-id", "nomap"]),
+    ("network_mode", &["slirp4netns", "pasta"]),
+];
+
+fn reaches_the_host(key: &str, mode: &str) -> bool {
+    let name = mode.split(':').next().unwrap_or(mode);
+    HOST_REACHING
+        .iter()
+        .any(|(named, modes)| *named == key && modes.contains(&name))
+}
+
 const JOINABLE: [(&str, &str); 3] = [
     ("pid", "pid-host"),
     ("ipc", "ipc-host"),
@@ -55,6 +69,13 @@ pub(super) fn check_service(
             .map_or(&[][..], |(_, modes)| *modes);
         if mode == "host" {
             push(findings, subject, feature, format!("{key}: host"));
+        } else if reaches_the_host(key, mode) {
+            push(
+                findings,
+                subject,
+                feature,
+                format!("{key}: {mode} in {file} keeps part of the host's namespace"),
+            );
         } else if super::interpolates(mode) {
             super::push_variable(findings, (subject, CONTAINER_JOIN), (key, mode), file);
         } else if mode.is_empty()
@@ -108,7 +129,7 @@ pub(super) fn check_joins(
                 let Some(joined) = mode.strip_prefix("service:") else {
                     continue;
                 };
-                if let Some((holder, held)) = reaches_host(&modes, joined) {
+                if let Some((holder, held)) = reaches_host(&modes, key, joined) {
                     push(
                         findings,
                         &format!("{stack}/{service}"),
@@ -151,7 +172,7 @@ fn written_modes(sources: &[(String, Mapping)], key: &str) -> Modes {
 
 /// The first service, from `start` along `service:` joins, whose mode is
 /// the host's or comes from a variable, with that mode.
-fn reaches_host<'a>(modes: &'a Modes, start: &'a str) -> Option<(&'a str, &'a str)> {
+fn reaches_host<'a>(modes: &'a Modes, key: &str, start: &'a str) -> Option<(&'a str, &'a str)> {
     let mut seen = BTreeSet::new();
     let mut next = vec![start];
     while let Some(service) = next.pop() {
@@ -159,7 +180,7 @@ fn reaches_host<'a>(modes: &'a Modes, start: &'a str) -> Option<(&'a str, &'a st
             continue;
         }
         for mode in modes.get(service).into_iter().flat_map(BTreeMap::keys) {
-            if mode == "host" || super::interpolates(mode) {
+            if mode == "host" || super::interpolates(mode) || reaches_the_host(key, mode) {
                 return Some((service, mode));
             }
             if let Some(joined) = mode.strip_prefix("service:") {

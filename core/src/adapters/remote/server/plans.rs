@@ -43,7 +43,7 @@ impl RemoteDaemon {
                 .and_then(|()| check_receipt_scope(receipt, scope.project_id, commit))
                 .map_err(|message| MmError::Security { message })?;
         }
-        let CheckedOutAccess { root, access, document, bundle_hash, .. } = self
+        let CheckedOutAccess { root, access, document, bundle_hash, allow, .. } = self
             .checkout_commit(scope.project_id, &scope.environment, &context.principal, commit, timeout)
             .await?;
         let mut planned = context.clone();
@@ -68,6 +68,7 @@ impl RemoteDaemon {
             ),
             RemotePlanKind::TeamSync => None,
         };
+        refuse_unscoped_names(&document, &scope.environment, deployment.as_ref(), &allow)?;
         let access_hash = access.canonical_hash().map_err(|message| MmError::State { message })?;
         let deployment_hash = match (kind, &deployment) {
             (RemotePlanKind::TeamSync, _) => access_hash.clone(),
@@ -269,20 +270,9 @@ impl RemoteDaemon {
         // Compose feature that reaches the host runs unless host.yaml allows
         // it for that service.
         let findings = crate::app::workload_guardrails(&document, environment, &enrolled.allow)?;
-        if !findings.is_empty() {
-            let next = if findings.iter().any(crate::app::GuardrailFinding::grantable) {
-                ". A host admin can allow a feature for one service under `allow` in /etc/mm/host.yaml"
-            } else {
-                ""
-            };
-            return Err(MmError::Security {
-                message: format!(
-                    "this host refuses Compose features that reach the host in environment '{environment}': {}{next}",
-                    findings.iter().map(ToString::to_string).collect::<Vec<_>>().join("; ")
-                ),
-            });
-        }
-        Ok(CheckedOutAccess { root, current, access, document, bundle_hash })
+        refuse_findings(environment, &findings)?;
+        let allow = enrolled.allow.clone();
+        Ok(CheckedOutAccess { root, current, access, document, bundle_hash, allow })
     }
 
     /// Applies a reviewed plan: access first, so revocations hold even if the
@@ -634,6 +624,44 @@ impl RemoteDaemon {
 
 /// A commit checked out for one environment: where, the access record it
 /// replaces, and the reconciled change.
+/// Refuses a deployment whose volume or network `name:` is outside its
+/// stack's Compose project name here.
+fn refuse_unscoped_names(
+    document: &crate::domain::config::ConfigDocument,
+    environment: &str,
+    deployment: Option<&crate::domain::deployment::DeploymentPlan>,
+    allow: &[crate::domain::host_policy::GuardrailException],
+) -> Result<(), MmError> {
+    let Some(plan) = deployment else {
+        return Ok(());
+    };
+    let names = plan
+        .stacks
+        .iter()
+        .map(|stack| (stack.stack.clone(), stack.compose_project_name.clone()))
+        .collect();
+    let findings = crate::app::named_resource_guardrails(document, environment, &names, allow)?;
+    refuse_findings(environment, &findings)
+}
+
+/// Refuses a plan with guardrail findings, naming each one.
+fn refuse_findings(environment: &str, findings: &[crate::app::GuardrailFinding]) -> Result<(), MmError> {
+    if findings.is_empty() {
+        return Ok(());
+    }
+    let next = if findings.iter().any(crate::app::GuardrailFinding::grantable) {
+        ". A host admin can allow a feature for one service under `allow` in /etc/mm/host.yaml"
+    } else {
+        ""
+    };
+    Err(MmError::Security {
+        message: format!(
+            "this host refuses Compose features that reach the host in environment '{environment}': {}{next}",
+            findings.iter().map(ToString::to_string).collect::<Vec<_>>().join("; ")
+        ),
+    })
+}
+
 struct CheckedOutAccess {
     root: std::path::PathBuf,
     current: Option<crate::domain::host_policy::EnvironmentAccessRecord>,
@@ -643,6 +671,8 @@ struct CheckedOutAccess {
     /// The bundle the checkout was made from, on a host the project is
     /// pushed to.
     bundle_hash: Option<String>,
+    /// The host's guardrail exceptions for the project.
+    allow: Vec<crate::domain::host_policy::GuardrailException>,
 }
 
 /// What a plan's audit record says it plans: the commit, the bundle its
