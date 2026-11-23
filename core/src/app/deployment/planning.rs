@@ -74,6 +74,7 @@ impl DeploymentManager {
             .map(|previous| previous.stacks.clone())
             .unwrap_or_default();
         let mut plan = self.finish_deployment_plan(preparation, routes)?;
+        self.only_kept_that_run(&mut plan).await?;
         plan.runtime_changes =
             crate::domain::hardening::runtime_changes(&previous_stacks, &plan.stacks);
         plan.registries = registries;
@@ -384,8 +385,26 @@ impl DeploymentManager {
         Ok(plan)
     }
 
-    /// The deployment the plan follows, and the environment's routes it did
-    /// not record, which the plan takes back.
+    /// Without a finished deployment, the removals are stacks failed first
+    /// deployments kept: those with no container left are dropped.
+    async fn only_kept_that_run(&self, plan: &mut DeploymentPlan) -> Result<(), MmError> {
+        if plan.expected_previous_plan_hash.is_some() || plan.removed_stacks.is_empty() {
+            return Ok(());
+        }
+        let mut running = Vec::new();
+        for stack in std::mem::take(&mut plan.removed_stacks) {
+            let services = self.runtime.project_services(&stack.compose_project_name);
+            if !services.await?.is_empty() {
+                running.push(stack);
+            }
+        }
+        plan.removed_stacks = running;
+        plan.plan_hash = plan
+            .canonical_hash()
+            .map_err(|message| MmError::Security { message })?;
+        Ok(())
+    }
+
     /// The stacks first deployments that failed left running, when no
     /// deployment ever finished: the plan removes those it does not run.
     fn kept_by_failed_first(
@@ -406,6 +425,8 @@ impl DeploymentManager {
             .collect())
     }
 
+    /// The deployment the plan follows, and the environment's routes it did
+    /// not record, which the plan takes back.
     fn previous_deployment(
         &self,
         compiled: &crate::app::stacks::DeploymentStackCompilation,
