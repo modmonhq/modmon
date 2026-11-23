@@ -24,7 +24,7 @@ impl HostPolicy {
         for project in self.projects.values() {
             for exception in &project.allow {
                 for entry in &exception.paths {
-                    check(entry).map_err(|problem| {
+                    Self::check_host_path(entry).map_err(|problem| {
                         format!(
                             "project '{}' allow entry for {}: host path '{entry}' {problem}",
                             project.name, exception.service
@@ -35,16 +35,27 @@ impl HostPolicy {
         }
         Ok(())
     }
+
+    /// Whether a host may list `entry` under `paths`, by its text. The host
+    /// checks it again once it resolves symlinks.
+    pub fn check_host_path(entry: &str) -> Result<(), String> {
+        check(Path::new(entry.trim()))
+    }
 }
 
-fn check(entry: &str) -> Result<(), String> {
-    let path = Path::new(entry.trim());
+fn check(path: &Path) -> Result<(), String> {
     if !path.is_absolute()
         || path
             .components()
             .any(|component| matches!(component, Component::ParentDir | Component::CurDir))
     {
         return Err("must be an absolute path without `.` or `..`".to_owned());
+    }
+    if path.starts_with("/proc") && path != Path::new("/proc") {
+        return Err(
+            "is inside /proc, which reaches other processes' files and the host's root; list /proc itself"
+                .to_owned(),
+        );
     }
     match PROTECTED
         .iter()
