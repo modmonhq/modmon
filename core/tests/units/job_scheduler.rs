@@ -57,6 +57,28 @@ struct RepositoryState {
     runs: BTreeMap<Uuid, JobRun>,
     schedule_claims: VecDeque<ClaimedSchedule>,
     run_claims: VecDeque<ClaimedJobRun>,
+    /// Who holds each claimed run, as the store's lease owner.
+    owners: BTreeMap<Uuid, Uuid>,
+    /// How many renewals from now on the store does not answer.
+    unanswered_renewals: usize,
+}
+
+impl RepositoryState {
+    /// What the store does with a claim: a queued run is launching now, and
+    /// the claim's owner holds it.
+    fn claimed(&mut self, mut claim: ClaimedJobRun) -> ClaimedJobRun {
+        if matches!(
+            claim.run.state,
+            JobRunState::Queued | JobRunState::RetryWait
+        ) {
+            claim.run.state = JobRunState::Launching;
+            if let Some(run) = self.runs.get_mut(&claim.run.id) {
+                run.state = JobRunState::Launching;
+            }
+        }
+        self.owners.insert(claim.run.id, claim.lease_owner);
+        claim
+    }
 }
 
 #[derive(Default)]
@@ -245,7 +267,9 @@ impl SchedulerRepository for FakeRepository {
         _lease: Duration,
     ) -> Result<Option<ClaimedJobRun>, MmError> {
         self.record("repo:claim_run")?;
-        Ok(self.lock()?.run_claims.pop_front())
+        let mut state = self.lock()?;
+        let claim = state.run_claims.pop_front();
+        Ok(claim.map(|claim| state.claimed(claim)))
     }
 
     fn claim_run(
@@ -262,12 +286,13 @@ impl SchedulerRepository for FakeRepository {
             .iter()
             .position(|claim| claim.run.id == run_id);
         let claim = position.and_then(|position| state.run_claims.remove(position));
-        Ok(claim.map(|mut claim| {
+        let claim = claim.map(|mut claim| {
             if let Some(run) = state.runs.get(&run_id) {
                 claim.run = run.clone();
             }
             claim
-        }))
+        });
+        Ok(claim.map(|claim| state.claimed(claim)))
     }
 
     fn renew_lease(
@@ -277,11 +302,21 @@ impl SchedulerRepository for FakeRepository {
         _lease: Duration,
     ) -> Result<bool, MmError> {
         self.record("repo:renew")?;
-        Ok(self
-            .lock()?
-            .runs
-            .get(&claim.run.id)
-            .is_some_and(|run| !run.cancellation_requested))
+        let mut state = self.lock()?;
+        if state.unanswered_renewals > 0 {
+            state.unanswered_renewals -= 1;
+            return Err(state_error("injected busy state store"));
+        }
+        let owned = state.owners.get(&claim.run.id) == Some(&claim.lease_owner);
+        Ok(owned
+            && state.runs.get(&claim.run.id).is_some_and(|run| {
+                run.fence_token == claim.run.fence_token
+                    && !run.cancellation_requested
+                    && matches!(
+                        run.state,
+                        JobRunState::Launching | JobRunState::Running | JobRunState::Unknown
+                    )
+            }))
     }
 
     fn mark_run_running(
@@ -358,6 +393,8 @@ struct FakeJobRuntime {
     /// With no queued observation, the container is missing until a
     /// launch and runs after it.
     follows_launches: AtomicBool,
+    /// A pull that stops the task it runs in, as a bug in mm would.
+    pull_breaks: AtomicBool,
     launches: AtomicUsize,
     fail_cancel: AtomicBool,
     ordered: Arc<Mutex<Vec<String>>>,
@@ -371,6 +408,7 @@ impl FakeJobRuntime {
             pull_refusals: Mutex::new(VecDeque::new()),
             pull_gate: Mutex::new(None),
             follows_launches: AtomicBool::new(false),
+            pull_breaks: AtomicBool::new(false),
             launches: AtomicUsize::new(0),
             fail_cancel: AtomicBool::new(false),
             ordered,
@@ -428,6 +466,10 @@ impl RuntimeJobDriver for FakeJobRuntime {
         _limit: Duration,
     ) -> Result<(), MmError> {
         self.record(&format!("runtime:pull:{service}"))?;
+        assert!(
+            !self.pull_breaks.load(Ordering::SeqCst),
+            "the injected pull failure inside mm"
+        );
         let gate = self
             .pull_gate
             .lock()
