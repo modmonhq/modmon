@@ -12,8 +12,6 @@
 //! volume to the ids of the first container that mounts it, and each
 //! service's files belong to ids the others do not have.
 
-use serde_yaml_ng::Value;
-
 use super::*;
 use crate::domain::runtime::RuntimeKind;
 use crate::domain::user_namespace::SERVICE_IDS;
@@ -60,7 +58,7 @@ pub(super) fn validate_user_namespaces(
         let Some(models) = super::shared_volumes::compose_models(document, stack) else {
             continue;
         };
-        let chosen = own_userns_modes(&models);
+        let own_ids = crate::app::stacks::services_without_own_userns(&models);
         for finding in crate::app::stacks::files_in_chosen_namespaces(
             document,
             environment,
@@ -79,7 +77,7 @@ pub(super) fn validate_user_namespaces(
                 .collect::<Vec<_>>();
             let own = users
                 .iter()
-                .filter(|(service, _)| !chosen.contains(service))
+                .filter(|(service, _)| own_ids.contains(service))
                 .filter_map(|(service, ids)| match ids {
                     Ids::Own(module) => Some((service, module)),
                     Ids::Host => None,
@@ -138,17 +136,6 @@ impl Ids {
             None => Some(Self::Own("<module>".to_owned())),
         }
     }
-}
-
-/// The services whose Compose definition chooses its own user namespace.
-fn own_userns_modes(models: &[Value]) -> BTreeSet<String> {
-    models
-        .iter()
-        .filter_map(|model| model.get("services").and_then(Value::as_mapping))
-        .flatten()
-        .filter(|(_, service)| service.get("userns_mode").is_some())
-        .filter_map(|(name, _)| name.as_str().map(str::to_owned))
-        .collect()
 }
 
 /// The owners a service's config files and secret files name are among

@@ -309,6 +309,7 @@ fn cluster(checkout: Option<Arc<Checkout>>) -> TestResult<(RemoteEnvironment, Ve
             name: Some(fake.name.clone()),
             host: format!("203.0.113.{}", index + 1),
             port: 22,
+            repo_address: None,
             private_address: None,
             transport: Ok(Arc::clone(fake) as Arc<dyn RemoteTransport>),
             scope: scope(&fake.name),

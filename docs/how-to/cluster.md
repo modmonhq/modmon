@@ -120,6 +120,11 @@ Networks (cluster.networks 10.64.0.0/12)
 
 Every node is `ready`. Below this the command lists the addresses each node
 already uses, which the cluster's ranges must not overlap.
+
+If your workstation reaches the nodes at other addresses than `host`, over a
+VPN for example, set them for this device only:
+`mm target preference set-address production app-1 10.0.0.3`. See
+[reach the nodes at another address](../remote-daemon.md#reach-the-nodes-at-another-address).
 `mm -e production target mesh status` shows the WireGuard link between each
 pair of nodes and names the port to open when two of them have no handshake;
 see [the mesh between the nodes](../remote-daemon.md#the-mesh-between-the-nodes).

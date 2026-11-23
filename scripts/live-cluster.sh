@@ -377,6 +377,8 @@ for node in $NODES; do
     mkdir -p /run/sshd /run/mm /etc/mm /var/lib/mm /var/lib/mm-home /srv/mm/projects /srv/git
     chown root:991 /run/mm && chmod 750 /run/mm
     chmod 700 /etc/mm /var/lib/mm
+    rm -f /etc/ssh/ssh_host_*
+    ssh-keygen -A >/dev/null
     sshd -t'
   docker cp "$TMP/host.yaml" "$name:/etc/mm/host.yaml"
   docker cp "$TMP/mmd.json" "$name:/etc/mm/mmd.json"
@@ -526,6 +528,42 @@ mm_as ops --output json target nodes >"$TMP/nodes.json"
 mm_as ops target trust cluster | tee "$TMP/trust.log"
 has "$TMP/trust.log" "app-1:" "app-2:" "app-3:"
 if grep -q 'member-' "$TMP/trust.log"; then fail "pins should name nodes"; fi
+
+step "a device address reaches a node elsewhere and still needs the node's recorded host key"
+ip_of() { docker inspect -f "{{(index .NetworkSettings.Networks \"$NETWORK\").IPAddress}}" "$(container "$1")"; }
+mm_as ops target preference set-address production app-1 "$(ip_of app-1)"
+mm_as ops --output json target nodes >"$TMP/nodes-address.json"
+[ "$(json '[(n["host"], n.get("repo_address"), n["state"]) for n in value["nodes"]][0]' <"$TMP/nodes-address.json")" \
+  = "('$(ip_of app-1)', '$(container app-1):22', 'ready')" ] || fail "app-1 should answer at its IP and name its host in targets.yaml"
+mm_as ops target preference set-address production app-1 "$(ip_of app-2)"
+if mm_as ops target nodes >"$TMP/address-other-node.log" 2>&1; then
+  cat "$TMP/address-other-node.log" >&2; fail "another node's address was accepted for app-1"
+fi
+has "$TMP/address-other-node.log" "$(ip_of app-2):22" "this device's address; targets.yaml says $(container app-1):22" \
+  "presented an SSH host key that differs from the recorded one" "mm target preference show"
+# With app-1's host keys on app-2, ssh at app-2's address passes, and the
+# daemon there is refused for not being app-1's.
+on app-2 sh -c 'mkdir -p /tmp/own-keys && cp -p /etc/ssh/ssh_host_* /tmp/own-keys/'
+docker cp "$(container app-1):/etc/ssh/ssh_host_ed25519_key" "$TMP/borrowed_key"
+docker cp "$(container app-1):/etc/ssh/ssh_host_ed25519_key.pub" "$TMP/borrowed_key.pub"
+docker cp "$TMP/borrowed_key" "$(container app-2):/etc/ssh/ssh_host_ed25519_key"
+docker cp "$TMP/borrowed_key.pub" "$(container app-2):/etc/ssh/ssh_host_ed25519_key.pub"
+rm -f "$TMP/borrowed_key" "$TMP/borrowed_key.pub"
+restart_sshd() {
+  on "$1" sh -c 'chown root:root /etc/ssh/ssh_host_* && chmod 600 /etc/ssh/ssh_host_*_key && pkill -x sshd; sleep 1'
+  docker exec -d "$(container "$1")" sh -c '/usr/sbin/sshd -D -e >>/tmp/sshd.log 2>&1'
+  sleep 1
+}
+restart_sshd app-2
+if mm_as ops target nodes >"$TMP/address-other-daemon.log" 2>&1; then
+  cat "$TMP/address-other-daemon.log" >&2; fail "another node's daemon was accepted for app-1"
+fi
+has "$TMP/address-other-daemon.log" "runs an mmd with another identity than the one recorded for it"
+on app-2 sh -c 'cp -p /tmp/own-keys/ssh_host_* /etc/ssh/ && rm -rf /tmp/own-keys'
+restart_sshd app-2
+mm_as ops target preference unset-address production app-1
+mm_as ops target nodes >"$TMP/nodes-address-unset.log"
+[ "$(grep -c ' ready ' "$TMP/nodes-address-unset.log")" = 3 ] || fail "app-1 should answer at its host again"
 
 step "the mesh: every node's mmd makes its own key and brings up mm0"
 # What cluster setup does on real hosts, by hand: read each node's public
