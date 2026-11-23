@@ -453,6 +453,7 @@ project. Each has a feature name, which a host exception names to allow it:
 | `sysctls`                                                                                | sysctls outside `net.*`                                                                                                          |
 | `volume-bind`                                                                            | a volume whose `driver_opts` bind a path or mount a device                                                                       |
 | `external-volume`, `external-network`                                                    | `external`, or a `name:`, which is host-wide: leave it out and Compose names the volume or network after the stack               |
+| `host-path`                                                                              | a bind mount of a host path outside the project; with the exception, only read-only and only the paths it lists                 |
 | `file-outside-project`                                                                   | a config's or secret's `file` outside the project, or reached through a symlink                                                  |
 | `build`                                                                                  | `build:` (remote hosts never build; publish images from CI)                                                                      |
 | `container-join`                                                                         | a namespace other than the service's own, a service's of its stack, or the host's, such as `container:NAME`; no exception allows it |
@@ -526,6 +527,12 @@ projects:
         features: [pid-host]
 ```
 
+A `host-path` exception also lists the host paths the service may mount, in
+`paths`. Each must match a mount's source exactly, and the mount must be
+read-only (`:ro`, or `read_only: true` in the long syntax), without `z`/`Z`
+relabelling and without `shared` or `rshared` propagation; `rslave` is fine.
+Without `paths`, `host-path` allows nothing.
+
 To check a project against the policy its hosts have, for example in CI,
 keep a copy of their `host.yaml` and pass it:
 
@@ -542,6 +549,45 @@ enroll the project is refused with the project's id.
 A host also decides which OCI runtimes a service's `runtime:` may name, and
 can run every service that is reachable from outside under one of them. See
 [choose an OCI runtime](./hardening.md#choose-an-oci-runtime).
+
+### Collect host metrics
+
+A metrics exporter such as Prometheus node-exporter or Grafana Alloy's
+`prometheus.exporter.unix` reads the host's `/proc`, `/sys` and root
+filesystem. Mount them read-only and put the exporter on the host's network:
+
+```yaml
+# compose.yaml, stack monitoring
+services:
+  alloy:
+    image: grafana/alloy:v1.5.0
+    network_mode: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro,rslave
+```
+
+On your machine mm refuses host paths, so run the exporter only where a
+host decides, for example with `environments: [production]` on the service
+in `mm.yaml`. Point the exporter at the mounts (`procfs_path: /host/proc`,
+`sysfs_path: /host/sys`, `rootfs_path: /host/root`). A host admin allows it
+on every host that runs the service:
+
+```yaml
+projects:
+  019c527b-6242-7b43-bfd4-bd60e27c1de3:
+    allow:
+      - service: monitoring/alloy
+        features: [host-path, network-host]
+        paths: [/proc, /sys, /]
+```
+
+With the root filesystem mounted, filesystem metrics show the host's disks
+(`ext4`, `xfs`) instead of the container's `overlay`; with `network-host`,
+network metrics show the host's interfaces instead of the container's
+`eth0`. CPU, memory and load come from `/proc` either way. The exporter
+sees only the host it runs on: run one per host to cover a cluster.
 
 ### Run a service on the host's network
 

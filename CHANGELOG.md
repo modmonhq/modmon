@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- A host exception for host paths: `host-path` in an `allow` entry of
+  `/etc/mm/host.yaml`, with the paths in `paths`, lets one service bind-mount
+  those host paths read-only, such as `/proc`, `/sys` and `/` for a metrics
+  exporter. A writable mount, `shared` propagation or an SELinux relabel of a
+  host path is still refused. See "Collect host metrics" in the remote access
+  guide.
 - `mm target preference set-address ENVIRONMENT NODE HOST[:PORT]` connects
   this device to a cluster node at an address of its own, such as a VPN
   address, without changing the repo. The node's recorded host key and daemon
