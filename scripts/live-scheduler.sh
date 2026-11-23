@@ -124,12 +124,12 @@ schedules:
 YAML
 
 common="--root $project --mm-home $home --runtime $runtime --output json"
-review=$("$binary" $common schedule reconcile)
+review=$("$binary" $common job schedule reconcile)
 reviewed=$(printf '%s' "$review" | node -e '
 let value="";process.stdin.on("data",chunk=>value+=chunk);process.stdin.on("end",()=>{
   const parsed=JSON.parse(value);process.stdout.write(parsed.plan_hash);
 });')
-"$binary" $common schedule reconcile --plan "$reviewed" --yes >/dev/null
+"$binary" $common job schedule reconcile --plan "$reviewed" --yes >/dev/null
 
 manual=$("$binary" $common job run print)
 printf '%s' "$manual" | node -e '
@@ -168,8 +168,8 @@ sleep_for=$((61 - seconds))
 sleep "$sleep_for"
 count=0
 while [ "$count" -lt 10 ]; do
-  "$binary" $common schedule tick >/dev/null
-  history=$("$binary" $common schedule history every-minute --limit 5)
+  "$binary" $common job schedule tick >/dev/null
+  history=$("$binary" $common job schedule history every-minute --limit 5)
   if printf '%s' "$history" | node -e '
 let value="";process.stdin.on("data",chunk=>value+=chunk);process.stdin.on("end",()=>{
   const runs=JSON.parse(value);
