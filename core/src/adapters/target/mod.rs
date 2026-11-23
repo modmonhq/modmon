@@ -7,8 +7,10 @@ mod host_release;
 mod ingress_artifacts;
 mod ingress_prerequisites;
 mod launchd_ingress;
+mod node_addresses;
 mod operation_lock;
 mod pins;
+mod private_json;
 mod privileged_ingress;
 mod public_ingress;
 pub use ingress_prerequisites::IngressPrerequisites;
@@ -26,6 +28,7 @@ pub use forwards::ForwardShortcutStore;
 pub use gate_ingress::RuntimeGateIngressPublisher;
 pub use host_release::SshHostReleaseReader;
 pub use ingress_artifacts::FilesystemTargetIngressArtifactStore;
+pub use node_addresses::{NodeAddressStore, NodeAddresses};
 pub use operation_lock::FilesystemTargetOperationLock;
 pub use pins::TargetPins;
 pub use privileged_ingress::{

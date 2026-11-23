@@ -329,6 +329,7 @@ fn report(name: &str, engine: Option<EngineFacts>) -> NodeReport {
         name: name.to_owned(),
         host: "203.0.113.11".to_owned(),
         port: 22,
+        repo_address: None,
         mesh_address: None,
         state: NodeState::Ready,
         reachable: true,
@@ -713,7 +714,7 @@ fn a_file_of_a_service_with_its_own_userns_mode_has_to_hold_for_any_owner() -> T
         ("api.conf", "listen 8080\n"),
         (
             "compose.yaml",
-            "services:\n  web:\n    image: example/web\n    volumes: [\"uploads:/data\"]\n  api:\n    image: example/api\n    userns_mode: auto\nvolumes:\n  uploads: {}\n",
+            "services:\n  web:\n    image: example/web\n    volumes: [\"uploads:/data\"]\n  api:\n    image: example/api\n    userns_mode: auto:size=1024\nvolumes:\n  uploads: {}\n",
         ),
     ];
     let with = |api: &str| USERNS_CONFIG.replace("api: {stack: app}", api);
@@ -734,8 +735,8 @@ fn a_file_of_a_service_with_its_own_userns_mode_has_to_hold_for_any_owner() -> T
     for part in [
         "modules.shop.services.api.config-files.\"/etc/api.conf\"",
         "modules.shop.services.api.secret-files.\"token\"",
-        "sets `userns_mode: auto`, so Podman picks them when it creates a container",
-        "Remove `userns_mode` from service 'api'",
+        "sets `userns_mode: auto:size=1024`, so Podman picks them when it creates a container",
+        "Remove `userns_mode` from service 'api' or set it to plain `auto`",
     ] {
         assert!(
             found.iter().any(|finding| finding.contains(part)),
@@ -747,9 +748,96 @@ fn a_file_of_a_service_with_its_own_userns_mode_has_to_hold_for_any_owner() -> T
         "api: {stack: app, host-user-namespace: its files belong to host users, ",
     );
     assert!(user_namespace_findings_with(&kept, &files)?.is_empty());
-    let compose = files[1].1.replace("userns_mode: auto", "userns_mode: host");
-    let host = [files[0], ("compose.yaml", compose.as_str())];
-    assert!(user_namespace_findings_with(&owned, &host)?.is_empty());
+    for mode in ["host", "auto", "~", "\"\""] {
+        let compose = files[1].1.replace(
+            "userns_mode: auto:size=1024",
+            &format!("userns_mode: {mode}"),
+        );
+        let changed = [files[0], ("compose.yaml", compose.as_str())];
+        assert!(
+            user_namespace_findings_with(&owned, &changed)?.is_empty(),
+            "{mode}"
+        );
+    }
+    Ok(())
+}
+
+/// Compose merges a stack's files, the last one that sets `userns_mode`
+/// winning: a base file's mode is what an override leaves of it.
+#[test]
+fn the_last_compose_file_that_sets_userns_mode_decides_which_files_hold() -> TestResult {
+    let config = USERNS_CONFIG
+        .replace("files: [compose.yaml]", "files: [compose.yaml, override.yaml]")
+        .replace(
+            "api: {stack: app}",
+            "api: {stack: app, secret-files: {token: {secret: api.token, uid: \"1000\", gid: \"1000\", mode: 0o400}}}",
+        );
+    let base = |mode: &str| {
+        format!(
+            "services:\n  web:\n    image: example/web\n    volumes: [\"uploads:/data\"]\n  api:\n    image: example/api\n    userns_mode: {mode}\nvolumes:\n  uploads: {{}}\n"
+        )
+    };
+    let over = |mode: &str| format!("services:\n  api:\n    userns_mode: {mode}\n");
+    for (base_mode, override_mode, refused) in [
+        ("auto:size=1024", "host", false),
+        ("auto:size=1024", "auto", false),
+        ("auto:size=1024", "!reset null", false),
+        ("host", "auto:size=1024", true),
+        ("auto", "keep-id", true),
+    ] {
+        let (base, over) = (base(base_mode), over(override_mode));
+        let files = [
+            ("compose.yaml", base.as_str()),
+            ("override.yaml", over.as_str()),
+        ];
+        let found = user_namespace_findings_with(&config, &files)?;
+        assert_eq!(
+            found.len(),
+            usize::from(refused),
+            "{base_mode} then {override_mode}: {found:?}"
+        );
+        if refused {
+            assert!(
+                found[0].contains(&format!("sets `userns_mode: {override_mode}`")),
+                "{found:?}"
+            );
+        }
+    }
+    Ok(())
+}
+
+/// A tag such as `!override` stands for its value, a service takes the
+/// `userns_mode` of the service it `extends`, and a service on the host's
+/// network is not told that plain `auto` gives it ids of its own.
+#[test]
+fn tagged_extended_and_host_network_modes_are_read_as_compose_reads_them() -> TestResult {
+    let config = USERNS_CONFIG.replace(
+        "api: {stack: app}",
+        "api: {stack: app, secret-files: {token: {secret: api.token, uid: \"1000\", gid: \"1000\", mode: 0o400}}}",
+    );
+    let compose = |api: &str| {
+        format!(
+            "services:\n  web:\n    image: example/web\n    volumes: [\"uploads:/data\"]\n  base:\n    image: example/api\n    userns_mode: keep-id\n  api:\n    image: example/api\n{api}volumes:\n  uploads: {{}}\n"
+        )
+    };
+    let found = |api: &str| -> Result<Vec<String>, Box<dyn std::error::Error>> {
+        let compose = compose(api);
+        user_namespace_findings_with(&config, &[("compose.yaml", compose.as_str())])
+    };
+    assert!(found("    userns_mode: !override auto\n")?.is_empty());
+    let extended = found("    extends: base\n")?;
+    assert!(
+        extended.len() == 1 && extended[0].contains("sets `userns_mode: keep-id`"),
+        "{extended:?}"
+    );
+    assert!(found("    extends: base\n    userns_mode: host\n")?.is_empty());
+    let host_network = found("    network_mode: host\n    userns_mode: auto\n")?;
+    assert!(
+        host_network.len() == 1
+            && host_network[0].contains("keeps the host's ids")
+            && !host_network[0].contains("plain `auto`"),
+        "{host_network:?}"
+    );
     Ok(())
 }
 

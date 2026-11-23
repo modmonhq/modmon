@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `mm target preference set-address ENVIRONMENT NODE HOST[:PORT]` connects
+  this device to a cluster node at an address of its own, such as a VPN
+  address, without changing the repo. The node's recorded host key and daemon
+  identity are checked as before. `unset-address` goes back to the repo's
+  address, `show` lists them, and `mm target nodes`, the terminal UI and
+  `MM_UNREACHABLE` say when one is in effect.
+
 ### Changed
 
 - A first deployment that fails while a stack starts is no longer removed:
@@ -35,11 +44,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   upgrade. A receipt promotes to another environment only when it and the
   hosts' `mmd` are both on this release or later; otherwise build that
   environment again.
-- On Podman hosts, a config file or secret file of a service whose Compose
-  file sets its own `userns_mode`, such as `auto`, no longer reaches the
-  container owned by an unknown id: `mm config validate` and the plan refuse
-  an entry whose owner or mode cannot hold there (`MM_USER_NAMESPACE`) and say
-  to remove `userns_mode`, which gives the service ids of its own.
+- On Podman hosts, `mm config validate` and the plan refuse a config file or
+  secret file entry of a service whose Compose file picks its own user
+  namespace, such as `userns_mode: auto:size=1024`, when the entry names an
+  owner other than root or a mode not every user can read
+  (`MM_USER_NAMESPACE`). Such a file used to reach the container owned by an
+  id it does not have, unreadable for a mode such as `0400`.
+- On Podman hosts, a service whose Compose file sets a plain
+  `userns_mode: auto` gets mm's own user ids, as a service without
+  `userns_mode` does, so a secret file or config file with `uid: "1000"` and
+  `mode: 0o400` reaches it owned by its uid 1000. A stack with several Compose
+  files takes the `userns_mode` of the last file that sets one, a service
+  takes the one of the service it `extends`, a tag such as `!override` stands
+  for its value, and `userns_mode: ~` or `""` counts as not set.
+- On Docker Engine with `userns-remap`, the plan refuses a secret file or
+  config file that names an owner other than root or a mode not every user
+  can read (`MM_USER_NAMESPACE`), instead of handing over a file the
+  container's users cannot read. A service in the host's user namespace
+  (`userns_mode: host` or `host-user-namespace`) keeps such files.
 - An `internal: true` network that spans cluster nodes no longer takes a
   container's default route, which cut a container that is also on an
   ordinary network off from the internet and from the other nodes. Podman

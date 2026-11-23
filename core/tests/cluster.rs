@@ -388,3 +388,214 @@ fn a_request_carries_the_environments_runtime_whatever_the_command() -> TestResu
     );
     Ok(())
 }
+
+#[test]
+fn node_addresses_parse_hosts_and_ports_and_refuse_the_rest() {
+    use mm::domain::target::NodeAddress;
+    for (text, host, port) in [
+        ("10.0.0.3", "10.0.0.3", None),
+        ("10.0.0.3:2222", "10.0.0.3", Some(2222)),
+        ("node-2.internal", "node-2.internal", None),
+        ("node-2.internal:22", "node-2.internal", Some(22)),
+        ("fd00::3", "fd00::3", None),
+        ("[fd00::3]", "fd00::3", None),
+        ("[fd00::3]:2222", "fd00::3", Some(2222)),
+    ] {
+        let parsed = text.parse::<NodeAddress>();
+        assert_eq!(
+            parsed,
+            Ok(NodeAddress {
+                host: host.to_owned(),
+                port
+            }),
+            "{text}"
+        );
+    }
+    assert_eq!(
+        "[fd00::3]:2222"
+            .parse::<NodeAddress>()
+            .map(|address| address.to_string()),
+        Ok("[fd00::3]:2222".to_owned())
+    );
+    for text in [
+        "",
+        "-oProxyCommand=x",
+        "host name",
+        "10.0.0.3:",
+        "10.0.0.3:0",
+        "10.0.0.3:65536",
+        "10.0.0.3:+22",
+        "[10.0.0.3]:22",
+        "[fd00::3]2222",
+        "fd00::zz",
+        "user@10.0.0.3",
+    ] {
+        assert!(text.parse::<NodeAddress>().is_err(), "{text}");
+    }
+}
+
+#[test]
+fn a_device_address_is_private_checked_and_used_by_every_connection() -> TestResult {
+    let project_directory = temp_dirs::tempdir()?;
+    let home = temp_dirs::tempdir()?;
+    project(project_directory.path())?;
+    let (root, home) = (project_directory.path(), home.path());
+    let config = std::fs::read(root.join(".config/mm.yaml"))?;
+    let preference =
+        |arguments: &[&str]| mm(root, home, &[&["target", "preference"], arguments].concat());
+    let selected = preference(&["set-target", "production", "--environment", "local"])?;
+    assert_eq!(selected.code, Some(0), "{}", selected.stderr);
+
+    let unknown = preference(&["set-address", "nowhere", "app-1", "10.0.0.3"])?;
+    assert_ne!(unknown.code, Some(0));
+    assert!(
+        unknown
+            .stderr
+            .contains("declares no environment 'nowhere'; use one of: local"),
+        "{}",
+        unknown.stderr
+    );
+    let node = preference(&["set-address", "local", "app-9", "10.0.0.3"])?;
+    assert_ne!(node.code, Some(0));
+    assert!(
+        node.stderr
+            .contains("has no node 'app-9'; its nodes are app-1, app-2, db-1")
+            && node.stderr.contains("`mm -e local target nodes`"),
+        "{}",
+        node.stderr
+    );
+    let invalid = preference(&["set-address", "local", "app-1", "10.0.0.3:0"])?;
+    assert_ne!(invalid.code, Some(0));
+    assert!(
+        invalid.stderr.contains("no valid port"),
+        "{}",
+        invalid.stderr
+    );
+
+    let set = preference(&["set-address", "local", "app-1", "127.0.0.1:3"])?;
+    assert_eq!(set.code, Some(0), "{}", set.stderr);
+    let shown = preference(&["show"])?;
+    let shown: serde_json::Value = serde_json::from_str(&shown.stdout)?;
+    assert_eq!(
+        shown["node_addresses"],
+        serde_json::json!({"local": {"app-1": {"address": "127.0.0.1:3", "target": "production"}}})
+    );
+    assert_eq!(std::fs::read(root.join(".config/mm.yaml"))?, config);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        let mode = std::fs::metadata(home.join("node-addresses.json"))?
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600);
+    }
+
+    if ssh_is_installed() {
+        let nodes = mm(root, home, &["--output", "json", "target", "nodes"])?;
+        let report: serde_json::Value = serde_json::from_str(&nodes.stdout)?;
+        let app_1 = &report["nodes"][0];
+        assert_eq!(app_1["port"], 3, "{report}");
+        assert_eq!(app_1["repo_address"], "127.0.0.1:1", "{report}");
+        assert!(report["nodes"][1].get("repo_address").is_none(), "{report}");
+        let plan = mm(root, home, &["deploy", "plan", "--commit", COMMIT])?;
+        for expected in [
+            "node 'app-1' (127.0.0.1:3, this device's address for it) did not answer",
+            "`mm target preference show` lists it",
+            "node 'app-2' (127.0.0.1:2) did not answer",
+        ] {
+            assert!(
+                plan.stderr.contains(expected),
+                "{expected}: {}",
+                plan.stderr
+            );
+        }
+    }
+
+    let unset = preference(&["unset-address", "local", "app-1"])?;
+    assert_eq!(unset.code, Some(0), "{}", unset.stderr);
+    assert!(
+        !unset.stderr.contains("No address is set"),
+        "{}",
+        unset.stderr
+    );
+    let again = preference(&["unset-address", "local", "app-1"])?;
+    assert_eq!(again.code, Some(0), "{}", again.stderr);
+    assert!(
+        again
+            .stderr
+            .contains("No address is set on this device for node 'app-1' of environment 'local'"),
+        "{}",
+        again.stderr
+    );
+    let shown = preference(&["show"])?;
+    let shown: serde_json::Value = serde_json::from_str(&shown.stdout)?;
+    assert_eq!(shown["node_addresses"], serde_json::json!({}));
+    Ok(())
+}
+
+#[test]
+fn a_device_address_for_another_target_or_with_unknown_keys_warns_and_a_bad_one_is_named()
+-> TestResult {
+    if !ssh_is_installed() {
+        eprintln!("skipped: no ssh client on this machine");
+        return Ok(());
+    }
+    let project_directory = temp_dirs::tempdir()?;
+    let home = temp_dirs::tempdir()?;
+    project(project_directory.path())?;
+    let (root, home) = (project_directory.path(), home.path());
+    let document = mm::adapters::config::ConfigLoader.load_from(root)?;
+    let key = format!("{}/local", document.config.project.id.0);
+    let shown = mm(root, home, &["target", "preference", "show"])?;
+    assert_eq!(shown.code, Some(0), "{}", shown.stderr);
+    let first_port = |run: &Run| -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+        let report: serde_json::Value = serde_json::from_str(&run.stdout)
+            .map_err(|error| format!("{error}: {}{}", run.stdout, run.stderr))?;
+        Ok(report["nodes"][0]["port"].clone())
+    };
+
+    std::fs::write(
+        home.join("node-addresses.json"),
+        format!(
+            r#"{{"{key}": {{"app-1": {{"address": "127.0.0.1:3", "target": "production", "via": "vpn"}}}}}}"#
+        ),
+    )?;
+    let unknown = mm(root, home, &["--output", "json", "target", "nodes"])?;
+    assert_eq!(first_port(&unknown)?, 3, "{}", unknown.stderr);
+    assert!(
+        unknown
+            .stderr
+            .contains("keys this mm does not know for node 'app-1' of environment 'local': via"),
+        "{}",
+        unknown.stderr
+    );
+
+    std::fs::write(
+        home.join("node-addresses.json"),
+        format!(r#"{{"{key}": {{"app-1": {{"address": "10.0.0.3:0", "target": "production"}}}}}}"#),
+    )?;
+    let bad = mm(root, home, &["target", "nodes"])?;
+    assert_ne!(bad.code, Some(0));
+    assert!(
+        bad.stderr.contains("node-addresses.json") && bad.stderr.contains("no valid port"),
+        "{}",
+        bad.stderr
+    );
+
+    std::fs::write(
+        home.join("node-addresses.json"),
+        format!(r#"{{"{key}": {{"app-1": {{"address": "127.0.0.1:3", "target": "staging"}}}}}}"#),
+    )?;
+    let other = mm(root, home, &["--output", "json", "target", "nodes"])?;
+    assert_eq!(first_port(&other)?, 1, "{}", other.stderr);
+    assert!(
+        other.stderr.contains(
+            "was set for target 'staging', and the environment now uses target 'production'"
+        ) && other
+            .stderr
+            .contains("`mm target preference unset-address local app-1`"),
+        "{}",
+        other.stderr
+    );
+    Ok(())
+}

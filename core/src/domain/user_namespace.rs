@@ -341,7 +341,8 @@ pub fn on_prepared_hosts(config: &MmConfig, environment: &str, target: Option<&s
 }
 
 /// Whether a file mm hands a container reads the same in one whose user
-/// ids mm does not know: it belongs to root there and every user can read
+/// ids mm does not know: it belongs to the host's root, which such a
+/// container sees as the overflow id (`nobody`), and every user can read
 /// it. `None` for `uid` or `gid` is root.
 #[must_use]
 pub fn holds_in_any_namespace(uid: Option<&str>, gid: Option<&str>, mode: u32) -> bool {

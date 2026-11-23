@@ -5060,6 +5060,8 @@ Commands:
   unset-runtime  Remove a private runtime preference
   set-target     Persist a private target preference
   unset-target   Remove a private target preference
+  set-address    Connect this device to a cluster node at an address of its own, such as a VPN address, instead of the node's host in targets.yaml. The node's pinned host key and daemon identity must still match
+  unset-address  Connect to a cluster node at its host in targets.yaml again
   help           Print this message or the help of the given subcommand(s)
 
 Options:
@@ -5143,6 +5145,54 @@ Options:
       --environment <NAME>
           Limit the unset to one environment
 
+  -h, --help
+          Print help
+```
+
+#### `mm target preference set-address`
+
+```text
+Connect this device to a cluster node at an address of its own, such as a VPN address, instead of the node's host in targets.yaml. The node's pinned host key and daemon identity must still match
+
+Usage: set-address <ENVIRONMENT> <NODE> <HOST[:PORT]>
+
+Arguments:
+  <ENVIRONMENT>
+          The environment whose target lists the node
+
+  <NODE>
+          The node's name under `nodes:`
+
+  <HOST[:PORT]>
+          A hostname, IPv4 or IPv6 address, with an optional port
+
+Options:
+  -h, --help
+          Print help
+
+Examples:
+  mm target preference set-address staging app-1 10.0.0.3
+  mm target preference set-address staging app-2 node-2.internal:2222
+  mm target preference set-address staging app-3 '[fd00::5]:22'
+
+The address is kept in this device's mm home and nowhere else. Without a port, mm uses the node's port from targets.yaml.
+```
+
+#### `mm target preference unset-address`
+
+```text
+Connect to a cluster node at its host in targets.yaml again
+
+Usage: unset-address <ENVIRONMENT> <NODE>
+
+Arguments:
+  <ENVIRONMENT>
+          The environment whose target lists the node
+
+  <NODE>
+          The node's name under `nodes:`
+
+Options:
   -h, --help
           Print help
 ```

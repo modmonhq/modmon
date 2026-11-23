@@ -1943,6 +1943,8 @@ complete -c mm -n "__fish_mm_using_subcommand target; and __fish_seen_subcommand
 complete -c mm -n "__fish_mm_using_subcommand target; and __fish_seen_subcommand_from preference" -f -a "unset-runtime" -d 'Remove a private runtime preference'
 complete -c mm -n "__fish_mm_using_subcommand target; and __fish_seen_subcommand_from preference" -f -a "set-target" -d 'Persist a private target preference'
 complete -c mm -n "__fish_mm_using_subcommand target; and __fish_seen_subcommand_from preference" -f -a "unset-target" -d 'Remove a private target preference'
+complete -c mm -n "__fish_mm_using_subcommand target; and __fish_seen_subcommand_from preference" -f -a "set-address" -d 'Connect this device to a cluster node at an address of its own, such as a VPN address, instead of the node\'s host in targets.yaml. The node\'s pinned host key and daemon identity must still match'
+complete -c mm -n "__fish_mm_using_subcommand target; and __fish_seen_subcommand_from preference" -f -a "unset-address" -d 'Connect to a cluster node at its host in targets.yaml again'
 complete -c mm -n "__fish_mm_using_subcommand target; and __fish_seen_subcommand_from preference" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
 complete -c mm -n "__fish_mm_using_subcommand target; and __fish_seen_subcommand_from setup" -l root -d 'Project root or a path inside the project' -r -F
 complete -c mm -n "__fish_mm_using_subcommand target; and __fish_seen_subcommand_from setup" -s e -l environment -d 'Environment to operate on (overrides MM_ENVIRONMENT and default-environment)' -r
