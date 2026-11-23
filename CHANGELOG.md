@@ -32,6 +32,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `mm build --publish` also builds the modules that environments on remote
+  targets run with the same build variant, so a receipt from a build-only environment such as `ci`
+  deploys to an environment whose services it does not run. The plan shows
+  the environments each module is for, and `mm deploy plan --receipt` refuses
+  a receipt that lacks a module the environment runs before asking any host.
+  Builds without `--publish` are unchanged.
 - Security: a remote host or cluster node no longer runs a service that
   reaches the host or another container without an exception.
   `container:NAME` in `pid`, `ipc` and `network_mode` is refused

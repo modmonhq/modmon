@@ -20,9 +20,11 @@ Where a build puts its images depends on where the environment runs:
 `mm build` builds the modules the selected environment runs: every module
 with a service in that environment, and the modules whose images those build
 `FROM`, through `build.depends-on` or a `FROM` line that names another
-module's `build.image`. So `mm --environment production build --publish`
-never builds a module that only runs in development. A module the
-environment does not run cannot stop its build either.
+module's `build.image`. A published build also covers the modules that
+environments on remote targets run, so its receipt can be promoted to them;
+see [promote a build to another
+environment](#promote-a-build-to-another-environment). Without `--all`, no
+build includes a module that only runs on this machine.
 
 To build every module that has a build, whatever the environment runs, add
 `--all`:
@@ -261,6 +263,20 @@ mm --environment production deploy plan --receipt build-receipt.json
 mm --environment production deploy apply --plan PLAN_HASH --yes
 ```
 
+`mm build --publish` builds every module that the build environment runs, and
+every module an environment on a remote target runs when that environment
+selects the same [build variant](#build-dependencies-and-variants) of it, so a
+service limited to `environments: [uat, production]` is in a receipt built for
+`ci`. Environments whose target is `local`, and the development environment,
+are left out. A build without `--publish`, and `mm dev`, still build only what
+the environment runs.
+`mm build --publish plan` shows the environments each module is built for:
+
+```text
+  module: backup -> registry.example.com/acme/backup (...)
+    for: production, uat
+```
+
 mm plans the target environment's build of the receipt's commit and accepts
 the receipt only when it holds every module that environment builds, each
 built exactly the same way: the same platforms, image repositories, selected
@@ -268,8 +284,11 @@ variants, build paths, arguments, extra inputs, dependencies, and file
 contents. Modules in the receipt that the target environment does not run are
 left out of the promoted build. Otherwise it refuses and names
 the first module that differs and what differs, such as `build argument
-FEATURE`, with the command that builds for the target environment. A module
-with build secrets is promoted only when every secret is listed under
+FEATURE`, with the command that builds for the target environment. From a
+checkout of the receipt's commit, `mm deploy plan --receipt` refuses a receipt
+that lacks a module the target environment runs before it asks any host, and
+names the module and the command that publishes it. A module with build
+secrets is promoted only when every secret is listed under
 [`credential-only-secrets`](../secret-delivery.md#build-secrets): other
 secrets can hold a different value in each environment. The deployment plan's
 `build_receipt` field records the receipt hash, commit, and the environment it
