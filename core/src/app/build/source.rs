@@ -233,22 +233,14 @@ fn hash_context_files(
             });
         }
         total = checked_context_size(context, total, metadata.len())?;
-
-        #[cfg(unix)]
-        let executable = {
-            use std::os::unix::fs::PermissionsExt;
-            metadata.permissions().mode() & 0o111
-        };
-        #[cfg(not(unix))]
-        let executable = 0;
-        reviewed.push((file, relative, executable));
+        reviewed.push((file, relative, snapshot_file_mode(&metadata)));
     }
 
     let mut hasher = blake3::Hasher::new();
-    for (file, relative, executable) in reviewed {
+    for (file, relative, mode) in reviewed {
         hasher.update(&(relative.len() as u64).to_le_bytes());
         hasher.update(relative.as_bytes());
-        hasher.update(&executable.to_le_bytes());
+        hasher.update(&mode.to_le_bytes());
         hash_file(file, &mut hasher)?;
     }
     Ok(hasher.finalize().to_hex().to_string())
@@ -339,21 +331,67 @@ pub(crate) fn snapshot_build_context(
             message: "build context changed after the reviewed plan; review a new plan".to_owned(),
         });
     }
+    set_snapshot_mode(destination, SNAPSHOT_DIRECTORY_MODE)?;
     Ok(snapshot_dockerfile)
+}
+
+const SNAPSHOT_DIRECTORY_MODE: u32 = 0o755;
+
+/// The mode a context file has in the snapshot: 0755 when the checkout
+/// marks it executable, otherwise 0644, whatever the umask.
+fn snapshot_file_mode(metadata: &fs::Metadata) -> u32 {
+    #[cfg(unix)]
+    let executable = {
+        use std::os::unix::fs::PermissionsExt;
+        metadata.permissions().mode() & 0o111 != 0
+    };
+    #[cfg(not(unix))]
+    let executable = {
+        let _ = metadata;
+        false
+    };
+    if executable { 0o755 } else { 0o644 }
+}
+
+fn set_snapshot_mode(path: &Path, mode: u32) -> Result<(), MmError> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(mode)).map_err(|source| MmError::Io {
+            context: format!("setting build snapshot permissions on {}", path.display()),
+            source,
+        })
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (path, mode);
+        Ok(())
+    }
 }
 
 fn copy_into_snapshot(destination: &Path, relative: &Path, source: &Path) -> Result<(), MmError> {
     let target = destination.join(relative);
     let parent = target.parent().unwrap_or(destination);
-    fs::create_dir_all(parent).map_err(|error| MmError::Io {
-        context: format!("creating build snapshot directory {}", parent.display()),
-        source: error,
-    })?;
+    let missing = parent
+        .ancestors()
+        .take_while(|directory| *directory != destination && !directory.is_dir())
+        .collect::<Vec<_>>();
+    for directory in missing.into_iter().rev() {
+        fs::create_dir(directory).map_err(|error| MmError::Io {
+            context: format!("creating build snapshot directory {}", directory.display()),
+            source: error,
+        })?;
+        set_snapshot_mode(directory, SNAPSHOT_DIRECTORY_MODE)?;
+    }
     fs::copy(source, &target).map_err(|error| MmError::Io {
         context: format!("copying build context file {}", source.display()),
         source: error,
     })?;
-    Ok(())
+    let copied = fs::symlink_metadata(&target).map_err(|error| MmError::Io {
+        context: format!("reading build snapshot file {}", target.display()),
+        source: error,
+    })?;
+    set_snapshot_mode(&target, snapshot_file_mode(&copied))
 }
 
 /// One build context as BuildKit sends it: the files its ignore file leaves

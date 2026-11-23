@@ -17,6 +17,8 @@
 //   and removes it with the last one; the node's mmd gives a bridge that
 //   came back its settings (`ClusterNetworkHost::settle_bridges`).
 
+const NO_DEFAULT_ROUTE_OPTION: &str = "no_default_route";
+
 /// The first and last address containers on `network` get: the slice
 /// without its first address, the gateway after it, and its last.
 fn podman_lease_range(
@@ -55,6 +57,27 @@ fn podman_network_addresses(inspected: &Value) -> String {
     }
 }
 
+fn has_podman_default_route(inspected: &Value) -> bool {
+    inspected["options"][NO_DEFAULT_ROUTE_OPTION].as_str() != Some("true")
+}
+
+/// The addressing of an inspected network, and whether it carries a
+/// default route when `wanted` calls for the other.
+fn observed_podman_addresses(
+    inspected: &Value,
+    wanted: Option<&crate::domain::cluster_network::LocalNetwork>,
+) -> String {
+    let addresses = podman_network_addresses(inspected);
+    let routed = has_podman_default_route(inspected);
+    match wanted {
+        Some(wanted) if wanted.internal == routed => {
+            let route = if routed { "with" } else { "without" };
+            format!("{addresses}, {route} a default route")
+        }
+        _ => addresses,
+    }
+}
+
 /// Whether an inspected network is the bridge network `wanted` calls for.
 fn is_podman_cluster_network(
     inspected: &Value,
@@ -75,6 +98,7 @@ fn is_podman_cluster_network(
         && inspected["network_interface"].as_str() == Some(wanted.bridge.as_str())
         && inspected["dns_enabled"].as_bool() == Some(false)
         && inspected["internal"].as_bool() != Some(true)
+        && has_podman_default_route(inspected) != wanted.internal
         && inspected["options"]["mtu"].as_str() == Some(wanted.mtu.to_string().as_str())
 }
 
@@ -128,7 +152,7 @@ impl PodmanComposeRuntime {
     ) -> Result<Option<crate::domain::cluster_network::ObservedNetwork>, MmError> {
         Ok(self.inspected_network(name).await?.map(|inspected| {
             crate::domain::cluster_network::ObservedNetwork {
-                addresses: podman_network_addresses(&inspected),
+                addresses: observed_podman_addresses(&inspected, wanted),
                 current: wanted.is_some_and(|wanted| is_podman_cluster_network(&inspected, wanted)),
             }
         }))
@@ -235,6 +259,9 @@ impl PodmanComposeRuntime {
             "--opt".to_owned(),
             format!("mtu={}", network.mtu),
         ];
+        if network.internal {
+            args.extend(["--opt".to_owned(), format!("{NO_DEFAULT_ROUTE_OPTION}=true")]);
+        }
         args.extend(ownership_label_args(&ownership));
         args.push(name.to_owned());
         let output = self.local_command(args, Duration::from_secs(30)).await?;

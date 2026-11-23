@@ -112,6 +112,7 @@ mod manifest;
 use manifest::*;
 mod shared_volumes;
 pub(crate) use shared_volumes::volume_users;
+pub(crate) use user_namespace::{chosen_user_namespaces, files_in_chosen_namespaces};
 mod compose_environment;
 mod hardening;
 pub(crate) use compose_environment::compose_environment_refusals;

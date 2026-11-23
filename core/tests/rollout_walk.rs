@@ -501,6 +501,7 @@ impl Cluster {
                 networks: None,
                 rollout: Some(ClusterRollout {
                     convergence_timeout_seconds: 60,
+                    pull_timeout_seconds: None,
                     stages,
                     ran_once: Default::default(),
                     once: Vec::new(),
@@ -1265,6 +1266,7 @@ async fn a_step_that_shows_no_progress_ends_the_wait_with_a_timeout() -> TestRes
             alive_at_unix_ms: 1,
             deadline_unix_ms: i64::MAX,
             stopping: None,
+            doing: None,
         }];
     }
     let said = Mutex::new(Vec::new());
@@ -1359,6 +1361,7 @@ fn in_flight(hash: &str, what: &str) -> mm::domain::rollout::OperationInFlight {
         alive_at_unix_ms: 1,
         deadline_unix_ms: i64::MAX,
         stopping: None,
+        doing: None,
     }
 }
 

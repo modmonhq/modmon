@@ -97,6 +97,7 @@ pub fn run_in_flight(
             .saturating_add(i64::try_from(timeout.as_millis()).unwrap_or(i64::MAX)),
         stopping: (run.cancellation_requested || run.state == super::JobRunState::Cancelling)
             .then(|| "being cancelled".to_owned()),
+        doing: None,
     }
 }
 

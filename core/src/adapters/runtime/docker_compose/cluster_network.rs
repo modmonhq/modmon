@@ -55,6 +55,27 @@ fn cluster_network_addresses(inspected: &serde_json::Value) -> String {
     }
 }
 
+fn is_docker_internal(inspected: &serde_json::Value) -> bool {
+    inspected["Internal"].as_bool() == Some(true)
+}
+
+/// The addressing of an inspected network, and whether it carries a
+/// default route when `wanted` calls for the other.
+fn observed_cluster_addresses(
+    inspected: &serde_json::Value,
+    wanted: Option<&crate::domain::cluster_network::LocalNetwork>,
+) -> String {
+    let addresses = cluster_network_addresses(inspected);
+    let routed = !is_docker_internal(inspected);
+    match wanted {
+        Some(wanted) if wanted.internal == routed => {
+            let route = if routed { "with" } else { "without" };
+            format!("{addresses}, {route} a default route")
+        }
+        _ => addresses,
+    }
+}
+
 /// Whether an inspected network is the bridge network `wanted` calls for.
 fn is_cluster_network(
     inspected: &serde_json::Value,
@@ -77,7 +98,7 @@ fn is_cluster_network(
     });
     addressing
         && inspected["Driver"].as_str() == Some("bridge")
-        && inspected["Internal"].as_bool() != Some(true)
+        && is_docker_internal(inspected) == wanted.internal
         && cluster_network_options(wanted)
             .iter()
             .all(|(option, value)| inspected["Options"][option].as_str() == Some(value.as_str()))
@@ -165,7 +186,7 @@ impl DockerComposeRuntime {
     ) -> Result<Option<crate::domain::cluster_network::ObservedNetwork>, MmError> {
         Ok(self.inspect_network_by_name(name).await?.map(|inspected| {
             crate::domain::cluster_network::ObservedNetwork {
-                addresses: cluster_network_addresses(&inspected),
+                addresses: observed_cluster_addresses(&inspected, wanted),
                 current: wanted.is_some_and(|wanted| is_cluster_network(&inspected, wanted)),
             }
         }))
@@ -257,6 +278,9 @@ impl DockerComposeRuntime {
             "--gateway".to_owned(),
             network.gateway.to_string(),
         ];
+        if network.internal {
+            args.push("--internal".to_owned());
+        }
         for (name, address) in network.reserved() {
             args.extend(["--aux-address".to_owned(), format!("{name}={address}")]);
         }

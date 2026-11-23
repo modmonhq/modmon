@@ -116,6 +116,10 @@ pub struct StageJob {
 pub struct RolloutPolicy {
     /// How long a stack may take on this host to become healthy.
     pub convergence_timeout_seconds: u64,
+    /// How long this host may take to pull a stack's or a job's images,
+    /// when the environment sets it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pull_timeout_seconds: Option<u64>,
     /// Every stack of the configuration, in the order a deployment rolls
     /// them out: by name, except that a stack follows the stacks its
     /// `after:` lists.
@@ -156,6 +160,16 @@ impl RolloutPolicy {
         let timeout = DeployConfig::convergence_timeout(deploy).map_err(|problem| {
             format!("environments.{environment}.deploy.convergence-timeout {problem}")
         })?;
+        let pull = match deploy.and_then(|deploy| deploy.pull_timeout.as_ref()) {
+            None => None,
+            Some(_) => Some(
+                DeployConfig::pull_timeout(deploy)
+                    .map_err(|problem| {
+                        format!("environments.{environment}.deploy.pull-timeout {problem}")
+                    })?
+                    .as_secs(),
+            ),
+        };
         let mut services = Vec::new();
         let mut drains = Vec::new();
         for (module_name, module) in &config.modules {
@@ -192,6 +206,7 @@ impl RolloutPolicy {
         drains.sort();
         Ok(Self {
             convergence_timeout_seconds: timeout.as_secs().max(1),
+            pull_timeout_seconds: pull,
             stack_order: stack_order(&config.stacks)?,
             services,
             jobs: deploy_jobs(config, environment)?,
@@ -219,6 +234,11 @@ impl RolloutPolicy {
             return crate::domain::config::DEFAULT_CONVERGENCE_TIMEOUT;
         }
         Duration::from_secs(self.convergence_timeout_seconds)
+    }
+
+    #[must_use]
+    pub fn pull_timeout(&self) -> Duration {
+        pull_timeout(self.pull_timeout_seconds)
     }
 
     /// The services of `stack` whose new container starts before the old
@@ -402,6 +422,10 @@ impl RolloutStage {
 pub struct ClusterRollout {
     /// How long a stack may take on a node to become healthy.
     pub convergence_timeout_seconds: u64,
+    /// How long a node may take to pull a stack's or a job's images, when
+    /// a node's environment sets it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pull_timeout_seconds: Option<u64>,
     pub stages: Vec<RolloutStage>,
     /// The `once` jobs some node of the environment already ran or
     /// started: no node starts them again, and every node keeps the
@@ -412,6 +436,13 @@ pub struct ClusterRollout {
     /// place: the ones no node ran before.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub once: Vec<StageJob>,
+}
+
+fn pull_timeout(seconds: Option<u64>) -> Duration {
+    seconds.map_or(
+        crate::domain::config::DEFAULT_PULL_TIMEOUT,
+        Duration::from_secs,
+    )
 }
 
 /// One node's part of a cluster plan, as the rollout sees it: the stacks it
@@ -518,10 +549,25 @@ impl ClusterRollout {
                 .map(|node| node.policy.convergence_timeout().as_secs())
                 .max()
                 .unwrap_or_default(),
+            pull_timeout_seconds: nodes
+                .iter()
+                .any(|node| node.policy.pull_timeout_seconds.is_some())
+                .then(|| {
+                    nodes
+                        .iter()
+                        .map(|node| node.policy.pull_timeout().as_secs())
+                        .max()
+                        .unwrap_or_default()
+                }),
             stages,
             ran_once: BTreeMap::new(),
             once: placed_jobs(nodes.iter(), |job| job.run == JobWhen::Once),
         }
+    }
+
+    #[must_use]
+    pub fn pull_timeout(&self) -> Duration {
+        pull_timeout(self.pull_timeout_seconds)
     }
 
     /// Takes in what the nodes say ran once: those jobs are not started

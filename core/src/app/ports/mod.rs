@@ -1,3 +1,5 @@
+mod activity;
+pub use activity::{Doing, DoingSink, reporting_doing};
 mod artifacts;
 mod build;
 mod ca;

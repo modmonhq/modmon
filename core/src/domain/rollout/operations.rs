@@ -31,6 +31,10 @@ pub struct OperationInFlight {
     /// Why it is being stopped, once it is.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stopping: Option<String>,
+    /// What it does right now, when the host says, such as `pulling image
+    /// 2 of 3 for stack 'app': registry.example.com/api:1.4`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub doing: Option<String>,
 }
 
 impl OperationInFlight {
