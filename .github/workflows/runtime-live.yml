@@ -69,6 +69,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Podman Compose provider
         run: sudo apt-get update && sudo apt-get install --yes podman podman-compose
+      - name: Let Podman stop pasta under AppArmor
+        run: |
+          profile=/etc/apparmor.d/usr.bin.pasta
+          if [ -f "$profile" ] && ! grep -q 'peer=podman' "$profile"; then
+            sudo sed -i '/^profile pasta /a\  signal (receive) peer=podman,' "$profile"
+            sudo apparmor_parser --replace "$profile"
+          fi
       - name: Assert rootless engine
         run: test "$(podman info --format '{{.Host.Security.Rootless}}')" = true
       - name: Run Podman Compose lifecycle and observability checks
