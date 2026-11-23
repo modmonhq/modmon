@@ -513,9 +513,7 @@ impl DeploymentPlan {
                 ));
             }
         }
-        if (!self.removed_stacks.is_empty()
-            || self.removed_ingress.is_some()
-            || !self.removed_preserved_volumes.is_empty())
+        if (self.removed_ingress.is_some() || !self.removed_preserved_volumes.is_empty())
             && self.expected_previous_plan_hash.is_none()
         {
             return Err("deployment removals require a previous reviewed plan".to_owned());

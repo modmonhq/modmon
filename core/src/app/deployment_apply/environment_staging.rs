@@ -190,7 +190,7 @@ fn kept_first_deployment(
     let environment = &plan.environment;
     MmError::operation_failure(
         operation_id.0.to_string(),
-        crate::domain::error::MutationStatus::Applied,
+        crate::domain::error::MutationStatus::Kept,
         error,
         Vec::new(),
         format!(

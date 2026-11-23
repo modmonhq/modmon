@@ -19,7 +19,11 @@ impl DeploymentService {
             .rollout
             .ordered(&plan.stacks, |stack| stack.stack.as_str())
         {
-            changes.note(&stack.stack, true);
+            if (plan.rollout.jobs.iter()).any(|job| {
+                job.stack == stack.stack && job.run == crate::domain::config::JobWhen::BeforeDeploy
+            }) {
+                changes.note(&stack.stack, true);
+            }
             let jobs = self
                 .run_stack_jobs(selection, (plan, target), &stack.stack, environments)
                 .await?;

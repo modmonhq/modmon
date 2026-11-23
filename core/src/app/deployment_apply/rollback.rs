@@ -207,9 +207,10 @@ impl DeploymentService {
         }
     }
 
-    /// Removes what `plan`, a first deployment, started. Before `next`
-    /// is applied, what it runs too stays: its stacks, networks and
-    /// ingress.
+    /// Removes what `plan`, a first deployment, started. With `next`, the
+    /// plan applied right after, a stack or network `next` also has stays,
+    /// as do the networks of a stack that stays and, when `next` has an
+    /// ingress, the ingress.
     pub(super) async fn rollback_initial_deployment(
         &self,
         plan: &DeploymentPlan,
@@ -222,10 +223,15 @@ impl DeploymentService {
                 (next.stacks.iter()).any(|stack| stack.compose_project_name == project)
             })
         };
-        let keeps = plan
-            .stacks
-            .iter()
-            .any(|stack| runs_next(&stack.compose_project_name));
+        let kept = (plan.stacks.iter())
+            .filter(|stack| runs_next(&stack.compose_project_name))
+            .map(|stack| stack.stack.as_str())
+            .collect::<Vec<_>>();
+        let network_stays = |network: &crate::domain::stack::CanonicalNetworkIntent| {
+            next.is_some_and(|next| {
+                (next.networks.iter()).any(|known| known.physical_name == network.physical_name)
+            }) || (network.members.iter()).any(|member| kept.contains(&member.stack.as_str()))
+        };
         for stack in
             (plan.stacks.iter().rev()).filter(|stack| !runs_next(&stack.compose_project_name))
         {
@@ -241,7 +247,7 @@ impl DeploymentService {
         for network in plan
             .networks
             .iter()
-            .filter(|network| !network.members.is_empty() && !keeps)
+            .filter(|network| !network.members.is_empty() && !network_stays(network))
         {
             if let Err(error) = self
                 .ports
@@ -257,10 +263,10 @@ impl DeploymentService {
             }
         }
         if let Some(ingress) = &plan.static_ingress
-            && !keeps
+            && next.is_none_or(|next| next.static_ingress.is_none())
             && !self.planner.installation_owns_ingress(plan.target_id)?
         {
-            self.remove_initial_ingress(plan, target, ingress, &mut failures)
+            self.remove_initial_ingress(plan, target, (ingress, kept.is_empty()), &mut failures)
                 .await;
         }
         rollback_result(failures)
@@ -270,7 +276,7 @@ impl DeploymentService {
         &self,
         plan: &DeploymentPlan,
         target: &NamedTarget,
-        ingress: &TargetIngressPlan,
+        (ingress, network): (&TargetIngressPlan, bool),
         failures: &mut Vec<MmError>,
     ) {
         if let Err(error) = self.ports.privileged.uninstall(ingress).await {
@@ -312,11 +318,12 @@ impl DeploymentService {
             {
                 failures.push(error);
             }
-            if let Err(error) = self
-                .ports
-                .runtime
-                .remove_network(target, &manifest.network_name, INGRESS_NETWORK_RESOURCE)
-                .await
+            if network
+                && let Err(error) = self
+                    .ports
+                    .runtime
+                    .remove_network(target, &manifest.network_name, INGRESS_NETWORK_RESOURCE)
+                    .await
             {
                 failures.push(error);
             }

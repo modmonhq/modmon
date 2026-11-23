@@ -370,6 +370,20 @@ impl RemoteDaemon {
                 %error,
                 "remote deployment failed"
             );
+            if let MmError::OperationFailure { operation_id, recovery, primary, .. } = &error
+                && error.kept()
+            {
+                return MmError::operation_failure(
+                    operation_id.clone(),
+                    crate::domain::error::MutationStatus::Kept,
+                    MmError::Remote {
+                        code: error.code(),
+                        message: format!("the deployment failed on the host: {}", bounded_message(&primary.to_string())),
+                    },
+                    Vec::new(),
+                    recovery.clone(),
+                );
+            }
             // Its own code, not a security refusal: the deploy was allowed
             // and something on the host failed.
             MmError::Remote {
@@ -455,6 +469,7 @@ impl RemoteDaemon {
         let unfinished = failed.is_some_and(|error| {
             matches!(error, MmError::Security { .. } | MmError::Cancelled { .. } | MmError::Timeout { .. })
                 || error.code() == "MM_STATE"
+                || error.kept()
         });
         self.note_rollout(context, hash, |rollout, now| {
             if !cancelled {

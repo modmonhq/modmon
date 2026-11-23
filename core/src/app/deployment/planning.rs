@@ -312,6 +312,7 @@ impl DeploymentManager {
             static_ingress,
         } = routes;
         let runtime_secret_plan = runtime_secret_plan(&compiled, runtime_secret_items)?;
+        let kept = self.kept_by_failed_first(&compiled, previous_deployment.as_ref())?;
         let stacks = deployment_stacks(
             compiled.project_id,
             &compiled.project_name,
@@ -323,7 +324,7 @@ impl DeploymentManager {
         )?;
         let removals = deployment_removals(
             (&stacks, &compiled.excluded_services),
-            previous_deployment.as_ref(),
+            (previous_deployment.as_ref(), kept),
             complete_route_claims.is_empty()
                 && !self.installation_owns_ingress(compiled.target.definition.id)?,
         );
@@ -385,6 +386,26 @@ impl DeploymentManager {
 
     /// The deployment the plan follows, and the environment's routes it did
     /// not record, which the plan takes back.
+    /// The stacks first deployments that failed left running, when no
+    /// deployment ever finished: the plan removes those it does not run.
+    fn kept_by_failed_first(
+        &self,
+        compiled: &crate::app::stacks::DeploymentStackCompilation,
+        previous: Option<&DeploymentPlan>,
+    ) -> Result<Vec<DeploymentStackPlan>, MmError> {
+        if previous.is_some() {
+            return Ok(Vec::new());
+        }
+        let target_id = compiled.target.definition.id;
+        Ok(self
+            .state
+            .deployment_candidates_for_owner(compiled.project_id, &compiled.environment, target_id)?
+            .into_iter()
+            .filter(|(state, _)| *state == OperationState::Failed)
+            .flat_map(|(_, failed)| failed.stacks)
+            .collect())
+    }
+
     fn previous_deployment(
         &self,
         compiled: &crate::app::stacks::DeploymentStackCompilation,
@@ -507,35 +528,34 @@ fn runtime_secret_plan(
     .map_err(|message| MmError::Secret { message })
 }
 
-/// What the previous deployment had and this one does not. The preserved
+/// What the previous deployment had, or what failed first deployments
+/// kept, and this one does not. The preserved
 /// volumes of a module that `development:` turned off stay for its return.
 fn deployment_removals(
     (stacks, excluded): (
         &[DeploymentStackPlan],
         &[crate::domain::stack::ExcludedService],
     ),
-    previous: Option<&DeploymentPlan>,
+    (previous, kept): (Option<&DeploymentPlan>, Vec<DeploymentStackPlan>),
     remove_ingress: bool,
 ) -> DeploymentRemovals {
     let mut removed_stacks = previous
-        .map(|previous| {
-            previous
-                .stacks
+        .map(|previous| previous.stacks.clone())
+        .unwrap_or_default()
+        .into_iter()
+        .chain(kept)
+        .filter(|old| {
+            !stacks
                 .iter()
-                .filter(|old| {
-                    !stacks
-                        .iter()
-                        .any(|desired| desired.compose_project_name == old.compose_project_name)
-                })
-                .cloned()
-                .collect::<Vec<_>>()
+                .any(|desired| desired.compose_project_name == old.compose_project_name)
         })
-        .unwrap_or_default();
+        .collect::<Vec<_>>();
     removed_stacks.sort_by(|left, right| {
         left.stack
             .cmp(&right.stack)
             .then_with(|| left.compose_project_name.cmp(&right.compose_project_name))
     });
+    removed_stacks.dedup_by(|left, right| left.compose_project_name == right.compose_project_name);
     let removed_ingress = if remove_ingress {
         previous.and_then(|plan| plan.static_ingress.clone())
     } else {

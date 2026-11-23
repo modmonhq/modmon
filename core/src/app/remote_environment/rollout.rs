@@ -384,6 +384,7 @@ fn outcome(node: &str, state: NodeApplyState) -> Outcome {
         stopped: Vec::new(),
         unchanged: false,
         code: None,
+        kept: false,
     }
 }
 
@@ -784,6 +785,7 @@ impl Walk<'_> {
             outcome.rolled_back = outcome.rolled_back && !fault.preparing;
             outcome.unchanged = fault.preparing;
             outcome.code = fault.code;
+            outcome.kept = first;
         }
     }
 }
