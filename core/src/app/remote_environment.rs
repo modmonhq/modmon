@@ -77,8 +77,12 @@ impl NodeUnavailable {
 pub struct RemoteNode {
     /// The node's name; `None` for a target that names one host.
     pub name: Option<String>,
+    /// Where this device connects to the node.
     pub host: String,
     pub port: u16,
+    /// The repo's host and port for the node, when this device connects at
+    /// an address of its own instead.
+    pub repo_address: Option<(String, u16)>,
     /// The node's address on the cluster's private network.
     pub private_address: Option<Ipv4Addr>,
     /// The connection, or why there is none (a node not set up yet).
@@ -355,6 +359,10 @@ impl RemoteEnvironment {
             name: self.name_of(node).to_owned(),
             host: node.host.clone(),
             port: node.port,
+            repo_address: node
+                .repo_address
+                .as_ref()
+                .map(|(host, port)| crate::domain::target::host_and_port(host, *port)),
             mesh_address: node.private_address,
             state: NodeState::Ready,
             reachable: true,

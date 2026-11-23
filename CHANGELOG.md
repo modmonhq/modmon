@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `mm target preference set-address ENVIRONMENT NODE HOST[:PORT]` connects
+  this device to a cluster node at an address of its own, such as a VPN
+  address, without changing the repo. The node's recorded host key and daemon
+  identity are checked as before. `unset-address` goes back to the repo's
+  address, `show` lists them, and `mm target nodes`, the terminal UI and
+  `MM_UNREACHABLE` say when one is in effect.
+
 ### Changed
 
 - A first deployment that fails while a stack starts is no longer removed:

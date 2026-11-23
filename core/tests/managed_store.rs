@@ -1622,6 +1622,7 @@ fn node_report(name: &str, store: Option<StoreStatus>) -> mm::domain::remote::No
         name: name.to_owned(),
         host: "203.0.113.1".to_owned(),
         port: 22,
+        repo_address: None,
         mesh_address: None,
         state: if store.is_some() {
             mm::domain::remote::NodeState::Ready

@@ -30,6 +30,8 @@ fn agreed(
     }
 }
 
+const DEVICE_ADDRESS_HELP: &str = "This device connects at its own address for the node: `mm target preference show` lists it, and `mm target preference unset-address` goes back to the repo's address";
+
 /// How long the daemon may take to answer the hello on a new connection.
 const HELLO_PATIENCE: Duration = Duration::from_secs(15);
 /// The same on a kept connection, which has no key exchange to wait for: a
@@ -111,6 +113,11 @@ impl SshEndpoint {
                     (REFUSED_AGENT_KEY.to_owned(), REFUSED_AGENT_KEY_HELP.to_owned())
                 } else {
                     (problem, help)
+                };
+                let help = if self.device_address {
+                    format!("{help}. {DEVICE_ADDRESS_HELP}")
+                } else {
+                    help
                 };
                 MmError::Unreachable {
                     subject: self.subject.clone(),
@@ -230,14 +237,9 @@ impl SshEndpoint {
             context: "creating an ephemeral strict known-hosts file".to_owned(),
             source,
         })?;
-        let known_name = if self.port == 22 {
-            self.host.clone()
-        } else {
-            format!("[{}]:{}", self.host, self.port)
-        };
         std::fs::write(
             known_hosts.path(),
-            format!("{known_name} {}\n", self.host_key),
+            format!("{} {}\n", self.host_key_alias, self.host_key),
         )
         .map_err(|source| MmError::Io {
             context: "writing an ephemeral strict known-hosts file".to_owned(),

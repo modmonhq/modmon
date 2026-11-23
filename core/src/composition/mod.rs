@@ -30,6 +30,8 @@ pub use host_values::AgeValueSealer;
 mod keys;
 mod mesh;
 mod metrics;
+mod node_addresses;
+pub(crate) use node_addresses::{project_node_addresses, set_node_address, unset_node_address};
 mod operations;
 pub(crate) use operations::{job_gateway_as, service_gateway, service_gateway_as};
 mod providers;

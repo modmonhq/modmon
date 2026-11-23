@@ -329,6 +329,7 @@ fn report(name: &str, engine: Option<EngineFacts>) -> NodeReport {
         name: name.to_owned(),
         host: "203.0.113.11".to_owned(),
         port: 22,
+        repo_address: None,
         mesh_address: None,
         state: NodeState::Ready,
         reachable: true,
