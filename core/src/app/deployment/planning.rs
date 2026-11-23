@@ -374,6 +374,7 @@ impl DeploymentManager {
             runtime_changes: Vec::new(),
             unknown_config_keys: compiled.unknown_keys,
             secret_file_owners: Vec::new(),
+            healthcheck_arguments: compiled.healthcheck_arguments,
             release: compiled.release,
             plan_hash: String::new(),
         };

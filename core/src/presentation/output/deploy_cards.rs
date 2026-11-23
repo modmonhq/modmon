@@ -309,6 +309,11 @@ fn local_notes(plan: &DeploymentPlan) -> Vec<(Tone, String)> {
         };
         (tone, file.line())
     }));
+    notes.extend(
+        plan.healthcheck_arguments
+            .iter()
+            .map(|check| (Tone::Warn, format!("{}; {}", check.line(), check.help()))),
+    );
     notes.extend(masked_notes(plan));
     notes
 }

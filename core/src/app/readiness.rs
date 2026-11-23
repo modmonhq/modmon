@@ -221,6 +221,14 @@ impl ReadinessService {
         } else {
             report.doctor.runtime = RuntimeProbe::on_remote_hosts(resolved.runtime);
         }
+        if resolved.runtime == RuntimeKind::PodmanCompose
+            && !(report.doctor.runtime.engine_version.as_deref())
+                .is_some_and(crate::domain::compose_healthcheck::podman_keeps_arguments)
+        {
+            report.doctor.validation.diagnostics.extend(
+                super::config_validation::healthcheck_argument_diagnostics(document, environment),
+            );
+        }
         if report.passed("configuration") && report.passed("images") {
             if let Some(ingress) = report.record(
                 "stacks",

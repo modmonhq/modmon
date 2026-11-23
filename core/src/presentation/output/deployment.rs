@@ -73,6 +73,10 @@ pub(crate) fn deployment_plan_text(
     for file in &plan.secret_file_owners {
         writeln!(writer, "  note: {}", terminal_safe(&file.line())).map_err(output_error)?;
     }
+    for check in &plan.healthcheck_arguments {
+        writeln!(writer, "  warning: {}", terminal_safe(&check.line())).map_err(output_error)?;
+        writeln!(writer, "    {}", terminal_safe(&check.help())).map_err(output_error)?;
+    }
     // A cluster node's routes are the cluster plan's ingress section.
     if plan.node.is_some() {
         return Ok(());
