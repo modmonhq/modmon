@@ -103,45 +103,22 @@ impl<'de> Deserialize<'de> for NodeAddress {
 }
 
 /// One node's address on this device, with the target it was set for.
-/// An entry written before the target was recorded is a bare address and
-/// has no target.
+/// Keys this release does not know are kept aside for a warning.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(from = "StoredNodeAddress")]
 pub struct DeviceNodeAddress {
     pub address: NodeAddress,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub target: Option<String>,
+    pub target: String,
+    #[serde(flatten, skip_serializing)]
+    pub unknown: std::collections::BTreeMap<String, serde_json::Value>,
 }
 
 impl DeviceNodeAddress {
-    /// Whether the address applies to a node of `target`.
     #[must_use]
-    pub fn applies_to(&self, target: &str) -> bool {
-        self.target
-            .as_deref()
-            .is_none_or(|set_for| set_for == target)
-    }
-}
-
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum StoredNodeAddress {
-    Bare(NodeAddress),
-    Entry {
-        address: NodeAddress,
-        #[serde(default)]
-        target: Option<String>,
-    },
-}
-
-impl From<StoredNodeAddress> for DeviceNodeAddress {
-    fn from(stored: StoredNodeAddress) -> Self {
-        match stored {
-            StoredNodeAddress::Bare(address) => Self {
-                address,
-                target: None,
-            },
-            StoredNodeAddress::Entry { address, target } => Self { address, target },
+    pub fn new(address: NodeAddress, target: String) -> Self {
+        Self {
+            address,
+            target,
+            unknown: std::collections::BTreeMap::new(),
         }
     }
 }

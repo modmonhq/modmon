@@ -28,13 +28,19 @@ pub(super) fn device_node_addresses(
         .environment(&key(document, environment))?
         .into_iter()
         .filter_map(|(node, entry)| {
-            if entry.applies_to(target) {
+            if !entry.unknown.is_empty() {
+                tracing::warn!(
+                    "node-addresses.json in the mm home has keys this mm does not know for node '{node}' of environment '{environment}': {}; they are ignored",
+                    entry.unknown.keys().map(String::as_str).collect::<Vec<_>>().join(", ")
+                );
+            }
+            if entry.target == target {
                 return Some((node, entry.address));
             }
             tracing::warn!(
                 "this device's address {} for node '{node}' of environment '{environment}' was set for target '{}', and the environment now uses target '{target}', so mm connects to the node's host in targets.yaml. Run `mm target preference set-address {environment} {node} ADDRESS` to set it for '{target}', or `mm target preference unset-address {environment} {node}`",
                 entry.address,
-                entry.target.as_deref().unwrap_or_default()
+                entry.target
             );
             None
         })
@@ -126,10 +132,7 @@ pub(crate) fn set_node_address(
     store(&home).set(
         &key(document, environment),
         node,
-        DeviceNodeAddress {
-            address: address.clone(),
-            target: Some(name),
-        },
+        DeviceNodeAddress::new(address.clone(), name),
     )?;
     Ok(address)
 }

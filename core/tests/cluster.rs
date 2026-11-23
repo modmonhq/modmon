@@ -534,7 +534,8 @@ fn a_device_address_is_private_checked_and_used_by_every_connection() -> TestRes
 }
 
 #[test]
-fn a_device_address_set_for_another_target_is_left_out_and_bare_ones_still_apply() -> TestResult {
+fn a_device_address_for_another_target_or_with_unknown_keys_warns_and_a_bad_one_is_named()
+-> TestResult {
     if !ssh_is_installed() {
         eprintln!("skipped: no ssh client on this machine");
         return Ok(());
@@ -555,10 +556,31 @@ fn a_device_address_set_for_another_target_is_left_out_and_bare_ones_still_apply
 
     std::fs::write(
         home.join("node-addresses.json"),
-        format!(r#"{{"{key}": {{"app-1": "127.0.0.1:3"}}}}"#),
+        format!(
+            r#"{{"{key}": {{"app-1": {{"address": "127.0.0.1:3", "target": "production", "via": "vpn"}}}}}}"#
+        ),
     )?;
-    let bare = mm(root, home, &["--output", "json", "target", "nodes"])?;
-    assert_eq!(first_port(&bare)?, 3, "{}", bare.stderr);
+    let unknown = mm(root, home, &["--output", "json", "target", "nodes"])?;
+    assert_eq!(first_port(&unknown)?, 3, "{}", unknown.stderr);
+    assert!(
+        unknown
+            .stderr
+            .contains("keys this mm does not know for node 'app-1' of environment 'local': via"),
+        "{}",
+        unknown.stderr
+    );
+
+    std::fs::write(
+        home.join("node-addresses.json"),
+        format!(r#"{{"{key}": {{"app-1": {{"address": "10.0.0.3:0", "target": "production"}}}}}}"#),
+    )?;
+    let bad = mm(root, home, &["target", "nodes"])?;
+    assert_ne!(bad.code, Some(0));
+    assert!(
+        bad.stderr.contains("node-addresses.json") && bad.stderr.contains("no valid port"),
+        "{}",
+        bad.stderr
+    );
 
     std::fs::write(
         home.join("node-addresses.json"),
