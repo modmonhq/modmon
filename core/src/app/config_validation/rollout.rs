@@ -163,7 +163,7 @@ fn side_by_side_problems(
         if let Some(mode) = config
             .get("userns_mode")
             .and_then(Value::as_str)
-            .filter(|mode| podman && *mode != "host")
+            .filter(|mode| podman && !matches!(mode.trim(), "host" | "auto" | ""))
         {
             problems.push(format!(
                 "service '{service}' sets `userns_mode: {mode}`, which on Podman gives the new container other user ids than the old one, so it could not change what the old one wrote (without it mm gives the service fixed ids of its own)"

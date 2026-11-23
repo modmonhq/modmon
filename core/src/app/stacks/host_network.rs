@@ -201,7 +201,11 @@ impl<'a> HostNetwork<'a> {
                 };
                 let entry = found.entry(name.to_owned()).or_default();
                 entry.0 |= on_host_network(service);
-                entry.1 |= service.get("userns_mode").is_some();
+                match super::user_namespace::userns_setting(service) {
+                    super::user_namespace::UsernsSetting::Unset => {}
+                    super::user_namespace::UsernsSetting::Reset => entry.1 = false,
+                    super::user_namespace::UsernsSetting::Mode(_) => entry.1 = true,
+                }
             }
         }
         let mut services = HostNetworkServices::default();

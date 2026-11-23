@@ -5,8 +5,9 @@
 //! its containers' ids 0 to 65535 are 65536 host ids no other service of
 //! the host has, the same in every container of the service and from one
 //! deployment to the next. A service that has to keep the host's ids says
-//! why (`host-user-namespace`), and so does a Compose file that sets
-//! `userns_mode` itself. A service on the host's network keeps them too.
+//! why (`host-user-namespace`), and so does a Compose file that sets a
+//! `userns_mode` other than a plain `auto`. A service on the host's
+//! network keeps them too.
 //! Elsewhere containers keep the host's ids, which `userns_mode: host`
 //! says on any engine.
 
@@ -196,32 +197,80 @@ fn compose_services(models: &[Value]) -> impl Iterator<Item = (&str, &Value)> {
         .filter_map(|(name, service)| name.as_str().map(|name| (name, service)))
 }
 
-/// The services of the stack's Compose files that do not set
-/// `userns_mode` themselves and are not on the host's network.
-fn services_without_own_userns(models: &[Value]) -> Vec<String> {
-    let mut services = BTreeMap::<String, bool>::new();
+/// What one Compose file says about a service's `userns_mode`.
+pub(super) enum UsernsSetting {
+    /// Nothing, `~` or `""`: an earlier file's value stands.
+    Unset,
+    /// `!reset`: no file sets it.
+    Reset,
+    Mode(String),
+}
+
+pub(super) fn userns_setting(service: &Value) -> UsernsSetting {
+    match service.get("userns_mode") {
+        None | Some(Value::Null) => UsernsSetting::Unset,
+        Some(Value::String(mode)) if mode.trim().is_empty() => UsernsSetting::Unset,
+        Some(Value::String(mode)) => UsernsSetting::Mode(mode.trim().to_owned()),
+        Some(Value::Tagged(tagged)) if tagged.tag == "reset" => UsernsSetting::Reset,
+        Some(other) => UsernsSetting::Mode(format!("{other:?}")),
+    }
+}
+
+/// A Compose service's user namespace after every file of its stack.
+#[derive(Default)]
+struct ComposeUserns {
+    mode: Option<String>,
+    host_network: bool,
+}
+
+impl ComposeUserns {
+    /// mm gives the service ids of its own: its files set no `userns_mode`,
+    /// or a plain `auto`, which mm's own block of ids is, and it is not on
+    /// the host's network.
+    fn gets_own_ids(&self) -> bool {
+        !self.host_network && self.mode.as_deref().is_none_or(|mode| mode == "auto")
+    }
+}
+
+/// Each service of the stack's Compose files, the last file that sets
+/// `userns_mode` winning, as Compose merges them.
+fn compose_userns(models: &[Value]) -> BTreeMap<String, ComposeUserns> {
+    let mut services = BTreeMap::<String, ComposeUserns>::new();
     for (name, service) in compose_services(models) {
-        let own =
-            service.get("userns_mode").is_some() || super::host_network::on_host_network(service);
-        *services.entry(name.to_owned()).or_default() |= own;
+        let entry = services.entry(name.to_owned()).or_default();
+        entry.host_network |= super::host_network::on_host_network(service);
+        match userns_setting(service) {
+            UsernsSetting::Unset => {}
+            UsernsSetting::Reset => entry.mode = None,
+            UsernsSetting::Mode(mode) => entry.mode = Some(mode),
+        }
     }
     services
+}
+
+/// The services of the stack's Compose files that mm gives ids of their
+/// own: those that set no `userns_mode` or a plain `auto`, and are not on
+/// the host's network.
+pub(crate) fn services_without_own_userns(models: &[Value]) -> BTreeSet<String> {
+    compose_userns(models)
         .into_iter()
-        .filter(|(_, own)| !own)
+        .filter(|(_, userns)| userns.gets_own_ids())
         .map(|(name, _)| name)
         .collect()
 }
 
-/// The services whose Compose files set a `userns_mode` other than
-/// `host`, with that mode: Podman chooses their user ids.
+/// The services whose Compose files set a `userns_mode` mm does not
+/// replace, other than `host`, with that mode: Podman chooses their user
+/// ids.
 pub(crate) fn chosen_user_namespaces(models: &[Value]) -> BTreeMap<String, String> {
-    compose_services(models)
-        .filter_map(|(name, service)| {
-            let mode = service.get("userns_mode")?;
-            let mode = mode
-                .as_str()
-                .map_or_else(|| format!("{mode:?}"), str::to_owned);
-            (mode != "host").then(|| (name.to_owned(), mode))
+    compose_userns(models)
+        .into_iter()
+        .filter(|(_, userns)| !userns.gets_own_ids())
+        .filter_map(|(name, userns)| {
+            userns
+                .mode
+                .filter(|mode| mode != "host")
+                .map(|mode| (name, mode))
         })
         .collect()
 }
@@ -258,7 +307,7 @@ pub(crate) fn files_in_chosen_namespaces(
             });
             for (key, path, _) in secrets.chain(configs).filter(|(_, _, holds)| !holds) {
                 found.push(format!(
-                    "modules.{module}.services.{service}.{key}.\"{path}\" names an owner or a mode that holds only where mm knows the service's user ids, and its Compose file sets `userns_mode: {mode}`, so Podman picks them when it creates a container, after mm wrote the file. Remove `userns_mode` from service '{service}' (mm then gives it fixed ids of its own and the file to its uid and gid), or give the file uid \"0\", gid \"0\" and a mode every user can read, such as 0o444"
+                    "modules.{module}.services.{service}.{key}.\"{path}\" names an owner or a mode that holds only where mm knows the service's user ids, and its Compose file sets `userns_mode: {mode}`, so Podman picks them when it creates a container, after mm wrote the file. Remove `userns_mode` from service '{service}' or set it to plain `auto` (mm then gives it fixed ids of its own and the file to its uid and gid), or give the file uid \"0\", gid \"0\" and a mode every user can read, such as 0o444"
                 ));
             }
         }
