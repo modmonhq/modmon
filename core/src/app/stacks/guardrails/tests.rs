@@ -12,7 +12,7 @@ fn check_compose(
     project_root: &Path,
     allowed: &[GuardrailException],
 ) -> Vec<GuardrailFinding> {
-    let mut findings = compose_findings(stack, compose, project_root);
+    let mut findings = compose_findings(stack, "compose.yaml", compose, project_root);
     findings.retain(|finding| !allows(allowed, finding));
     findings
 }

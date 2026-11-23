@@ -229,7 +229,7 @@ printf 'Build log: %s\n' "$log"
 # The archive also fingerprints the build recipe and toolchain inputs.
 tar -C "$root" --exclude=node_modules --exclude=core/target --exclude=core/ui/dist --exclude=.env \
     --exclude='.env.*' --exclude=coverage --exclude=test-results --exclude=playwright-report --exclude='*.tsbuildinfo' --exclude=.mm \
-    -cf "$work/source.tar" Cargo.toml Cargo.lock rust-toolchain.toml core docs/mcp.md packages/ui install.sh packaging/local/Dockerfile packaging/mm-relay-shell packaging/sshd/90-mm-relay.conf packaging/systemd/mmd.service packaging/systemd/mm-mesh.service packaging/systemd/mm-network.service scripts/install/build.sh scripts/install/workstation.sh scripts/install/local-dns.sh scripts/install/local-dns-macos.sh
+    -cf "$work/source.tar" Cargo.toml Cargo.lock rust-toolchain.toml core docs/mcp.md packages/ui install.sh packaging/local/Dockerfile packaging/mm-relay-shell packaging/sshd/90-mm-relay.conf packaging/systemd/mmd.service packaging/systemd/mm-mesh.service packaging/systemd/mm-network.service packaging/apparmor/mm-containers packaging/apparmor/mm-containers-shared-pid scripts/install/build.sh scripts/install/workstation.sh scripts/install/local-dns.sh scripts/install/local-dns-macos.sh
 tar -C "$work" -xf "$work/source.tar"
 cp "$work/scripts/install/build.sh" "$work/build.sh"
 if command -v sha256sum >/dev/null; then source_hash=$(sha256sum "$work/source.tar"); else source_hash=$(shasum -a 256 "$work/source.tar"); fi

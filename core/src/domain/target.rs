@@ -532,6 +532,11 @@ impl TargetBootstrapPlan {
         }
         if let Some(access) = &self.access {
             access.validate()?;
+            if access.apparmor_profiles != requirements.apparmor_profiles {
+                return Err(
+                    "bootstrap AppArmor profiles do not match the selected runtime".to_owned(),
+                );
+            }
         }
         Ok(())
     }
@@ -543,6 +548,8 @@ pub struct BootstrapRequirements {
     pub rootless: bool,
     pub capabilities: Vec<BootstrapCapability>,
     pub steps: Vec<BootstrapStep>,
+    /// The AppArmor profiles the access step installs for rootful Podman.
+    pub apparmor_profiles: Vec<String>,
 }
 
 /// The capabilities and steps a setup plan must list, in order. The access
@@ -577,6 +584,13 @@ pub fn bootstrap_requirements(
         capabilities.push(BootstrapCapability::Haproxy);
     }
     let mut steps = vec![BootstrapStep::ProvisionHost, BootstrapStep::EnrollRuntime];
+    let apparmor_profiles = if access && runtime == RuntimeKind::PodmanCompose {
+        crate::domain::remote::CONTAINER_PROFILES
+            .map(str::to_owned)
+            .to_vec()
+    } else {
+        Vec::new()
+    };
     if access {
         capabilities.push(BootstrapCapability::RemoteAccess);
         steps.push(BootstrapStep::InstallAccess);
@@ -585,6 +599,7 @@ pub fn bootstrap_requirements(
         rootless,
         capabilities,
         steps,
+        apparmor_profiles,
     })
 }
 

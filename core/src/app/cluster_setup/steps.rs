@@ -139,6 +139,7 @@ impl ClusterSetupService {
             upgrade: false,
             downgrade: false,
             notices: Vec::new(),
+            apparmor_profiles: requirements.apparmor_profiles.clone(),
         };
         let mut bootstrap = TargetBootstrapPlan {
             project_id: plan.project_id,

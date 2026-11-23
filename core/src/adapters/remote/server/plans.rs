@@ -270,9 +270,14 @@ impl RemoteDaemon {
         // it for that service.
         let findings = crate::app::workload_guardrails(&document, environment, &enrolled.allow)?;
         if !findings.is_empty() {
+            let next = if findings.iter().any(crate::app::GuardrailFinding::grantable) {
+                ". A host admin can allow a feature for one service under `allow` in /etc/mm/host.yaml"
+            } else {
+                ""
+            };
             return Err(MmError::Security {
                 message: format!(
-                    "this host refuses Compose features that reach the host in environment '{environment}': {}. A host admin can allow a feature for one service under `allow` in /etc/mm/host.yaml",
+                    "this host refuses Compose features that reach the host in environment '{environment}': {}{next}",
                     findings.iter().map(ToString::to_string).collect::<Vec<_>>().join("; ")
                 ),
             });
