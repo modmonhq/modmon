@@ -4,7 +4,8 @@
 use super::*;
 
 impl JobSchedulerService {
-    /// Starts the claimed run's container and records it as running.
+    /// Starts the claimed run's container and records it as running,
+    /// unless the claim lost the run on the way.
     pub(super) async fn start(
         &self,
         document: &ConfigDocument,
@@ -17,11 +18,12 @@ impl JobSchedulerService {
             .launch_claim(document, selection, target, claim, output_limit)
             .await
         {
-            Ok(runtime_id) => {
+            Ok(Some(runtime_id)) => {
                 self.repository
                     .mark_run_running(claim, &runtime_id, self.clock.now_unix_ms())?;
                 Ok(())
             }
+            Ok(None) => Ok(()),
             Err(
                 error @ (MmError::Launch { .. }
                 | MmError::ProcessFailed { .. }
@@ -62,7 +64,7 @@ impl JobSchedulerService {
         target: &crate::domain::runtime::RuntimeTarget,
         claim: &ClaimedJobRun,
         output_limit: usize,
-    ) -> Result<String, MmError> {
+    ) -> Result<Option<String>, MmError> {
         let prepared = match &self.launch_targets {
             Some(targets) => {
                 targets
@@ -75,10 +77,12 @@ impl JobSchedulerService {
             Some(prepared) => (prepared.target, Some(prepared.release)),
             None => (target.clone(), None),
         };
-        let launched = self.launch_on(document, target, claim, output_limit).await;
+        let launched = self
+            .holding(claim, self.launch_on(document, target, claim, output_limit))
+            .await;
         // The container exists or never will: what was staged for it goes.
         let released = release.map_or(Ok(()), |release| release());
-        let runtime_id = launched?;
+        let runtime_id = launched?.transpose()?;
         released?;
         Ok(runtime_id)
     }

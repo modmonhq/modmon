@@ -11,6 +11,7 @@ impl JobSchedulerService {
             authorizer: dependencies.authorizer,
             clock: dependencies.clock,
             launch_targets: None,
+            background_launches: false,
         }
     }
 
@@ -393,8 +394,9 @@ impl JobSchedulerService {
         approval: &ApprovalContext,
         cancellation: crate::domain::observability::OperationCancellation,
     ) -> Result<(), MmError> {
+        let controller = self.clone().with_background_launches();
         while !cancellation.is_cancelled() {
-            self.cycle(selection, approval).await?;
+            controller.cycle(selection, approval).await?;
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
         Ok(())
@@ -493,7 +495,7 @@ impl JobSchedulerService {
             Ok(RuntimeJobState::Missing) => {}
         }
 
-        self.start(document, selection, target, &claim, output_limit)
+        self.launch_claimed(document, selection, target, claim, output_limit)
             .await?;
         Ok(false)
     }
