@@ -72,6 +72,7 @@ mm deploy plan --environment production
 ```
 
 The next deployment applies over what is running: a stack that was already
-healthy and did not change is not started again. If the first deployment fails
+healthy and did not change is not started again, and a kept stack the
+configuration no longer has is listed as removed in its plan. If the first deployment fails
 before any stack starts, or after every stack is healthy (while it publishes
 routes), mm removes what it created instead. See [recovery steps](../help/troubleshooting.md#interrupted-deployment-or-service-operation).
