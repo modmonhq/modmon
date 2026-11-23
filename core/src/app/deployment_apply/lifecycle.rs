@@ -513,15 +513,22 @@ impl DeploymentService {
         let mut environments = self
             .prepare_environment(selection, current, operation_id)
             .await?;
-        let recovery = self
-            .rollback_runtime(
-                snapshot,
-                target,
-                previous.as_ref(),
-                environments.bundle(),
-                None,
-            )
-            .await;
+        let recovery = match &previous {
+            Some(_) => {
+                self.rollback_runtime(
+                    snapshot,
+                    target,
+                    previous.as_ref(),
+                    environments.bundle(),
+                    None,
+                )
+                .await
+            }
+            None => {
+                self.rollback_initial_deployment(snapshot, target, Some(current))
+                    .await
+            }
+        };
         let cleanup = environments.dispose();
         match (recovery, cleanup) {
             (Ok(()), Ok(())) => Ok(()),

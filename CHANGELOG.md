@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- A first deployment that fails while a stack starts is no longer removed:
+  nothing ran before it, so the stacks it started keep running as they are,
+  the failed one too, and the error names them with the commands to look at
+  them and deploy again. The next deployment applies over them, so healthy
+  stacks such as a database are not started again from scratch. A
+  deployment that replaces one that ran still rolls back as before.
+
 ### Fixed
 
 - A container that resolves its own `tasks.<service>` name as soon as it
@@ -28,8 +37,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   container's default route, which cut a container that is also on an
   ordinary network off from the internet and from the other nodes. Podman
   creates it with `no_default_route=true` and Docker Engine as an internal
-  network; the first deployment after upgrading creates an existing one
-  again and restarts the services on it.
+  network, where mm's firewall rules accept the traffic between its
+  containers on different nodes, replies included. The first deployment
+  after upgrading creates an existing one again and restarts the services on
+  it.
+- A network whose `internal` setting changes is created again with a reason
+  in the plan: `with a default route` or `without a default route` after its
+  old addresses, instead of the same addresses twice.
 - A host pulls the images a stack or a job lacks in a step of its own before
   anything starts, with the registry logins, under `deploy.pull-timeout`
   (default `20m`). A large image on a slow registry no longer fails the

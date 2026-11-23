@@ -477,16 +477,9 @@ impl DeploymentPlan {
             }
         }
 
-        let mut removed_names = std::collections::BTreeSet::new();
         let mut removed_projects = std::collections::BTreeSet::new();
         for stack in &self.removed_stacks {
             let manifest = &stack.artifact.manifest;
-            if !removed_names.insert(stack.stack.as_str()) {
-                return Err(format!(
-                    "deployment removes stack '{}' more than once",
-                    stack.stack
-                ));
-            }
             if !removed_projects.insert(stack.compose_project_name.as_str()) {
                 return Err(format!(
                     "deployment removes Compose project '{}' more than once",
@@ -513,9 +506,7 @@ impl DeploymentPlan {
                 ));
             }
         }
-        if (!self.removed_stacks.is_empty()
-            || self.removed_ingress.is_some()
-            || !self.removed_preserved_volumes.is_empty())
+        if (self.removed_ingress.is_some() || !self.removed_preserved_volumes.is_empty())
             && self.expected_previous_plan_hash.is_none()
         {
             return Err("deployment removals require a previous reviewed plan".to_owned());

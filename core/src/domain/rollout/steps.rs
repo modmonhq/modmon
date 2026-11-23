@@ -126,6 +126,19 @@ impl RolloutChanges {
     pub fn ahead_only(&self, stack: &str) -> bool {
         !self.whole(stack) && self.ahead.iter().any(|noted| noted == stack)
     }
+
+    /// The stacks a step began, whole or only their `ahead` services, in
+    /// the order the steps began them.
+    #[must_use]
+    pub fn begun(&self) -> Vec<&str> {
+        let mut begun = self.ahead.iter().map(String::as_str).collect::<Vec<_>>();
+        for stack in &self.stacks {
+            if !begun.contains(&stack.as_str()) {
+                begun.push(stack);
+            }
+        }
+        begun
+    }
 }
 
 /// Why a stack did not become healthy on a host.
