@@ -377,6 +377,8 @@ for node in $NODES; do
     mkdir -p /run/sshd /run/mm /etc/mm /var/lib/mm /var/lib/mm-home /srv/mm/projects /srv/git
     chown root:991 /run/mm && chmod 750 /run/mm
     chmod 700 /etc/mm /var/lib/mm
+    rm -f /etc/ssh/ssh_host_*
+    ssh-keygen -A >/dev/null
     sshd -t'
   docker cp "$TMP/host.yaml" "$name:/etc/mm/host.yaml"
   docker cp "$TMP/mmd.json" "$name:/etc/mm/mmd.json"
