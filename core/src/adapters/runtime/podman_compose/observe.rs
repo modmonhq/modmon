@@ -229,80 +229,8 @@ impl RuntimeDriver for PodmanComposeRuntime {
         };
 
         let mut diagnostics = Vec::new();
-        let info = match info {
-            Ok(output) if output.success() && output.truncated => {
-                diagnostics.push(Diagnostic::error(
-                    "MM_PODMAN_INFO_TRUNCATED",
-                    "Podman info exceeded the configured output limit",
-                ));
-                None
-            }
-            Ok(output) if output.success() => match serde_json::from_str::<Value>(&output.stdout) {
-                Ok(info) => Some(info),
-                Err(error) => {
-                    diagnostics.push(Diagnostic::error(
-                        "MM_PODMAN_INFO_INVALID",
-                        format!("Podman returned invalid info JSON: {error}"),
-                    ));
-                    None
-                }
-            },
-            Ok(output) => {
-                diagnostics.push(Diagnostic::error(
-                    "MM_PODMAN_INFO_FAILED",
-                    format!(
-                        "Podman is installed but unavailable: {}",
-                        crate::domain::error::printed(output.stderr.trim())
-                    ),
-                ));
-                None
-            }
-            Err(error) => {
-                diagnostics.push(Diagnostic::error(
-                    "MM_PODMAN_INFO_FAILED",
-                    error.to_string(),
-                ));
-                None
-            }
-        };
-
-        let compose_provider = match compose_output {
-            Ok(output) if output.success() => {
-                let executable = parse_provider_executable(&output.stderr);
-                let name = provider_name(&output.stdout);
-                if let Some(path) = &executable {
-                    diagnostics.push(Diagnostic::info(
-                        "MM_COMPOSE_EXTERNAL_PROVIDER",
-                        format!(
-                            "podman compose delegates to external provider {}",
-                            path.display()
-                        ),
-                    ));
-                }
-                Some(ComposeProvider {
-                    name,
-                    version: first_nonempty_line(&output.stdout),
-                    executable,
-                })
-            }
-            Ok(output) => {
-                diagnostics.push(
-                    Diagnostic::error(
-                        "MM_COMPOSE_PROVIDER_UNAVAILABLE",
-                        crate::domain::error::printed(output.stderr.trim()),
-                    )
-                    .with_help("install a Compose provider supported by podman compose"),
-                );
-                None
-            }
-            Err(error) => {
-                diagnostics.push(
-                    Diagnostic::error("MM_COMPOSE_PROVIDER_UNAVAILABLE", error.to_string())
-                        .with_help("install a Compose provider supported by podman compose"),
-                );
-                None
-            }
-        };
+        let info = probed_info(info, &mut diagnostics);
+        let compose_provider = probed_compose_provider(compose_output, &mut diagnostics);
 
         let rootless = info
             .as_ref()
@@ -322,33 +250,8 @@ impl RuntimeDriver for PodmanComposeRuntime {
         let rootful_problem = self.rootful_engine_problem(rootless);
         let available = info.is_some() && compose_provider.is_some() && rootful_problem.is_none();
         diagnostics.extend(rootful_problem);
-        let capabilities = if available {
-            let mut capabilities = runtime_descriptor(self.kind()).advertised_capabilities();
-            if self.require_local_engine_environment().is_ok() {
-            } else {
-                capabilities.retain(|capability| {
-                    !matches!(
-                        capability,
-                        RuntimeCapability::ApplyCompose
-                            | RuntimeCapability::ManageNetworks
-                            | RuntimeCapability::ManageVolumes
-                            | RuntimeCapability::MutateVolumeFiles
-                    )
-                });
-                diagnostics.push(
-                    Diagnostic::warning(
-                        "MM_LOCAL_RUNTIME_REDIRECTED",
-                        "local runtime mutation is disabled by a container-engine redirect environment variable",
-                    )
-                    .with_help(
-                        "unset CONTAINER_HOST, CONTAINER_CONNECTION, DOCKER_HOST, and DOCKER_CONTEXT",
-                    ),
-                );
-            }
-            capabilities
-        } else {
-            Vec::new()
-        };
+        let local = available && self.require_local_engine_environment().is_ok();
+        let capabilities = probed_capabilities(available, local, &mut diagnostics);
 
         RuntimeProbe {
             kind: self.kind(),
@@ -585,5 +488,123 @@ impl PodmanComposeRuntime {
                 .then_with(|| left.name.cmp(&right.name))
         });
         Ok(containers)
+    }
+}
+
+fn probed_info(
+    info: Result<CommandOutput, MmError>,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<Value> {
+    match info {
+        Ok(output) if output.success() && output.truncated => {
+            diagnostics.push(Diagnostic::error(
+                "MM_PODMAN_INFO_TRUNCATED",
+                "Podman info exceeded the configured output limit",
+            ));
+            None
+        }
+        Ok(output) if output.success() => match serde_json::from_str::<Value>(&output.stdout) {
+            Ok(info) => Some(info),
+            Err(error) => {
+                diagnostics.push(Diagnostic::error(
+                    "MM_PODMAN_INFO_INVALID",
+                    format!("Podman returned invalid info JSON: {error}"),
+                ));
+                None
+            }
+        },
+        Ok(output) => {
+            diagnostics.push(Diagnostic::error(
+                "MM_PODMAN_INFO_FAILED",
+                format!(
+                    "Podman is installed but unavailable: {}",
+                    crate::domain::error::printed(output.stderr.trim())
+                ),
+            ));
+            None
+        }
+        Err(error) => {
+            diagnostics.push(Diagnostic::error(
+                "MM_PODMAN_INFO_FAILED",
+                error.to_string(),
+            ));
+            None
+        }
+    }
+}
+
+fn probed_compose_provider(
+    compose_output: Result<CommandOutput, MmError>,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<ComposeProvider> {
+    match compose_output {
+        Ok(output) if output.success() => {
+            let executable = parse_provider_executable(&output.stderr);
+            let name = provider_name(&output.stdout);
+            if let Some(path) = &executable {
+                diagnostics.push(Diagnostic::info(
+                    "MM_COMPOSE_EXTERNAL_PROVIDER",
+                    format!(
+                        "podman compose delegates to external provider {}",
+                        path.display()
+                    ),
+                ));
+            }
+            Some(ComposeProvider {
+                name,
+                version: first_nonempty_line(&output.stdout),
+                executable,
+            })
+        }
+        Ok(output) => {
+            diagnostics.push(
+                Diagnostic::error(
+                    "MM_COMPOSE_PROVIDER_UNAVAILABLE",
+                    crate::domain::error::printed(output.stderr.trim()),
+                )
+                .with_help("install a Compose provider supported by podman compose"),
+            );
+            None
+        }
+        Err(error) => {
+            diagnostics.push(
+                Diagnostic::error("MM_COMPOSE_PROVIDER_UNAVAILABLE", error.to_string())
+                    .with_help("install a Compose provider supported by podman compose"),
+            );
+            None
+        }
+    }
+}
+
+fn probed_capabilities(
+    available: bool,
+    local: bool,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Vec<RuntimeCapability> {
+    if available {
+        let mut capabilities = runtime_descriptor(RuntimeKind::PodmanCompose).advertised_capabilities();
+        if !local {
+            capabilities.retain(|capability| {
+                !matches!(
+                    capability,
+                    RuntimeCapability::ApplyCompose
+                        | RuntimeCapability::ManageNetworks
+                        | RuntimeCapability::ManageVolumes
+                        | RuntimeCapability::MutateVolumeFiles
+                )
+            });
+            diagnostics.push(
+                Diagnostic::warning(
+                    "MM_LOCAL_RUNTIME_REDIRECTED",
+                    "local runtime mutation is disabled by a container-engine redirect environment variable",
+                )
+                .with_help(
+                    "unset CONTAINER_HOST, CONTAINER_CONNECTION, DOCKER_HOST, and DOCKER_CONTEXT",
+                ),
+            );
+        }
+        capabilities
+    } else {
+        Vec::new()
     }
 }
