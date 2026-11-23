@@ -2096,7 +2096,9 @@ async fn deployment_plan_canonical_contract_rejects_cross_owner_and_inconsistent
         plan.stacks[0].artifact.manifest.artifact_hash = "f".repeat(64);
     });
     rejects!(|plan: &mut mm::domain::deployment::DeploymentPlan| {
-        plan.removed_stacks.push(plan.stacks[0].clone());
+        let mut foreign = plan.stacks[0].clone();
+        foreign.artifact.manifest.environment = "other".to_owned();
+        plan.removed_stacks.push(foreign);
         plan.stacks.clear();
     });
     rejects!(|plan: &mut mm::domain::deployment::DeploymentPlan| plan
@@ -2832,6 +2834,10 @@ async fn failure_injection_preflight_first_mutation_mid_apply_and_verification_i
             Err(MmError::RuntimeResponse { .. })
         ));
         let calls = fixture.runtime.calls()?;
+        assert!(
+            !calls.contains(&"apply:app".to_owned()),
+            "mutation {mutation} fails before any stack starts: {calls:?}"
+        );
         assert!(calls.contains(&"remove:app".to_owned()));
         assert!(calls.contains(&"remove:ingress".to_owned()));
         assert!(

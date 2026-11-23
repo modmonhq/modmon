@@ -731,6 +731,13 @@ async fn a_failed_first_deployment_leaves_every_node_as_it_is_and_says_what_to_r
     ] {
         assert!(error.contains(expected), "{expected}: {error}");
     }
+    assert!(failed.kept);
+    let failure = report.failure("mm deploy plan").unwrap_or_default();
+    assert!(
+        failure.ends_with("fix the cause, then `mm deploy plan` deploys over what they run"),
+        "{failure}"
+    );
+    assert!(!failure.contains("mm deploy rollback"), "{failure}");
     Ok(())
 }
 

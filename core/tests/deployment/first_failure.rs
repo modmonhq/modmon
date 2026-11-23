@@ -31,7 +31,8 @@ async fn a_failed_first_deployment_keeps_what_it_started_and_the_next_one_deploy
     else {
         return Err(format!("unexpected error: {error}").into());
     };
-    assert_eq!(*mutation_status, mm::MutationStatus::Applied);
+    assert_eq!(*mutation_status, mm::MutationStatus::Kept);
+    assert!(error.kept());
     assert!(cleanup_failures.is_empty());
     assert!(matches!(**primary, MmError::RuntimeResponse { .. }));
     assert_eq!(error.code(), primary.code());
@@ -66,6 +67,124 @@ async fn a_failed_first_deployment_keeps_what_it_started_and_the_next_one_deploy
         !calls.iter().any(|call| call.starts_with("remove")),
         "{calls:?}"
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn the_next_plan_removes_a_kept_stack_the_configuration_no_longer_has() -> TestResult {
+    let fixture = Fixture::new(false)?;
+    let failing = fixture.service.plan(&fixture.selection).await?;
+    let kept = failing
+        .stacks
+        .first()
+        .map(|stack| stack.compose_project_name.clone())
+        .ok_or("the plan has no stack")?;
+    fixture
+        .runtime
+        .fail_convergence
+        .store(true, Ordering::SeqCst);
+    let error = fixture
+        .service
+        .apply_reviewed(&fixture.selection, &failing.plan_hash)
+        .await
+        .err()
+        .ok_or("an unhealthy first deployment succeeded")?;
+    assert!(error.kept(), "{error}");
+
+    let config_path = fixture.project.join(".config/mm.yaml");
+    let config = fs::read_to_string(&config_path)?.replace(
+        "deployment-test-{environment}-{stack}",
+        "replacement-{environment}-{stack}",
+    );
+    fs::write(config_path, config)?;
+    fixture.runtime.clear()?;
+    let next = fixture.service.plan(&fixture.selection).await?;
+    assert_eq!(
+        next.removed_stacks
+            .iter()
+            .map(|stack| stack.compose_project_name.as_str())
+            .collect::<Vec<_>>(),
+        [kept.as_str()]
+    );
+    fixture
+        .service
+        .apply_reviewed(&fixture.selection, &next.plan_hash)
+        .await?;
+    let calls = fixture.runtime.calls()?;
+    assert!(calls.contains(&"remove:app".to_owned()), "{calls:?}");
+    let after = fixture.service.plan(&fixture.selection).await?;
+    assert!(after.removed_stacks.is_empty());
+    Ok(())
+}
+
+#[tokio::test]
+async fn recovering_an_interrupted_first_deployment_keeps_only_what_the_next_plan_has() -> TestResult
+{
+    let fixture = Fixture::new(false)?;
+    let config_path = fixture.project.join(".config/mm.yaml");
+    let config = fs::read_to_string(&config_path)?
+        .replace(
+            "runtime:\n  driver: podman-compose\n",
+            "runtime:\n  driver: podman-compose\nnetworks:\n  internal: {}\n",
+        )
+        .replace(
+            "    files: [compose.yaml]\n",
+            "    files: [compose.yaml]\n    networks: [internal]\n",
+        )
+        .replace(
+            "  app:\n    path: app\n",
+            "  app:\n    path: app\n    networks: [internal]\n",
+        );
+    fs::write(config_path, config)?;
+    let next = fixture.service.plan(&fixture.selection).await?;
+    let internal = next
+        .networks
+        .first()
+        .map(|network| network.physical_name.clone())
+        .ok_or("the plan has no network")?;
+    let mut interrupted_plan = next.clone();
+    let mut orphan = interrupted_plan
+        .networks
+        .first()
+        .cloned()
+        .ok_or("the plan has no network")?;
+    orphan.logical_name = "orphan".to_owned();
+    orphan.physical_name = "deployment-test-orphan".to_owned();
+    for member in &mut orphan.members {
+        member.stack = "gone".to_owned();
+    }
+    interrupted_plan.networks.push(orphan);
+    interrupted_plan.plan_hash = interrupted_plan.canonical_hash()?;
+    let workspace = fixture.workspace()?;
+    let interrupted = OperationId::new();
+    fixture.state.begin_operation(&NewOperation {
+        id: interrupted,
+        workspace_id: workspace.id,
+        kind: OperationKind::Deploy,
+        environment: "local".to_owned(),
+        requested_at_unix_ms: 900,
+        plan_hash: Some(interrupted_plan.plan_hash.clone()),
+    })?;
+    fixture
+        .state
+        .save_deployment_plan(interrupted, &interrupted_plan)?;
+
+    fixture
+        .service
+        .apply_reviewed(&fixture.selection, &next.plan_hash)
+        .await?;
+    let calls = fixture.runtime.calls()?;
+    let removals = calls
+        .iter()
+        .filter(|call| call.starts_with("remove"))
+        .cloned()
+        .collect::<Vec<_>>();
+    assert_eq!(
+        removals,
+        ["remove-network:deployment-test-orphan"],
+        "{calls:?}"
+    );
+    assert!(!removals.contains(&format!("remove-network:{internal}")));
     Ok(())
 }
 
