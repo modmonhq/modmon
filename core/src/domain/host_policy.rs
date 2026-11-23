@@ -203,6 +203,9 @@ pub struct GuardrailException {
     /// `<stack>/<service>`.
     pub service: String,
     pub features: BTreeSet<String>,
+    /// The host paths `host-path` lets the service bind-mount read-only.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub paths: BTreeSet<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

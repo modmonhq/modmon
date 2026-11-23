@@ -44,13 +44,15 @@ pub struct GuardrailFinding {
     /// Stable feature name a host exception names, such as `pid-host`.
     pub feature: String,
     pub detail: String,
+    host_path: Option<std::path::PathBuf>,
+    outright: bool,
 }
 
 impl GuardrailFinding {
     /// Whether a host exception can allow this finding.
     #[must_use]
     pub fn grantable(&self) -> bool {
-        self.feature != namespaces::CONTAINER_JOIN
+        !self.outright && self.feature != namespaces::CONTAINER_JOIN
     }
 }
 
@@ -146,11 +148,17 @@ fn read_compose(path: &Path) -> Result<Mapping, crate::domain::error::MmError> {
     Ok(compose)
 }
 
-/// Whether a host exception covers `finding`.
+/// Whether a host exception covers `finding`: the feature for its service,
+/// and for a host path, that path among the exception's `paths`.
 fn allows(allowed: &[GuardrailException], finding: &GuardrailFinding) -> bool {
     finding.grantable()
         && allowed.iter().any(|exception| {
-            exception.service == finding.subject && exception.features.contains(&finding.feature)
+            exception.service == finding.subject
+                && exception.features.contains(&finding.feature)
+                && finding
+                    .host_path
+                    .as_deref()
+                    .is_none_or(|path| host_paths::lists(&exception.paths, path))
         })
 }
 
@@ -169,6 +177,13 @@ fn compose_findings(
             let subject = format!("{stack}/{name}");
             check_service(&subject, file, service, &mut findings);
             check_options(&subject, file, service, &mut findings);
+            host_paths::check_service(
+                &subject,
+                file,
+                service,
+                (project_root, compose_directory),
+                &mut findings,
+            );
             namespaces::check_service(&subject, file, service, &mut findings);
         }
     }
@@ -187,6 +202,8 @@ fn push(findings: &mut Vec<GuardrailFinding>, subject: &str, feature: &str, deta
         subject: subject.to_owned(),
         feature: feature.to_owned(),
         detail,
+        host_path: None,
+        outright: false,
     });
 }
 
@@ -531,6 +548,7 @@ fn is_empty(value: &Value) -> bool {
     }
 }
 
+pub(super) mod host_paths;
 mod namespaces;
 mod review;
 pub(super) use review::on_local_target;

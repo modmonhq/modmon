@@ -116,8 +116,8 @@ pub(super) fn reject_reserved_ingress_configuration(
                 path,
                 service,
                 proxy_ports,
-                project_root,
-                compose_directory,
+                (project_root, compose_directory),
+                host_network.host_decides(),
             )?;
         }
     }
@@ -257,8 +257,8 @@ fn reject_unsafe_service_mounts(
     path: &Path,
     service: &serde_yaml_ng::Mapping,
     proxy_ports: Option<(u16, u16, u16)>,
-    project_root: &Path,
-    compose_directory: &Path,
+    (project_root, compose_directory): (&Path, &Path),
+    host_decides: bool,
 ) -> Result<(), MmError> {
     if mapping_value(service, "volumes_from").is_some() {
         return Err(MmError::Environment {
@@ -269,7 +269,7 @@ fn reject_unsafe_service_mounts(
         });
     }
     if let Some(volumes) = mapping_value(service, "volumes")
-        && uses_unsafe_ingress_volume(volumes, project_root, compose_directory)?
+        && uses_unsafe_ingress_volume(volumes, (project_root, compose_directory), host_decides)?
     {
         return Err(MmError::Environment {
             message: format!(
@@ -366,15 +366,24 @@ pub(super) fn compose_resource_name(value: &serde_yaml_ng::Value) -> Option<&str
         })
 }
 
+/// Whether a service's `volumes` mount anything the project may not. Where
+/// the host's policy decides, a read-only bind of a host path is the
+/// host's to allow (`host-path`).
 pub(super) fn uses_unsafe_ingress_volume(
     value: &serde_yaml_ng::Value,
-    project_root: &Path,
-    compose_directory: &Path,
+    (project_root, compose_directory): (&Path, &Path),
+    host_decides: bool,
 ) -> Result<bool, MmError> {
     let Some(volumes) = value.as_sequence() else {
         return Ok(false);
     };
     for volume in volumes {
+        if host_decides
+            && super::guardrails::host_paths::host_bind(volume, (project_root, compose_directory))
+                .is_some_and(|bind| bind.runs_when_listed())
+        {
+            continue;
+        }
         if let Some(volume) = volume.as_str() {
             let source = volume.split_once(':').map_or("", |(source, _)| source);
             if unsafe_volume_source(

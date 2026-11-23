@@ -87,6 +87,7 @@ fn host_escapes_are_refused_unless_the_host_allows_them() -> Result<(), Box<dyn 
         &[GuardrailException {
             service: "app/api".to_owned(),
             features: BTreeSet::from(["pid-host".to_owned(), "privileged".to_owned()]),
+            paths: BTreeSet::new(),
         }],
     );
     assert!(!features(&allowed).contains("pid-host"));
@@ -142,6 +143,7 @@ fn a_feature_inherited_through_extends_is_found_under_the_extending_service()
         &[GuardrailException {
             service: "app/base".to_owned(),
             features: BTreeSet::from(["privileged".to_owned(), "cap-add".to_owned()]),
+            paths: BTreeSet::new(),
         }],
     );
     assert!(

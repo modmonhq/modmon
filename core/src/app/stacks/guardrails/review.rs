@@ -47,14 +47,21 @@ pub fn remote_guardrail_diagnostics(
                     )
                     .at_path(*path)
                 }
-                _ if !finding.grantable() => refused(document, environment, &finding)
-                    .with_help(
+                _ if finding.feature == super::namespaces::CONTAINER_JOIN => {
+                    refused(document, environment, &finding).with_help(
                         "no host exception allows this: write the mode itself, and `service:<service>` to join a service of the same stack",
-                    ),
+                    )
+                }
+                _ if !finding.grantable() => refused(document, environment, &finding)
+                    .with_help("no host exception allows this: change the mount as the message says"),
                 Some((path, _)) => refused(document, environment, &finding).with_help(format!(
-                    "drop the feature, or allow it for {} under this project's `allow` in {}",
+                    "drop the feature, or allow it for {} under this project's `allow` in {}{}",
                     finding.subject,
-                    path.display()
+                    path.display(),
+                    finding.host_path.as_ref().map_or(String::new(), |host_path| format!(
+                        ", with `{}` under its `paths`",
+                        host_path.display()
+                    ))
                 )),
                 None => refused(document, environment, &finding).with_help(
                     "drop the feature, or ask the host admin to allow it for this service in host.yaml",

@@ -39,6 +39,11 @@ pub(super) struct HostNetworkServices {
 }
 
 impl<'a> HostNetwork<'a> {
+    /// Whether the host's policy decides rather than the project.
+    pub(super) const fn host_decides(&self) -> bool {
+        self.host_decides
+    }
+
     /// `host_decides` is set where the host's policy decides rather than
     /// the project's `host-network`.
     pub(super) fn of(

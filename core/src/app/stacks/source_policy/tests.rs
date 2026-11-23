@@ -174,8 +174,8 @@ fn unsafe_mount_and_proxy_port_forms_are_rejected() -> Result<(), Box<dyn std::e
     assert!(
         uses_unsafe_ingress_volume(
             &yaml("[{type: bind, source: './escape', target: /data}]"),
-            root.path(),
-            root.path(),
+            (root.path(), root.path()),
+            false,
         )
         .is_err()
     );
@@ -223,18 +223,18 @@ fn volume_path_resource_and_port_helpers_cover_portable_boundaries()
     fs::create_dir(compose.join("data"))?;
     assert!(!uses_unsafe_ingress_volume(
         &yaml("not-a-list"),
-        root.path(),
-        &compose
+        (root.path(), &compose),
+        false,
     )?);
     assert!(!uses_unsafe_ingress_volume(
         &yaml("[42, 'data', './data:/data', {source: cache, target: /cache}]"),
-        root.path(),
-        &compose
+        (root.path(), &compose),
+        false,
     )?);
     assert!(uses_unsafe_ingress_volume(
         &yaml("[{type: bind, source: '../../outside', target: /data}]"),
-        root.path(),
-        &compose
+        (root.path(), &compose),
+        false,
     )?);
     assert!(!unsafe_volume_source(
         "cache",
