@@ -127,6 +127,8 @@ struct State {
     /// The engine ids of this node's containers past their restart limit.
     held: std::collections::BTreeSet<String>,
     strangers: newcomer::Strangers,
+    /// When the last listing of the engine's containers that succeeded started.
+    listed: Option<Instant>,
 }
 
 impl State {
@@ -376,14 +378,18 @@ impl NameResolver {
             .map(|network| network.network)
             .collect::<Vec<_>>();
         let mut listing = self.listing.lock().await;
-        *listing = Some(Instant::now());
+        let started = Instant::now();
+        *listing = Some(started);
         let observed = self.runtime.network_containers(&engine_networks).await;
         let mut state = self.write();
         let before = leaving::answers(&state);
         state.note("listen", unbound);
         state.local.node.clone_from(&networks.node);
         match observed {
-            Ok(observed) => state.take_observed(&networks, observed),
+            Ok(observed) => {
+                state.take_observed(&networks, observed);
+                state.listed = Some(started);
+            }
             Err(error) => {
                 // One failed look keeps what was seen last; an engine that
                 // stays away has stopped its containers with it.

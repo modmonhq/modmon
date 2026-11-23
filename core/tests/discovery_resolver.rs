@@ -153,6 +153,8 @@ struct Engine {
     changed: Notify,
     /// How many times the resolver looked at the engine.
     looks: std::sync::atomic::AtomicUsize,
+    /// How long each listing of the containers takes, in milliseconds.
+    slowness: std::sync::atomic::AtomicU64,
 }
 
 impl Engine {
@@ -161,6 +163,7 @@ impl Engine {
             containers: Mutex::new(containers),
             changed: Notify::new(),
             looks: std::sync::atomic::AtomicUsize::new(0),
+            slowness: std::sync::atomic::AtomicU64::new(0),
         })
     }
 
@@ -201,6 +204,8 @@ impl RuntimeDriver for Engine {
         _networks: &[String],
     ) -> Result<Vec<ObservedContainer>, MmError> {
         self.looks.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let slowness = self.slowness.load(std::sync::atomic::Ordering::SeqCst);
+        tokio::time::sleep(Duration::from_millis(slowness)).await;
         self.containers
             .lock()
             .map(|containers| containers.clone())
@@ -835,6 +840,47 @@ async fn a_new_container_finds_itself_at_its_first_lookup() -> TestResult {
     });
     let first = ask(worker, server, "tasks.worker", Duration::from_secs(2)).await?;
     assert_eq!(first, Some((0, vec![worker])));
+    Ok(())
+}
+
+/// On an engine that takes longer than a second to list its containers, a
+/// new container's first lookup still finds it, and so do its next ones.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_new_container_finds_itself_on_a_slow_engine() -> TestResult {
+    let directory = temp_dirs::tempdir()?;
+    let resolv_conf = directory.path().join("resolv.conf");
+    std::fs::write(&resolv_conf, format!("search .\nnameserver {UPSTREAM}\n"))?;
+    let options = ResolverOptions {
+        lookup_port: free_port(GATEWAY_A).await?,
+        exchange_port: free_port(MESH_A).await?,
+        upstream_port: free_port(UPSTREAM).await?,
+        resolv_conf,
+        address_patience: Duration::from_secs(30),
+    };
+    let engine = Engine::new(vec![container("api-1", "api", API_A, Health::Healthy)]);
+    let node = NameResolver::with_options(
+        Arc::new(Networks(networks("a")?)),
+        Arc::new(Mesh(mesh(MESH_A, "b", MESH_B))),
+        Arc::clone(&engine) as Arc<dyn RuntimeDriver>,
+        options.clone(),
+    );
+    tokio::spawn(Arc::clone(&node).run());
+    let server = SocketAddrV4::new(GATEWAY_A, options.lookup_port);
+    becomes(API_A, server, "api", &[API_A]).await?;
+
+    engine
+        .slowness
+        .store(1500, std::sync::atomic::Ordering::SeqCst);
+    let web = Ipv4Addr::new(127, 77, 0, 7);
+    engine
+        .containers
+        .lock()
+        .map_err(|_| "poisoned")?
+        .push(container("web-1", "web", web, Health::Starting));
+    let first = ask(web, server, "tasks.web", Duration::from_secs(6)).await?;
+    assert_eq!(first, Some((0, vec![web])));
+    let again = ask(web, server, "tasks.web", Duration::from_secs(1)).await?;
+    assert_eq!(again, Some((0, vec![web])));
     Ok(())
 }
 
