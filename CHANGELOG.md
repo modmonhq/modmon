@@ -11,9 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A host exception for host paths: `host-path` in an `allow` entry of
   `/etc/mm/host.yaml`, with the paths in `paths`, lets one service bind-mount
   exactly those host paths recursively read-only (long syntax with
-  `read_only: true` and `bind.recursive: readonly`; Docker Engine 25 or later
-  on Linux 5.12 or later), such as `/proc` and `/sys` for a metrics exporter.
-  A Podman host refuses host paths for now. Allowing a path hands the repo
+  `read_only: true` and `bind.recursive: readonly`), such as `/proc` and
+  `/sys` for a metrics exporter. `mmd` plans one only on Docker Engine 25
+  (API 1.44) or later on Linux 5.12 or later, as its engine reports; a Podman
+  host refuses host paths for now. Allowing a path hands the repo
   what it holds: `/proc` shows every other project's processes, environment
   variables and files on the host, and a path with an engine socket or
   secrets in it, such as `/`, is root on the host. A policy that lists `/`,

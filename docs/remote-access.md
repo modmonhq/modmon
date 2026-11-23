@@ -549,11 +549,12 @@ Write it in the long syntax with `read_only: true` and
 recursive, so a host refuses a host path written that way. Without `paths`,
 `host-path` allows nothing.
 
-Recursive read-only mounts need Docker Engine 25 or later on Linux 5.12 or
-later, where the engine refuses the mount rather than mounting it
-non-recursively. mm cannot yet have Podman mount a host path recursively
-read-only, so a Podman host refuses every host path, with or without an
-exception.
+Recursive read-only mounts need Docker Engine 25 (API 1.44) or later on
+Linux 5.12 or later. `mmd` asks its engine for both before it plans a host
+path and refuses the plan otherwise, with or without an exception. A Podman
+host refuses every host path for now: Podman mounts a plain read-only bind
+non-recursively, and mm cannot yet confirm that it honours
+`bind.recursive: readonly`.
 
 Allowing a host path hands the repo whatever that path holds, read-only or
 not: a container can connect to a Unix socket on a read-only mount, and a
