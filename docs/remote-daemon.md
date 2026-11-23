@@ -1753,7 +1753,10 @@ A network marked `internal: true` has none: its containers reach the members
 of the network and nothing else. It never carries a container's default
 route, so a service on an internal network and an ordinary one keeps its way
 out through the ordinary one. The engine creates it that way: Podman with
-`--opt no_default_route=true`, Docker Engine with `--internal`.
+`--opt no_default_route=true`, Docker Engine with `--internal`. Docker Engine
+forwards nothing between an internal network and another interface, so on
+Docker hosts mm's own rules in `DOCKER-USER` accept the traffic between the
+network's containers on different nodes, in both directions.
 
 ```yaml
 networks:
@@ -1804,7 +1807,8 @@ The plan says so before anything happens:
 
 An internal network that an earlier mm created with a default route is
 created again the same way, and the plan says `with a default route` after
-its old addresses:
+its old addresses. A network you change to `internal: true` shows the same,
+and one you change back says `without a default route`:
 
 ```text
   networks:
