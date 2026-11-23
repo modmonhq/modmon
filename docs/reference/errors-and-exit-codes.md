@@ -143,7 +143,9 @@ message names the file, the service, and what to change.
 sees processes beyond its own containers (`pid: host`, `container:` or
 `service:` of such a service) when it sets `apparmor=mm-containers`, or
 when the host gives containers `mm-containers` without having loaded
-`mm-containers-shared-pid`; see
+`mm-containers-shared-pid`. A job, a rollback, or a scale-up that would
+create such a service's containers from files rendered before setup
+installed the profile fails with it too; deploy again. See
 [AppArmor](../remote-daemon.md#apparmor).
 `MM_USER_NAMESPACE` is the finding for `host-user-namespace` without a
 reason, and, on Podman hosts, where each service has [user ids of its

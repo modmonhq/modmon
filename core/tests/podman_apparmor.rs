@@ -4,7 +4,7 @@
 use mm::domain::diagnostic::Severity;
 use mm::domain::remote::{
     CONTAINER_PROFILES, ContainerAppArmor, EngineFacts, MM_CONTAINER_PROFILE,
-    MM_SHARED_PID_PROFILE, NodeReport, NodeState, engine_diagnostics,
+    MM_SHARED_PID_PROFILE, NodeReport, NodeState, engine_diagnostics, refuse_unconfined_shared_pid,
 };
 use mm::domain::runtime::RuntimeKind;
 use mm::domain::target::{TargetTransport, bootstrap_requirements};
@@ -204,6 +204,7 @@ fn node(apparmor: Option<ContainerAppArmor>) -> NodeReport {
         host: "203.0.113.11".to_owned(),
         port: 22,
         mesh_address: None,
+        repo_address: None,
         state: NodeState::Ready,
         reachable: true,
         problem: None,
@@ -320,5 +321,75 @@ fn a_node_from_an_earlier_mmd_says_nothing_about_apparmor() -> Result<(), serde_
     let facts: EngineFacts = serde_json::from_str(earlier)?;
     assert_eq!(facts.apparmor, None);
     assert!(!serde_json::to_string(&facts)?.contains("apparmor"));
+    Ok(())
+}
+
+#[test]
+fn every_podman_path_that_creates_containers_checks_the_rendered_files_first() {
+    let apply = include_str!("../src/adapters/runtime/podman_compose/apply.rs");
+    let rolling = include_str!("../src/adapters/runtime/podman_compose/rolling.rs");
+    let driver = include_str!("../src/adapters/runtime/operations/driver.rs");
+    let gate = "podman_apparmor::require_shared_pid_confined(";
+    for (file, creates, name) in [
+        (
+            apply,
+            apply.matches("\"up\".to_owned()").count(),
+            "apply.rs",
+        ),
+        (
+            rolling,
+            rolling.matches("\"up\".to_owned()").count(),
+            "rolling.rs",
+        ),
+        (
+            driver,
+            driver.matches("\"run\".to_owned()").count(),
+            "driver.rs",
+        ),
+    ] {
+        assert!(creates > 0, "{name}");
+        assert_eq!(file.matches(gate).count(), creates, "{name}");
+    }
+}
+
+#[test]
+fn rendered_files_that_leave_a_pid_sharing_service_to_podmans_default_are_refused()
+-> Result<(), serde_yaml_ng::Error> {
+    let parse = |text: &str| serde_yaml_ng::from_str::<serde_yaml_ng::Value>(text);
+    let user = "services:
+  web: {image: example/web}
+  base: {image: example/base, pid: host}
+  child: {extends: base}
+";
+    let stale = "services:\n  web: {labels: {a: b}}\n";
+    let pinned = "services:
+  base: {security_opt: [\"apparmor=mm-containers-shared-pid\"]}
+  child: {security_opt: [\"apparmor=mm-containers-shared-pid\"]}
+";
+    let refused = refuse_unconfined_shared_pid(vec![parse(user)?, parse(stale)?])
+        .err()
+        .unwrap_or_default();
+    assert!(
+        refused.contains("service 'base'") && refused.contains("`pid: host`"),
+        "{refused}"
+    );
+    assert_eq!(
+        refuse_unconfined_shared_pid(vec![parse(user)?, parse(pinned)?]),
+        Ok(())
+    );
+    let only_base = "services:\n  base: {security_opt: [\"apparmor=mm-containers-shared-pid\"]}\n";
+    let child = refuse_unconfined_shared_pid(vec![parse(user)?, parse(only_base)?])
+        .err()
+        .unwrap_or_default();
+    assert!(child.contains("service 'child'"), "{child}");
+    let wide = "services:
+  base: {security_opt: [\"apparmor:mm-containers\"]}
+  child: {security_opt: [\"apparmor=mm-containers-shared-pid\"]}
+";
+    assert!(refuse_unconfined_shared_pid(vec![parse(user)?, parse(wide)?]).is_err());
+    assert_eq!(
+        refuse_unconfined_shared_pid(vec![parse("services:\n  web: {image: example/web}\n")?]),
+        Ok(())
+    );
     Ok(())
 }

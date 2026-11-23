@@ -3,9 +3,12 @@
 use std::io::Read;
 use std::path::Path;
 
+use crate::domain::error::MmError;
 use crate::domain::remote::{
     ContainerAppArmor, MM_CONTAINER_PROFILE, MM_SHARED_PID_PROFILE, SharedPidAppArmor,
+    refuse_unconfined_shared_pid,
 };
+use crate::domain::runtime::RuntimeTarget;
 
 const ENABLED: &str = "/sys/module/apparmor/parameters/enabled";
 const LOADED: &str = "/sys/kernel/security/apparmor/profiles";
@@ -52,14 +55,45 @@ pub(crate) fn shared_pid_apparmor() -> SharedPidAppArmor {
     if ContainerAppArmor::is_loaded(&profiles, MM_SHARED_PID_PROFILE) {
         return SharedPidAppArmor::Pin;
     }
-    let gives_mm = [None, Some((6, 0))].into_iter().any(|release| {
-        container_apparmor(release).is_some_and(|apparmor| apparmor.profile == MM_CONTAINER_PROFILE)
-    });
-    if gives_mm {
+    if gives_mm_profile() {
         SharedPidAppArmor::Missing
     } else {
         SharedPidAppArmor::NotConfined
     }
+}
+
+/// Refuses to create containers from `target`'s rendered files when rootful
+/// Podman here gives containers mm-containers by default and the files
+/// leave a pid-sharing service to that default: files rendered before setup
+/// installed the profile, which a job, a rollback or a scale-up would reuse.
+pub(crate) fn require_shared_pid_confined(target: &RuntimeTarget) -> Result<(), MmError> {
+    if !rustix::process::geteuid().is_root() || !gives_mm_profile() {
+        return Ok(());
+    }
+    let mut models = Vec::new();
+    for path in &target.compose_files {
+        let Some(text) = read(path) else {
+            continue;
+        };
+        let mut model = match serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&text) {
+            Ok(model) => model,
+            Err(_) => continue,
+        };
+        if model.apply_merge().is_err() {
+            continue;
+        }
+        models.push(model);
+    }
+    refuse_unconfined_shared_pid(models).map_err(|message| MmError::Remote {
+        code: "MM_PODMAN_APPARMOR",
+        message,
+    })
+}
+
+fn gives_mm_profile() -> bool {
+    [None, Some((6, 0))].into_iter().any(|release| {
+        container_apparmor(release).is_some_and(|apparmor| apparmor.profile == MM_CONTAINER_PROFILE)
+    })
 }
 
 fn drop_ins(directory: &str) -> Vec<String> {

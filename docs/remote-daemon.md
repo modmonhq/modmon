@@ -850,6 +850,13 @@ up by an earlier mm, mm refuses to plan such a service and names
 `mm target setup plan` as the fix. Jobs of a service run from the same
 Compose files as the service, so they get the same profile.
 
+Containers that mm creates later from the files of an earlier deployment
+(a job, a rollback, a scale-up) are checked the same way: on a host whose
+containers get `mm-containers`, a pid-sharing service whose files name no
+profile, because they were rendered before setup installed it, is refused
+with `MM_PODMAN_APPARMOR`. Deploy the environment again (`mm deploy plan`)
+to render it with `mm-containers-shared-pid`.
+
 The plan lists both profiles under remote access (`apparmor:` in the text
 and `apparmor-profiles` in `--output json`; the cluster plan shows them as
 `apparmor`). Setup replaces a profile when a newer mm changes it, loads one

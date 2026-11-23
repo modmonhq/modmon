@@ -18,7 +18,7 @@ use mm::app::ports::{ProjectDocumentStore, RuntimeSecretDelivery, ServiceUserIds
 use mm::app::{StackManager, WorkspaceSelection};
 use mm::domain::operation::OperationId;
 use mm::domain::placement::NodeScope;
-use mm::domain::remote::SharedPidAppArmor;
+use mm::domain::remote::{SharedPidAppArmor, refuse_unconfined_shared_pid};
 use mm::domain::runtime::RuntimeKind;
 use mm::domain::runtime_secret::{
     RuntimeSecretConsumer, RuntimeSecretMaterial, RuntimeSecretPlan, RuntimeSecretPlanItem,
@@ -644,6 +644,28 @@ fn a_service_that_shares_another_process_namespace_keeps_podmans_apparmor_rules(
     assert!(
         !serde_yaml_ng::to_string(&overlay)?.contains("mm-containers-shared-pid"),
         "a host without AppArmor: {overlay:?}"
+    );
+
+    let rendered = |report: &mm::domain::stack::StackCompilationReport| -> Result<Vec<serde_yaml_ng::Value>, Box<dyn std::error::Error>> {
+        report.stacks[0]
+            .compose_files
+            .iter()
+            .map(|path| -> Result<serde_yaml_ng::Value, Box<dyn std::error::Error>> {
+                let mut model: serde_yaml_ng::Value = serde_yaml_ng::from_str(&fs::read_to_string(path)?)?;
+                model.apply_merge()?;
+                Ok(model)
+            })
+            .collect()
+    };
+    refuse_unconfined_shared_pid(rendered(&confined)?)?;
+    let stale = refuse_unconfined_shared_pid(rendered(&unconfined)?)
+        .err()
+        .ok_or("files rendered before setup installed the profile")?;
+    assert!(
+        stale.contains("service 'joined'")
+            && stale.contains("would run under mm-containers")
+            && stale.contains("`mm deploy plan`"),
+        "{stale}"
     );
 
     let missing = compile_on(
