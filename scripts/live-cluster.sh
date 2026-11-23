@@ -2920,6 +2920,7 @@ rows_of() {
   awk -v service="$2" '
     $1 == "app" && $2 == service { inside = 1; print $5; next }
     inside && $1 ~ /^app-[0-9]+$/ { print $1; next }
+    $1 == "✓" || $1 == "✗" { next }
     { inside = 0 }' "$1" | tr '\n' ' ' | sed 's/ $//'
 }
 
