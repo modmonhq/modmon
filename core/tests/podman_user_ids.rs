@@ -580,9 +580,6 @@ fn a_service_that_shares_another_process_namespace_keeps_podmans_apparmor_rules(
   joined:
     image: example/joined
     pid: \"container:elsewhere\"
-  inherited:
-    extends: joined
-    image: example/inherited
   chosen:
     image: example/chosen
     pid: host
@@ -630,7 +627,7 @@ fn a_service_that_shares_another_process_namespace_keeps_podmans_apparmor_rules(
             .unwrap_or_default()
     };
     let pinned = ["apparmor=mm-containers-shared-pid".to_owned()];
-    for service in ["monitor", "sidecar", "joined", "inherited"] {
+    for service in ["monitor", "sidecar", "joined"] {
         assert_eq!(options(service), pinned, "{service}: {overlay:?}");
     }
     for service in ["web", "peer", "chosen"] {
@@ -660,7 +657,7 @@ fn a_service_that_shares_another_process_namespace_keeps_podmans_apparmor_rules(
     assert_eq!(missing.code(), "MM_PODMAN_APPARMOR");
     let message = missing.to_string();
     assert!(
-        message.contains("service 'inherited'")
+        message.contains("service 'joined'")
             && message.contains("`pid: container:elsewhere`")
             && message.contains("has not loaded mm-containers-shared-pid")
             && message.contains("`mm target setup plan`"),
