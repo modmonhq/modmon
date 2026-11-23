@@ -58,7 +58,7 @@ impl Strangers {
         self.meeting
             .retain(|_, since| since.elapsed() < STRANGER_FOR);
         if self.meeting.len() < STRANGERS || self.meeting.contains_key(&source) {
-            self.meeting.entry(source).or_insert(began);
+            self.meeting.insert(source, began);
         }
     }
 }
@@ -143,11 +143,10 @@ impl NameResolver {
         self.follow_up.queued.store(false, Ordering::SeqCst);
         let started = Instant::now();
         *listing = Some(started);
-        self.list_containers().await;
+        let listed = self.list_containers().await;
         drop(listing);
         self.follow_up.finished.send_replace(Some(started));
         let mut state = self.write();
-        let listed = state.listed == Some(started);
         let meeting = std::mem::take(&mut state.strangers.meeting);
         for (source, began) in meeting {
             if state.knows(source) {
@@ -161,11 +160,12 @@ impl NameResolver {
         }
     }
 
-    /// Takes this node's containers from the engine; a failure is left to the next look.
-    async fn list_containers(&self) {
+    /// Takes this node's containers from the engine, and whether it did; a
+    /// failure is left to the next look.
+    async fn list_containers(&self) -> bool {
         let started = Instant::now();
         let Some(networks) = self.read().networks.clone() else {
-            return;
+            return false;
         };
         let engine_networks = networks
             .local()
@@ -173,16 +173,17 @@ impl NameResolver {
             .map(|network| network.network)
             .collect::<Vec<_>>();
         let Ok(observed) = self.runtime.network_containers(&engine_networks).await else {
-            return;
+            return false;
         };
         let mut state = self.write();
         if state.networks.as_ref() != Some(&networks) {
-            return;
+            return false;
         }
         let before = leaving::answers(&state);
         state.take_observed(&networks, observed);
         state.listed = Some(started);
         self.settle(&mut state, before);
+        true
     }
 }
 

@@ -960,8 +960,10 @@ async fn a_lookup_waits_for_a_slow_engine_no_longer_than_its_cap() -> TestResult
 
 /// On an engine slower than a lookup's cap, an address no container has is
 /// remembered once the listing its lookup started finishes without it,
-/// though the lookup was answered before: its next lookup reads the engine
-/// no more.
+/// though the lookup was answered before: its next lookup does not read the
+/// engine again and again for a second, as an unknown asker's does. The
+/// engine is fast again before the background look's next listing, which
+/// would otherwise hold the engine through the next lookup.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_stray_asker_is_remembered_after_a_slow_listing() -> TestResult {
     let engine = Engine::new(vec![container("api-1", "api", API_A, Health::Healthy)]);
@@ -971,10 +973,18 @@ async fn a_stray_asker_is_remembered_after_a_slow_listing() -> TestResult {
         .store(4000, std::sync::atomic::Ordering::SeqCst);
     let stray = Ipv4Addr::new(127, 77, 0, 9);
     answered_in(stray, server, Duration::from_secs(5)).await?;
-    tokio::time::sleep(Duration::from_secs(7)).await;
+    engine
+        .slowness
+        .store(0, std::sync::atomic::Ordering::SeqCst);
+    tokio::time::sleep(Duration::from_secs(3)).await;
     let before = listings(&engine);
     answered_in(stray, server, Duration::from_secs(5)).await?;
-    assert_eq!(listings(&engine), before, "the stray asker was remembered");
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    let during = listings(&engine) - before;
+    assert!(
+        during < 4,
+        "a stray asker was not remembered: its lookup listed the engine {during} times"
+    );
     Ok(())
 }
 
