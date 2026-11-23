@@ -18,8 +18,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   what it holds: `/proc` shows every other project's processes, environment
   variables and files on the host, and a path with an engine socket or
   secrets in it, such as `/`, is root on the host. A policy that lists `/`,
-  `/run`, `/var/run`, `/var/lib/docker`, `/var/lib/containers`, `/etc/mm`,
-  `/var/lib/mm`, `/root`, `/home` or `/etc/shadow`, a path above or inside
+  `/run`, `/var/run`, `/var/lib/docker`, `/var/lib/containers`,
+  `/var/lib/containerd`, `/etc/mm`, `/var/lib/mm`, `/root`, `/home`,
+  `/etc/shadow` or `/etc/ssh`, a path above or inside
   one, or a path inside `/proc`, is refused; `mmd` checks each path after
   resolving symlinks. See "Collect host metrics" in the remote access guide.
 - `mm target preference set-address ENVIRONMENT NODE HOST[:PORT]` connects

@@ -593,8 +593,8 @@ not: a container can connect to a Unix socket on a read-only mount, and a
 bind mount includes the mounts under it. Allowing `/`, or any path with an
 engine socket or secrets in it, gives the repo root on the host. A host
 policy that lists `/`, a path that holds or is inside `/run`, `/var/run`,
-`/var/lib/docker`, `/var/lib/containers`, `/etc/mm`, `/var/lib/mm`,
-`/root`, `/home` or `/etc/shadow` is refused when `mmd` or `mm config
+`/var/lib/docker`, `/var/lib/containers`, `/var/lib/containerd`, `/etc/mm`,
+`/var/lib/mm`, `/root`, `/home`, `/etc/shadow` or `/etc/ssh` is refused when `mmd` or `mm config
 validate --host-policy` reads it. So is a path inside `/proc` other than
 `/proc` itself, such as `/proc/1/root`. `mmd` also resolves each listed path
 through symlinks when it reads the policy, refuses a path it cannot resolve,

@@ -7,16 +7,18 @@ use super::HostPolicy;
 /// Paths that hold the engines' sockets and state, mm's own policy and
 /// keys, or people's homes. A mount of one, inside one or above one gives the
 /// service root on the host.
-const PROTECTED: [&str; 9] = [
+const PROTECTED: [&str; 11] = [
     "/run",
     "/var/run",
     "/var/lib/docker",
     "/var/lib/containers",
+    "/var/lib/containerd",
     "/etc/mm",
     "/var/lib/mm",
     "/root",
     "/home",
     "/etc/shadow",
+    "/etc/ssh",
 ];
 
 impl HostPolicy {
