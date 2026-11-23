@@ -774,9 +774,20 @@ or a job lacks, before any of its containers starts or stops: at least `1s`,
 the default is `20m`. The pull is a step of its own, with the registry logins
 of `registries`, so `compose up` and `compose run` find every image in place
 and keep their own shorter limit. A pull past the limit stops the deployment
-with `MM_TIMEOUT` and names this key. An image that `pull_policy: always` asks
-for is pulled each time; one with a `build` section, one mm built, or one with
-`pull_policy: never` or `build` is not pulled.
+with `MM_TIMEOUT` and names this key. An image whose `pull_policy` is
+`always`, or one that refreshes by age (`daily`, `weekly`, `every_<duration>`),
+is pulled on every deployment, and Compose may check it with the registry once
+more when it starts the container. An image with a `build` section, one mm
+built, or one with `pull_policy: never` or `build` is not pulled.
+
+This applies to every deployment, including `mm dev up`. The local services of
+`mm dev setup` and `mm dev services` (ingress, Mailpit and the others) are
+started by Compose alone, which pulls their images itself under its own limit.
+
+On a remote environment with a single host, `mm deploy apply` waits at most
+one hour for the whole deployment. Several long pulls in one deployment can
+run past that even when each stays within `deploy.pull-timeout`; the command
+then stops with `MM_TIMEOUT`, and `mm deploy status` shows what the host did.
 
 `deploy.mm-version` pins the release of mm that may plan deployments to the
 environment and of `mmd` on its hosts. It is written as Cargo writes a

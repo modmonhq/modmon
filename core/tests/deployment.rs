@@ -59,6 +59,8 @@ mod temp_dirs;
 #[allow(clippy::duplicate_mod)]
 mod support;
 
+#[path = "deployment/pull_order.rs"]
+mod pull_order;
 #[path = "deployment/route_adoption.rs"]
 mod route_adoption;
 
@@ -6026,6 +6028,15 @@ impl LocalDeploymentRuntime for FakeRuntime {
             .filter(|(service, _)| services.contains(service))
             .map(|(_, id)| id.clone())
             .collect())
+    }
+
+    async fn pull_images(
+        &self,
+        target: &RuntimeTarget,
+        _services: Option<&[String]>,
+        _limit: std::time::Duration,
+    ) -> Result<(), MmError> {
+        self.record(format!("pull:{}", target.stack_name))
     }
 
     async fn apply(&self, target: &RuntimeTarget) -> Result<(), MmError> {

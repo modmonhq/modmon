@@ -24,7 +24,8 @@ pub(crate) struct ImagePuller<'a> {
 pub(crate) struct WantedImage {
     pub image: String,
     pub services: Vec<String>,
-    /// `pull_policy: always`: pulled even when the engine has it.
+    /// `pull_policy: always`, or one that refreshes an image by its age:
+    /// pulled even when the engine has it.
     pub always: bool,
 }
 
@@ -41,8 +42,11 @@ impl ImagePuller<'_> {
     ) -> Result<(), MmError> {
         let deadline = Instant::now() + limit;
         let mut missing = Vec::new();
-        for wanted in self.wanted(target, compose, services).await? {
-            if wanted.always || !self.present(&wanted.image).await? {
+        for wanted in self
+            .wanted(target, compose, services, deadline, limit)
+            .await?
+        {
+            if wanted.always || !self.present(target, &wanted, deadline, limit).await? {
                 missing.push(wanted);
             }
         }
@@ -61,7 +65,9 @@ impl ImagePuller<'_> {
         };
         let doing = Doing::now(line(0));
         for (index, wanted) in missing.iter().enumerate() {
-            doing.update(line(index));
+            if index > 0 {
+                doing.update(line(index));
+            }
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
                 return Err(pull_timeout(target, wanted, limit));
@@ -98,18 +104,22 @@ impl ImagePuller<'_> {
         target: &RuntimeTarget,
         mut compose: Vec<String>,
         services: Option<&[String]>,
+        deadline: Instant,
+        limit: Duration,
     ) -> Result<Vec<WantedImage>, MmError> {
         compose.push("config".to_owned());
+        let look = look_within(deadline).ok_or_else(|| look_timeout(target, limit))?;
         let output = self
             .process
             .run(
                 (self.base)(compose)
                     .interpolation_environment(&target.interpolation_environment)
                     .current_dir(&target.root)
-                    .timeout(LOOK_TIMEOUT)
+                    .timeout(look)
                     .internal_stdout(),
             )
-            .await?;
+            .await
+            .map_err(|error| past_deadline(error, look, || look_timeout(target, limit)))?;
         if !output.success() {
             return Err(MmError::ProcessFailed {
                 program: self.program.to_owned(),
@@ -120,7 +130,14 @@ impl ImagePuller<'_> {
         wanted_images(&output.stdout, services)
     }
 
-    async fn present(&self, image: &str) -> Result<bool, MmError> {
+    async fn present(
+        &self,
+        target: &RuntimeTarget,
+        wanted: &WantedImage,
+        deadline: Instant,
+        limit: Duration,
+    ) -> Result<bool, MmError> {
+        let look = look_within(deadline).ok_or_else(|| pull_timeout(target, wanted, limit))?;
         let output = self
             .process
             .run(
@@ -129,13 +146,29 @@ impl ImagePuller<'_> {
                     "inspect".to_owned(),
                     "--format".to_owned(),
                     "{{.Id}}".to_owned(),
-                    image.to_owned(),
+                    wanted.image.clone(),
                 ])
-                .timeout(LOOK_TIMEOUT)
+                .timeout(look)
                 .with_output_limit(16 * 1024),
             )
-            .await?;
+            .await
+            .map_err(|error| past_deadline(error, look, || pull_timeout(target, wanted, limit)))?;
         Ok(output.success())
+    }
+}
+
+/// How long a look may take: `LOOK_TIMEOUT`, or less when the pull's
+/// deadline comes first. `None` once the deadline passed.
+fn look_within(deadline: Instant) -> Option<Duration> {
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    (!remaining.is_zero()).then(|| remaining.min(LOOK_TIMEOUT))
+}
+
+/// `late()` for a look that ran out of the pull's time rather than its own.
+fn past_deadline(error: MmError, look: Duration, late: impl FnOnce() -> MmError) -> MmError {
+    match error {
+        MmError::ProcessTimeout { .. } if look < LOOK_TIMEOUT => late(),
+        error => error,
     }
 }
 
@@ -172,6 +205,7 @@ pub(crate) fn wanted_images(
         if service.get("build").is_some() || matches!(policy, "never" | "build") {
             continue;
         }
+        let always = !matches!(policy, "missing" | "if_not_present");
         let Some(image) = service
             .get("image")
             .and_then(serde_yaml_ng::Value::as_str)
@@ -180,7 +214,6 @@ pub(crate) fn wanted_images(
         else {
             continue;
         };
-        let always = policy == "always";
         match wanted.iter_mut().find(|known| known.image == image) {
             Some(known) => {
                 known.services.push(name.to_owned());
@@ -232,6 +265,17 @@ fn pull_timeout(target: &RuntimeTarget, wanted: &WantedImage, limit: Duration) -
             "pulling image {} for {} of stack '{}' did not finish within {} (deploy.pull-timeout); nothing of the stack was started. The layers that arrived stay, so a new deployment carries on from them. Raise `environments.{}.deploy.pull-timeout` in mm.yaml, or check how fast this host reaches the registry",
             wanted.image,
             services_phrase(&wanted.services),
+            target.stack_name,
+            limit_phrase(limit),
+            target.environment
+        ),
+    }
+}
+
+fn look_timeout(target: &RuntimeTarget, limit: Duration) -> MmError {
+    MmError::Timeout {
+        message: format!(
+            "finding which images stack '{}' lacks did not finish within {} (deploy.pull-timeout); nothing of the stack was started. Raise `environments.{}.deploy.pull-timeout` in mm.yaml, or check that the container engine on this host answers",
             target.stack_name,
             limit_phrase(limit),
             target.environment

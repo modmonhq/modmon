@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, VecDeque};
 use std::fs;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -19,8 +19,8 @@ use mm::adapters::runtime::FakeRuntime;
 use mm::adapters::stack::FilesystemStackArtifactStore;
 use mm::adapters::target::FilesystemTargetStore;
 use mm::app::ports::{
-    RuntimeJobDriver, RuntimeOperationAuthorizer, SchedulerRepository, SecretMaterialResolver,
-    StackArtifactStore, TargetStore,
+    Clock, RuntimeJobDriver, RuntimeOperationAuthorizer, SchedulerRepository,
+    SecretMaterialResolver, StackArtifactStore, TargetStore,
 };
 use mm::app::{
     Application, JobSchedulerDependencies, JobSchedulerService, StackManager, WorkspaceSelection,
@@ -57,6 +57,28 @@ struct RepositoryState {
     runs: BTreeMap<Uuid, JobRun>,
     schedule_claims: VecDeque<ClaimedSchedule>,
     run_claims: VecDeque<ClaimedJobRun>,
+    /// Who holds each claimed run, as the store's lease owner.
+    owners: BTreeMap<Uuid, Uuid>,
+    /// How many renewals from now on the store does not answer.
+    unanswered_renewals: usize,
+}
+
+impl RepositoryState {
+    /// What the store does with a claim: a queued run is launching now, and
+    /// the claim's owner holds it.
+    fn claimed(&mut self, mut claim: ClaimedJobRun) -> ClaimedJobRun {
+        if matches!(
+            claim.run.state,
+            JobRunState::Queued | JobRunState::RetryWait
+        ) {
+            claim.run.state = JobRunState::Launching;
+            if let Some(run) = self.runs.get_mut(&claim.run.id) {
+                run.state = JobRunState::Launching;
+            }
+        }
+        self.owners.insert(claim.run.id, claim.lease_owner);
+        claim
+    }
 }
 
 #[derive(Default)]
@@ -245,7 +267,9 @@ impl SchedulerRepository for FakeRepository {
         _lease: Duration,
     ) -> Result<Option<ClaimedJobRun>, MmError> {
         self.record("repo:claim_run")?;
-        Ok(self.lock()?.run_claims.pop_front())
+        let mut state = self.lock()?;
+        let claim = state.run_claims.pop_front();
+        Ok(claim.map(|claim| state.claimed(claim)))
     }
 
     fn claim_run(
@@ -262,12 +286,37 @@ impl SchedulerRepository for FakeRepository {
             .iter()
             .position(|claim| claim.run.id == run_id);
         let claim = position.and_then(|position| state.run_claims.remove(position));
-        Ok(claim.map(|mut claim| {
+        let claim = claim.map(|mut claim| {
             if let Some(run) = state.runs.get(&run_id) {
                 claim.run = run.clone();
             }
             claim
-        }))
+        });
+        Ok(claim.map(|claim| state.claimed(claim)))
+    }
+
+    fn renew_lease(
+        &self,
+        claim: &ClaimedJobRun,
+        _now_unix_ms: i64,
+        _lease: Duration,
+    ) -> Result<bool, MmError> {
+        self.record("repo:renew")?;
+        let mut state = self.lock()?;
+        if state.unanswered_renewals > 0 {
+            state.unanswered_renewals -= 1;
+            return Err(state_error("injected busy state store"));
+        }
+        let owned = state.owners.get(&claim.run.id) == Some(&claim.lease_owner);
+        Ok(owned
+            && state.runs.get(&claim.run.id).is_some_and(|run| {
+                run.fence_token == claim.run.fence_token
+                    && !run.cancellation_requested
+                    && matches!(
+                        run.state,
+                        JobRunState::Launching | JobRunState::Running | JobRunState::Unknown
+                    )
+            }))
     }
 
     fn mark_run_running(
@@ -338,6 +387,15 @@ impl SchedulerRepository for FakeRepository {
 struct FakeJobRuntime {
     observations: Mutex<VecDeque<Result<RuntimeJobState, MmError>>>,
     refusals: Mutex<VecDeque<MmError>>,
+    pull_refusals: Mutex<VecDeque<MmError>>,
+    /// A pull waits for a permit when set, as a slow registry would.
+    pull_gate: Mutex<Option<Arc<tokio::sync::Semaphore>>>,
+    /// With no queued observation, the container is missing until a
+    /// launch and runs after it.
+    follows_launches: AtomicBool,
+    /// A pull that stops the task it runs in, as a bug in mm would.
+    pull_breaks: AtomicBool,
+    launches: AtomicUsize,
     fail_cancel: AtomicBool,
     ordered: Arc<Mutex<Vec<String>>>,
 }
@@ -347,6 +405,11 @@ impl FakeJobRuntime {
         Self {
             observations: Mutex::new(VecDeque::new()),
             refusals: Mutex::new(VecDeque::new()),
+            pull_refusals: Mutex::new(VecDeque::new()),
+            pull_gate: Mutex::new(None),
+            follows_launches: AtomicBool::new(false),
+            pull_breaks: AtomicBool::new(false),
+            launches: AtomicUsize::new(0),
             fail_cancel: AtomicBool::new(false),
             ordered,
         }
@@ -368,6 +431,23 @@ impl FakeJobRuntime {
         Ok(())
     }
 
+    fn refuse_pull(&self, error: MmError) -> Result<(), MmError> {
+        self.pull_refusals
+            .lock()
+            .map_err(|_| state_error("runtime pull test lock was poisoned"))?
+            .push_back(error);
+        Ok(())
+    }
+
+    fn gate_pulls(&self) -> Result<Arc<tokio::sync::Semaphore>, MmError> {
+        let gate = Arc::new(tokio::sync::Semaphore::new(0));
+        *self
+            .pull_gate
+            .lock()
+            .map_err(|_| state_error("runtime pull test lock was poisoned"))? = Some(gate.clone());
+        Ok(gate)
+    }
+
     fn observe(&self, state: Result<RuntimeJobState, MmError>) -> Result<(), MmError> {
         self.observations
             .lock()
@@ -379,8 +459,39 @@ impl FakeJobRuntime {
 
 #[async_trait]
 impl RuntimeJobDriver for FakeJobRuntime {
+    async fn pull_image(
+        &self,
+        _target: &mm::domain::runtime::RuntimeTarget,
+        service: &str,
+        _limit: Duration,
+    ) -> Result<(), MmError> {
+        self.record(&format!("runtime:pull:{service}"))?;
+        assert!(
+            !self.pull_breaks.load(Ordering::SeqCst),
+            "the injected pull failure inside mm"
+        );
+        let gate = self
+            .pull_gate
+            .lock()
+            .map_err(|_| state_error("runtime pull test lock was poisoned"))?
+            .clone();
+        if let Some(gate) = gate {
+            gate.acquire()
+                .await
+                .map_err(|_| state_error("runtime pull gate closed"))?
+                .forget();
+        }
+        let refused = self
+            .pull_refusals
+            .lock()
+            .map_err(|_| state_error("runtime pull test lock was poisoned"))?
+            .pop_front();
+        refused.map_or(Ok(()), Err)
+    }
+
     async fn launch(&self, launch: JobLaunch) -> Result<String, MmError> {
         self.record("runtime:launch")?;
+        self.launches.fetch_add(1, Ordering::SeqCst);
         assert!(
             launch
                 .environment
@@ -405,11 +516,22 @@ impl RuntimeJobDriver for FakeJobRuntime {
         _redactions: Vec<zeroize::Zeroizing<String>>,
     ) -> Result<RuntimeJobState, MmError> {
         self.record("runtime:inspect")?;
-        self.observations
+        let queued = self
+            .observations
             .lock()
             .map_err(|_| state_error("runtime observation test lock was poisoned"))?
-            .pop_front()
-            .ok_or_else(|| state_error("test runtime has no queued observation"))?
+            .pop_front();
+        match queued {
+            Some(observed) => observed,
+            None if self.follows_launches.load(Ordering::SeqCst) => {
+                Ok(if self.launches.load(Ordering::SeqCst) == 0 {
+                    RuntimeJobState::Missing
+                } else {
+                    RuntimeJobState::Running
+                })
+            }
+            None => Err(state_error("test runtime has no queued observation")),
+        }
     }
 
     async fn cancel(
@@ -488,6 +610,16 @@ struct Setup {
 }
 
 fn setup(one_shot_jobs: bool) -> Result<Setup, Box<dyn std::error::Error>> {
+    setup_with(one_shot_jobs, Arc::new(FixedClock { unix_ms: NOW }), None)
+}
+
+/// `setup` with `clock`, and with `repository` in place of the scripted
+/// one when given.
+fn setup_with(
+    one_shot_jobs: bool,
+    clock: Arc<dyn Clock>,
+    repository: Option<Arc<dyn SchedulerRepository>>,
+) -> Result<Setup, Box<dyn std::error::Error>> {
     let project = crate::temp_dirs::tempdir()?;
     let home = crate::temp_dirs::tempdir()?;
     fs::create_dir(project.path().join(".config"))?;
@@ -577,7 +709,6 @@ environments:
         rendered: BTreeMap::new(),
         observed: BTreeMap::new(),
     });
-    let clock = Arc::new(FixedClock { unix_ms: NOW });
     let application = Application::runtime_inspection(
         runtime_driver,
         clock.clone(),
@@ -586,7 +717,7 @@ environments:
         stacks,
     );
     let ordered = Arc::new(Mutex::new(Vec::new()));
-    let repository = Arc::new(FakeRepository::with_log(ordered.clone()));
+    let scripted = Arc::new(FakeRepository::with_log(ordered.clone()));
     let runtime = Arc::new(FakeJobRuntime::new(ordered.clone()));
     let authorizer = Arc::new(FakeAuthorizer {
         denied: AtomicBool::new(false),
@@ -605,7 +736,7 @@ environments:
     });
     let service = JobSchedulerService::new(JobSchedulerDependencies {
         application,
-        repository: repository.clone(),
+        repository: repository.unwrap_or_else(|| scripted.clone() as Arc<dyn SchedulerRepository>),
         runtime: runtime.clone(),
         secrets,
         authorizer: authorizer.clone(),
@@ -616,7 +747,7 @@ environments:
         _project: project,
         _home: home,
         service,
-        repository,
+        repository: scripted,
         runtime,
         authorizer,
         ordered,
@@ -792,3 +923,5 @@ fn ordered(setup: &Setup) -> Result<Vec<String>, MmError> {
 
 #[path = "job_scheduler/cases.rs"]
 mod cases;
+#[path = "job_scheduler/pulls.rs"]
+mod pulls;

@@ -1017,3 +1017,83 @@ fn retries_audit_and_history_pruning_enforce_fences_and_bounds()
     );
     Ok(())
 }
+
+#[test]
+fn a_lease_is_renewed_only_while_its_claim_still_holds_the_run()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temporary = temp_dirs::tempdir()?;
+    let store = SqliteStateStore::open(&temporary.path().join("state.sqlite3"))?;
+    let project_id = ProjectId(Uuid::from_u128(0x9abc));
+    let now = 1_000_000;
+    let lease = Duration::from_secs(30);
+    let run_id = |id: u128| Uuid::from_u128(id << 100);
+    let enqueue = |id: u128| -> Result<(), Box<dyn std::error::Error>> {
+        store.insert_run(
+            &NewJobRun {
+                id: run_id(id),
+                project_id,
+                environment: "local".to_owned(),
+                job: "schedule-run".to_owned(),
+                schedule: None,
+                trigger: JobTrigger::Manual,
+                idempotency_key: format!("operator:lease:{id}"),
+                job_definition: job(),
+                schedule_definition: None,
+                config_hash: "c".repeat(64),
+                requested_at_unix_ms: now,
+                scheduled_for_unix_ms: None,
+                principal: "operator".to_owned(),
+                source: "test".to_owned(),
+                retry_of_run_id: None,
+            },
+            &approval(project_id, now, "enqueue", "lease"),
+        )?;
+        Ok(())
+    };
+    let claim = |id: u128, owner: u128, at: i64| {
+        store.claim_run(run_id(id), Uuid::from_u128(owner), at, lease)
+    };
+
+    enqueue(21)?;
+    let first = claim(21, 1, now)?.ok_or("the run was not claimable")?;
+    assert!(store.renew_lease(&first, now + 20_000, lease)?);
+    assert!(
+        claim(21, 2, now + 40_000)?.is_none(),
+        "the renewed lease holds past the first one's end"
+    );
+    let second = claim(21, 2, now + 50_001)?.ok_or("the expired lease was not taken")?;
+    assert!(
+        !store.renew_lease(&first, now + 50_002, lease)?,
+        "a claim whose fence moved on renews nothing"
+    );
+    assert!(store.renew_lease(&second, now + 50_002, lease)?);
+
+    store.request_cancel(
+        second.run.id,
+        &approval(project_id, now + 50_003, "cancel", "lease"),
+    )?;
+    assert!(
+        !store.renew_lease(&second, now + 50_004, lease)?,
+        "a cancel takes the run from its claim"
+    );
+
+    enqueue(22)?;
+    let ended = claim(22, 3, now)?.ok_or("the second run was not claimable")?;
+    store.complete_run(&JobRunCompletion {
+        run_id: ended.run.id,
+        lease_owner: ended.lease_owner,
+        fence_token: ended.run.fence_token,
+        state: JobRunState::Succeeded,
+        finished_at_unix_ms: now + 1,
+        exit_code: Some(0),
+        error_code: None,
+        diagnostic_code: None,
+        output: String::new(),
+        output_truncated: false,
+    })?;
+    assert!(
+        !store.renew_lease(&ended, now + 2, lease)?,
+        "a run that ended has no lease to renew"
+    );
+    Ok(())
+}
