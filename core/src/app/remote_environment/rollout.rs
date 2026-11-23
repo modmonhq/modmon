@@ -33,8 +33,8 @@ use crate::domain::shared_storage::SealedStorage;
 
 /// How long a step that waits for no health check may take.
 const SETUP_PATIENCE: Duration = Duration::from_secs(30 * 60);
-/// What a stack step may take on top of the plan's convergence window:
-/// pulling images and starting containers.
+/// What a stack step may take on top of the plan's convergence window and
+/// its pull limit: stopping, draining and starting containers.
 const STACK_OVERHEAD: Duration = Duration::from_secs(20 * 60);
 const LOCK_PATIENCE: Duration = Duration::from_secs(30);
 const DISCOVERY_LOOK: Duration = Duration::from_secs(1);
@@ -519,8 +519,9 @@ impl Walk<'_> {
                 return step;
             }
         }
-        let patience =
-            Duration::from_secs(self.rollout.convergence_timeout_seconds) + STACK_OVERHEAD;
+        let patience = Duration::from_secs(self.rollout.convergence_timeout_seconds)
+            + self.rollout.pull_timeout()
+            + STACK_OVERHEAD;
         let stack = || stage.stack.clone();
         let mut turns = Vec::new();
         if !stage.start_first.is_empty() {

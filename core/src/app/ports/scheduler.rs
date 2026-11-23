@@ -124,6 +124,16 @@ pub trait SchedulerRepository: Send + Sync {
 
 #[async_trait]
 pub trait RuntimeJobDriver: Send + Sync {
+    /// Pulls the image of `service` if the engine does not have it yet,
+    /// within `limit`, so that a launch pulls nothing.
+    async fn pull_image(
+        &self,
+        _target: &crate::domain::runtime::RuntimeTarget,
+        _service: &str,
+        _limit: std::time::Duration,
+    ) -> Result<(), MmError> {
+        Ok(())
+    }
     async fn launch(&self, launch: JobLaunch) -> Result<String, MmError>;
     async fn inspect(
         &self,

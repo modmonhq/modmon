@@ -676,6 +676,62 @@ fn a_service_on_a_shared_volume_without_its_first_choice_is_refused() -> TestRes
     Ok(())
 }
 
+/// A service whose Compose file sets its own `userns_mode` gets its ids
+/// from Podman when a container is created, after mm wrote its files: an
+/// entry whose owner or mode only holds with ids mm knows is refused.
+#[test]
+fn a_file_of_a_service_whose_ids_podman_picks_has_to_hold_for_any_owner() -> TestResult {
+    let temporary = temp_dirs::tempdir()?;
+    let root = temporary.path().join("project");
+    write_project(&root)?;
+    let config = fs::read_to_string(root.join(".config/mm.yaml"))?.replace(
+        "        config-files:\n          /etc/api.conf: {file: api.conf, mode: 0o600}\n",
+        "",
+    );
+    let with = |legacy: &str| {
+        config.replace(
+            "legacy: {stack: app, placement: all}",
+            &format!("legacy: {{stack: app, placement: all, {legacy}}}"),
+        )
+    };
+    let compile = |config: String, node: &str| -> Result<_, Box<dyn std::error::Error>> {
+        fs::write(root.join(".config/mm.yaml"), config)?;
+        let host = Host::with_lines(SETUP_LINES)?;
+        Ok(compile_on(
+            &root,
+            &temporary.path().join(node),
+            node,
+            host.ids.clone(),
+        ))
+    };
+    let owned = with(
+        "config-files: {/etc/legacy.conf: {file: api.conf, uid: \"1000\", gid: \"1000\", mode: 0o400}}",
+    );
+    let error = compile(owned.clone(), "app-1")?
+        .err()
+        .ok_or("a 0400 file of a service with its own userns_mode was accepted")?
+        .to_string();
+    for part in [
+        "modules.shop.services.legacy.config-files.\"/etc/legacy.conf\"",
+        "sets `userns_mode: keep-id`",
+        "Remove `userns_mode` from service 'legacy'",
+        "uid \"0\", gid \"0\" and a mode every user can read",
+    ] {
+        assert!(error.contains(part), "{part}: {error}");
+    }
+    let readable = with("config-files: {/etc/legacy.conf: {file: api.conf}}");
+    compile(readable, "app-2")?
+        .map_err(|error| format!("a 0444 root file was refused: {error}"))?;
+    let kept = owned.replace(
+        "legacy: {stack: app, placement: all, ",
+        "legacy: {stack: app, placement: all, host-user-namespace: reads host files, ",
+    );
+    if let Err(error) = compile(kept, "app-1")? {
+        assert!(!error.to_string().contains("userns_mode"), "{error}");
+    }
+    Ok(())
+}
+
 /// A file secret `api.token` that `worker` reads as user 1000 and `api` as
 /// its root, on a host where both have ids of their own.
 fn owned_plan(
