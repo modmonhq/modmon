@@ -12,7 +12,8 @@ fn check_compose(
     project_root: &Path,
     allowed: &[GuardrailException],
 ) -> Vec<GuardrailFinding> {
-    let mut findings = compose_findings(stack, "compose.yaml", compose, project_root);
+    let mut findings =
+        compose_findings(stack, "compose.yaml", compose, (project_root, project_root));
     findings.retain(|finding| !allows(allowed, finding));
     findings
 }
@@ -150,4 +151,13 @@ fn a_feature_inherited_through_extends_is_found_under_the_extending_service()
         "a grant for the base is not one for what extends it"
     );
     Ok(())
+}
+
+#[test]
+fn an_escaped_dollar_is_no_variable() {
+    assert!(interpolates("${TAG}"));
+    assert!(interpolates("$TAG"));
+    assert!(interpolates("$$$TAG"));
+    assert!(!interpolates("price$$"));
+    assert!(!interpolates("$$$$"));
 }

@@ -28,6 +28,14 @@ const DEFAULT_CAPABILITIES: [&str; 14] = [
     "SYS_CHROOT",
 ];
 
+/// The `security_opt` entries a host runs without an exception, written
+/// `key:value` in lower case.
+const SAFE_SECURITY_OPTIONS: [&str; 3] = [
+    "no-new-privileges",
+    "no-new-privileges:true",
+    "seccomp:builtin",
+];
+
 /// One Compose feature that would reach the host.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GuardrailFinding {
@@ -79,6 +87,7 @@ fn project_findings(
     let excluded = super::service_filter::environment_excluded_services(document, environment);
     let mut findings = Vec::new();
     for (stack, config) in &document.config.stacks {
+        let compose_directory = super::compose_project_directory(document, stack);
         let mut sources = Vec::with_capacity(config.files.len());
         for file in &config.files {
             let mut compose = read_compose(&document.root.join(file))?;
@@ -97,7 +106,12 @@ fn project_findings(
         });
         if runs_a_service {
             for (file, compose) in &sources {
-                findings.extend(compose_findings(stack, file, compose, &document.root));
+                findings.extend(compose_findings(
+                    stack,
+                    file,
+                    compose,
+                    (&document.root, &compose_directory),
+                ));
             }
             namespaces::check_joins(stack, &sources, &mut findings);
         }
@@ -144,7 +158,7 @@ fn compose_findings(
     stack: &str,
     file: &str,
     compose: &Mapping,
-    project_root: &Path,
+    (project_root, compose_directory): (&Path, &Path),
 ) -> Vec<GuardrailFinding> {
     let mut findings = Vec::new();
     if let Some(services) = compose.get("services").and_then(Value::as_mapping) {
@@ -158,7 +172,13 @@ fn compose_findings(
             namespaces::check_service(&subject, file, service, &mut findings);
         }
     }
-    check_project_resources(stack, file, compose, project_root, &mut findings);
+    check_project_resources(
+        stack,
+        file,
+        compose,
+        (project_root, compose_directory),
+        &mut findings,
+    );
     findings
 }
 
@@ -234,7 +254,8 @@ fn check_service(
     }
     let defaults = DEFAULT_CAPABILITIES.into_iter().collect::<BTreeSet<_>>();
     for capability in strings(service.get("cap_add")) {
-        let normalized = capability.trim_start_matches("CAP_").to_ascii_uppercase();
+        let upper = capability.trim().to_ascii_uppercase();
+        let normalized = upper.trim_start_matches("CAP_");
         if interpolates(&capability) {
             push_variable(
                 findings,
@@ -242,7 +263,7 @@ fn check_service(
                 ("cap_add", &capability),
                 file,
             );
-        } else if normalized == "ALL" || !defaults.contains(normalized.as_str()) {
+        } else if normalized == "ALL" || !defaults.contains(normalized) {
             push(
                 findings,
                 subject,
@@ -295,7 +316,10 @@ fn check_options(
     findings: &mut Vec<GuardrailFinding>,
 ) {
     for option in strings(service.get("security_opt")) {
-        let compact = option.replace([' ', '='], ":").to_ascii_lowercase();
+        let compact = option
+            .replace(' ', "")
+            .replace('=', ":")
+            .to_ascii_lowercase();
         if interpolates(&option) {
             push_variable(
                 findings,
@@ -303,21 +327,15 @@ fn check_options(
                 ("security_opt", &option),
                 file,
             );
-        } else if [
-            "seccomp:unconfined",
-            "apparmor:unconfined",
-            "label:disable",
-            "systempaths:unconfined",
-            "no-new-privileges:false",
-        ]
-        .iter()
-        .any(|unsafe_option| compact == *unsafe_option)
-        {
+        } else if !SAFE_SECURITY_OPTIONS.contains(&compact.as_str()) {
             push(
                 findings,
                 subject,
                 "security-opt",
-                format!("security_opt: {option}"),
+                format!(
+                    "security_opt: {option} in {file}; a host runs only {}",
+                    SAFE_SECURITY_OPTIONS.join(", ")
+                ),
             );
         }
     }
@@ -347,7 +365,23 @@ fn check_external(
     match turns_on(external) {
         Ok(true) => push(findings, subject, feature, "external: true".to_owned()),
         Err(text) => push_variable(findings, (subject, feature), ("external", text), file),
-        Ok(false) => {}
+        Ok(false) => {
+            if let Some(name) = entry.get("name") {
+                let name = value_text(name);
+                if interpolates(&name) {
+                    push_variable(findings, (subject, feature), ("name", &name), file);
+                } else {
+                    push(
+                        findings,
+                        subject,
+                        feature,
+                        format!(
+                            "name: {name} in {file} is a host-wide name that any project can use; leave `name:` out so Compose names it after the stack"
+                        ),
+                    );
+                }
+            }
+        }
     }
 }
 
@@ -394,7 +428,7 @@ fn check_project_resources(
     stack: &str,
     file: &str,
     compose: &Mapping,
-    project_root: &Path,
+    (project_root, compose_directory): (&Path, &Path),
     findings: &mut Vec<GuardrailFinding>,
 ) {
     if let Some(volumes) = compose.get("volumes").and_then(Value::as_mapping) {
@@ -433,18 +467,21 @@ fn check_project_resources(
                 );
                 continue;
             }
-            let path = Path::new(source);
-            let inside = path.is_relative()
-                && !path
-                    .components()
-                    .any(|component| matches!(component, std::path::Component::ParentDir));
-            let absolute_inside = path.is_absolute() && path.starts_with(project_root);
-            if !inside && !absolute_inside {
+            let escapes = super::source_policy::unsafe_volume_source(
+                source,
+                true,
+                project_root,
+                compose_directory,
+            )
+            .unwrap_or(true);
+            if escapes {
                 push(
                     findings,
                     &subject,
                     "file-outside-project",
-                    format!("{key}.{name}.file: {source}"),
+                    format!(
+                        "{key}.{name}.file: {source} in {file} is outside the project or behind a symlink; keep the file itself in the project"
+                    ),
                 );
             }
         }
