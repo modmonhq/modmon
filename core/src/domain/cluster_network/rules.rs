@@ -216,97 +216,100 @@ impl NodeNetworks {
     #[must_use]
     pub fn firewall(&self) -> Firewall {
         let mesh = self.mesh_interface.as_str();
-        let rule = |chain: &str, matches: String, comment: &str, verdict: &str| {
-            format!("-A {chain}{matches} -m comment --comment \"{comment}\" -j {verdict}")
-        };
-        let mut filter = vec![
-            rule(
-                FILTER_CHAIN,
-                " -m conntrack --ctstate RELATED,ESTABLISHED".to_owned(),
-                "mm replies",
-                "RETURN",
-            ),
-            // A published port arrives translated; the engine's own rules
-            // decide about it.
-            rule(
-                FILTER_CHAIN,
-                " -m conntrack --ctstate DNAT".to_owned(),
-                "mm published ports",
-                "RETURN",
-            ),
-        ];
+        let mut internal = Vec::new();
+        let mut networks = Vec::new();
         let mut nat = Vec::new();
         for local in self.local() {
             let (block, bridge, name) = (local.block, local.bridge.as_str(), local.key.as_str());
             let comment = format!("mm network {name}");
-            filter.push(rule(
+            let across = [
+                rule(
+                    FILTER_CHAIN,
+                    &format!(" -s {block} -d {block} -i {mesh} -o {bridge}"),
+                    &comment,
+                    "ACCEPT",
+                ),
+                rule(
+                    FILTER_CHAIN,
+                    &format!(" -s {block} -d {block} -i {bridge} -o {mesh}"),
+                    &comment,
+                    "ACCEPT",
+                ),
+            ];
+            let within = rule(
                 FILTER_CHAIN,
-                format!(" -s {block} -d {block} -i {mesh} -o {bridge}"),
-                &comment,
-                "ACCEPT",
-            ));
-            filter.push(rule(
-                FILTER_CHAIN,
-                format!(" -s {block} -d {block} -i {bridge} -o {mesh}"),
-                &comment,
-                "ACCEPT",
-            ));
-            // Two containers of the network on this node: where the kernel
-            // filters bridged traffic too, the engine's own rules decide,
-            // as for any network of the engine.
-            filter.push(rule(
-                FILTER_CHAIN,
-                format!(" -i {bridge} -o {bridge}"),
+                &format!(" -i {bridge} -o {bridge}"),
                 &comment,
                 "RETURN",
-            ));
+            );
             if local.internal {
-                filter.push(rule(
+                internal.extend(across);
+                networks.push(within);
+                networks.push(rule(
                     FILTER_CHAIN,
-                    format!(" -i {bridge}"),
+                    &format!(" -i {bridge}"),
                     &format!("mm internal network {name}"),
                     "DROP",
                 ));
                 continue;
             }
-            // Traffic inside the network keeps the container's address;
-            // everything else leaves with the node's.
-            let slice = local.slice;
-            nat.push(rule(
-                NAT_CHAIN,
-                format!(" -s {slice} -d {block}"),
-                &comment,
-                "RETURN",
-            ));
-            nat.push(rule(
-                NAT_CHAIN,
-                format!(" -s {slice} -o {mesh}"),
-                &comment,
-                "RETURN",
-            ));
-            nat.push(rule(
-                NAT_CHAIN,
-                format!(" -s {slice}"),
-                &comment,
-                "MASQUERADE",
-            ));
+            networks.extend(across);
+            networks.push(within);
+            nat.extend(masquerade(&local, &comment));
         }
+        let mut filter = internal;
+        filter.push(rule(
+            FILTER_CHAIN,
+            " -m conntrack --ctstate RELATED,ESTABLISHED",
+            "mm replies",
+            "RETURN",
+        ));
+        filter.push(rule(
+            FILTER_CHAIN,
+            " -m conntrack --ctstate DNAT",
+            "mm published ports",
+            "RETURN",
+        ));
+        filter.extend(networks);
         for space in self.spaces() {
             filter.push(rule(
                 FILTER_CHAIN,
-                format!(" -d {space}"),
+                &format!(" -d {space}"),
                 "mm cluster networks",
                 "DROP",
             ));
             filter.push(rule(
                 FILTER_CHAIN,
-                format!(" -s {space} -o {mesh}"),
+                &format!(" -s {space} -o {mesh}"),
                 "mm cluster networks",
                 "DROP",
             ));
         }
         Firewall { filter, nat }
     }
+}
+
+fn rule(chain: &str, matches: &str, comment: &str, verdict: &str) -> String {
+    format!("-A {chain}{matches} -m comment --comment \"{comment}\" -j {verdict}")
+}
+
+fn masquerade(local: &LocalNetwork, comment: &str) -> [String; 3] {
+    let (slice, block, mesh) = (local.slice, local.block, local.mesh_interface.as_str());
+    [
+        rule(
+            NAT_CHAIN,
+            &format!(" -s {slice} -d {block}"),
+            comment,
+            "RETURN",
+        ),
+        rule(
+            NAT_CHAIN,
+            &format!(" -s {slice} -o {mesh}"),
+            comment,
+            "RETURN",
+        ),
+        rule(NAT_CHAIN, &format!(" -s {slice}"), comment, "MASQUERADE"),
+    ]
 }
 
 /// `state` with every slice the table routes to a peer added to that peer's
