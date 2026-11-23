@@ -16,6 +16,7 @@ use crate::domain::workspace::ProjectId;
 struct QueueProcess {
     outputs: Mutex<VecDeque<Result<CommandOutput, MmError>>>,
     commands: Mutex<Vec<String>>,
+    timeouts: Mutex<Vec<Duration>>,
 }
 
 impl QueueProcess {
@@ -23,6 +24,7 @@ impl QueueProcess {
         Arc::new(Self {
             outputs: Mutex::new(outputs.into()),
             commands: Mutex::new(Vec::new()),
+            timeouts: Mutex::new(Vec::new()),
         })
     }
 
@@ -39,6 +41,9 @@ impl QueueProcess {
 #[async_trait]
 impl ProcessRunner for QueueProcess {
     async fn run(&self, specification: CommandSpec) -> Result<CommandOutput, MmError> {
+        if let Ok(mut timeouts) = self.timeouts.lock() {
+            timeouts.push(specification.timeout_value());
+        }
         self.commands
             .lock()
             .map_err(|_| MmError::State {
@@ -174,6 +179,23 @@ async fn network_and_volume_lifecycles_issue_owned_mutations() -> Result<(), Box
     assert!(commands.iter().any(|command| command.contains("network create")));
     assert!(commands.iter().any(|command| command == "docker network rm edge"));
     assert!(commands.iter().any(|command| command.contains("volume create")));
+    Ok(())
+}
+
+#[tokio::test]
+async fn compose_down_gets_the_limit_the_stop_grace_periods_call_for() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = crate::test_support::tempdir()?;
+    std::fs::write(
+        temp.path().join("compose.yaml"),
+        "services:\n  db:\n    image: db\n    stop_grace_period: ${DB_GRACE:-7m}\n",
+    )?;
+    let target = runtime_target(temp.path());
+    let process = QueueProcess::with(vec![ok("[]"), ok("removed")]);
+    DockerComposeRuntime::new(process.clone()).remove(&target).await?;
+    let commands = process.commands()?;
+    let timeouts = process.timeouts.lock().map(|timeouts| timeouts.clone()).unwrap_or_default();
+    assert!(commands[1].ends_with("down --remove-orphans"), "{commands:?}");
+    assert_eq!(timeouts[1], Duration::from_secs(7 * 60 + 60));
     Ok(())
 }
 

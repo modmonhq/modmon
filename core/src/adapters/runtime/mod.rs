@@ -1,3 +1,4 @@
+mod compose_limit;
 mod convergence;
 mod docker_compose;
 mod endpoints;

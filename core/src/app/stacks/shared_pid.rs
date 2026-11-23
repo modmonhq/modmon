@@ -93,7 +93,7 @@ fn compose_services(
         let mut model: Value = serde_yaml_ng::from_slice(&source.bytes).map_err(invalid)?;
         model.apply_merge().map_err(invalid)?;
         if let Some(compose) = model.as_mapping_mut() {
-            super::guardrails::resolve_extends(compose);
+            crate::domain::compose_extends::resolve_extends(compose);
         }
         let Some(listed) = model.get("services").and_then(Value::as_mapping) else {
             continue;
