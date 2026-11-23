@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::adapters::private_fs::ensure_no_symlink_components;
+use crate::adapters::runtime::compose_limit::project_limit;
 use crate::adapters::runtime::inspect::{
     ownership_label_args, parse_resource_ids, require_inspected_project_ownership,
 };
@@ -21,6 +22,7 @@ use crate::app::ports::{
     CommandOutput, CommandSpec, LocalDeploymentRuntime, OwnedVolumeFile, ProcessRunner,
     RuntimeDriver, VolumeOwnership,
 };
+use crate::domain::compose_timing::{COMPOSE_FLOOR, ComposeOrder};
 use crate::domain::diagnostic::Diagnostic;
 use crate::domain::error::MmError;
 use crate::domain::ownership::{ResourceKind, ResourceOwnership};
@@ -31,6 +33,8 @@ use crate::domain::runtime::{
     RuntimeResource, RuntimeTarget, runtime_descriptor,
 };
 use crate::domain::target::{NamedTarget, TargetId, TargetTransport};
+
+const STOP_FLOOR: Duration = Duration::from_secs(300);
 
 const ENGINE_REDIRECT_ENVIRONMENT: &[&str] = &[
     "CONTAINER_HOST",

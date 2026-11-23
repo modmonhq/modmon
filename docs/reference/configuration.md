@@ -732,6 +732,32 @@ number with `s`, `m`, or `h`, at least `1s`. The default is `10m`, and
 whose health check fails, fails at once without waiting for it. A container
 without a health check counts as healthy once it has run for five seconds.
 
+Starting or stopping a stack (`compose up`, `compose down`, and the stop of
+containers a deployment replaces) has its own limit, which comes from the
+stack's Compose files. Each service counts its `stop_grace_period`
+(Compose's default is `10s`). A service that another one waits for with
+`condition: service_healthy` also counts its health check's `start_period`
+plus `retries` times its `interval` and `timeout`. Docker Compose stops and
+starts services along `depends_on`, and services that do not depend on each
+other at the same time, so on Docker the limit follows the longest
+`depends_on` chain. On Podman it is the sum over all services, because some
+Podman Compose providers, such as `podman-compose` 1.0, take one service
+after the other. One minute is added for the engine's own work. On Podman
+the limit is never under two minutes for `compose up` and `compose down`,
+and never under five minutes for stopping replaced containers. On Docker it
+is never under five minutes. A database with `stop_grace_period: 5m` on
+Docker gets six minutes to stop, with nothing to set in mm's configuration.
+
+Values set from variables, such as `${DB_GRACE:-5m}`, are read with the
+variables mm passes to Compose, or their default otherwise. A service that
+`extends` another service of the same file inherits its grace period and
+health check. A service that another one waits for with
+`condition: service_completed_successfully` counts only its grace period,
+because mm cannot know how long it runs: keep such a task short, or make it
+a [job](../jobs-and-schedules.md) with its own `timeout`. A cluster
+deployment gives each stack step this much time on top of its convergence
+window, using each variable's default.
+
 `deploy.progress-timeout` is how long `mm deploy apply` (and `mm team sync`)
 on a remote environment waits without any sign of progress from a host: the
 host does not answer, or its `mmd` no longer works on the step. The command

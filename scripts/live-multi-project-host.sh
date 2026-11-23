@@ -221,7 +221,7 @@ for project in "$project_a" "$project_b"; do
   [ "$("$engine" inspect --format '{{index .Config.Labels "io.mm.project-id"}}' "$container")" = "$project" ]
   [ "$("$engine" network inspect --format '{{index .Labels "io.mm.project-id"}}' "$(network_name "$project")")" = "$project" ]
   [ "$("$engine" volume inspect --format '{{index .Labels "io.mm.project-id"}}' "$(volume_name "$project")")" = "$project" ]
-  compose_for "$project" logs --no-color service | grep -q "log-$project"
+  compose_for "$project" logs --no-color service | grep "log-$project" >/dev/null
   "$engine" exec "$container" sh -c "printf '%s' '$project' > /state/same-job"
   [ "$("$engine" exec "$container" cat /state/same-job)" = "$project" ]
 done
