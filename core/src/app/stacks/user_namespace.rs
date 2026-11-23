@@ -19,7 +19,7 @@ use serde_yaml_ng::Value;
 use crate::app::ports::ServiceUserIds;
 use crate::domain::config::ConfigDocument;
 use crate::domain::error::MmError;
-use crate::domain::stack::{CompiledComposeSource, StackServiceManifest};
+use crate::domain::stack::{CompiledComposeSource, CompiledStackArtifact, StackServiceManifest};
 use crate::domain::user_namespace::{
     ServiceIds, ServiceIdsChoice, ServiceIdsOwner, holds_in_any_namespace,
 };
@@ -355,31 +355,43 @@ fn owned_files<'a>(
         .map(|(key, path, _)| (key, path))
 }
 
-/// The owned files (see [`owned_files`]) of `stack`'s services in
-/// `environment` that `models`, the Compose files the engine reads, do not
-/// run in the host's user namespace, each as its key.
+/// The owned files (see [`owned_files`]) of the services of `stacks` in
+/// `environment` that do not run in the host's user namespace in the
+/// Compose files the engine gets, mm's overlay last, each as its key.
 pub(super) fn files_outside_host_namespace(
     document: &ConfigDocument,
     environment: &str,
-    stack: &str,
-    models: &[Value],
-) -> Vec<String> {
-    let services = compose_userns(models);
+    stacks: &[CompiledStackArtifact],
+) -> Result<Vec<String>, MmError> {
     let mut found = Vec::new();
-    for (module, config) in &document.config.modules {
-        for (service, config) in &config.services {
-            let outside = services
-                .get(service)
-                .is_some_and(|userns| userns.mode.as_deref() != Some("host"));
-            if config.stack != stack || !config.is_in_environment(environment) || !outside {
-                continue;
+    for stack in stacks {
+        let mut models = compose_models(&stack.user_files)?;
+        let invalid = |cause: serde_yaml_ng::Error| MmError::Environment {
+            message: format!(
+                "the generated overlay of stack '{}': {cause}",
+                stack.manifest.stack
+            ),
+        };
+        models.push(serde_yaml_ng::from_slice(&stack.generated_overlay).map_err(invalid)?);
+        let services = compose_userns(&models);
+        for (module, config) in &document.config.modules {
+            for (service, config) in &config.services {
+                let outside = services
+                    .get(service)
+                    .is_some_and(|userns| userns.mode.as_deref() != Some("host"));
+                if config.stack != stack.manifest.stack
+                    || !config.is_in_environment(environment)
+                    || !outside
+                {
+                    continue;
+                }
+                found.extend(owned_files(config, environment).map(|(key, path)| {
+                    format!("modules.{module}.services.{service}.{key}.\"{path}\"")
+                }));
             }
-            found.extend(owned_files(config, environment).map(|(key, path)| {
-                format!("modules.{module}.services.{service}.{key}.\"{path}\"")
-            }));
         }
     }
-    found
+    Ok(found)
 }
 
 /// A service on a shared volume reaches its files from every node with

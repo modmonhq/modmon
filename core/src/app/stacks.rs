@@ -274,40 +274,6 @@ impl StackManager {
         self.compile_selection(selection, false, Some(state), ImageSource::LocalBuild(plan))
     }
 
-    /// The owned secret files and config files of the compiled stacks'
-    /// services that do not run in the host's user namespace, read from
-    /// the Compose files the engine gets.
-    pub(crate) fn files_outside_host_namespace(
-        &self,
-        selection: &WorkspaceSelection,
-        compiled: &DeploymentStackCompilation,
-    ) -> Result<Vec<String>, MmError> {
-        let document = self.documents.load_from(&selection.start)?;
-        let mut found = Vec::new();
-        for stack in &compiled.stacks {
-            let mut models = Vec::new();
-            for path in &stack.compose_files {
-                let bytes =
-                    crate::domain::path_policy::read_regular_file(path, MAX_COMPOSE_FILE_BYTES)?
-                        .unwrap_or_default();
-                let invalid = |cause: serde_yaml_ng::Error| MmError::Environment {
-                    message: format!("Compose file '{}': {cause}", path.display()),
-                };
-                let mut model: serde_yaml_ng::Value =
-                    serde_yaml_ng::from_slice(&bytes).map_err(invalid)?;
-                model.apply_merge().map_err(invalid)?;
-                models.push(model);
-            }
-            found.extend(user_namespace::files_outside_host_namespace(
-                &document,
-                &compiled.environment,
-                &stack.manifest.stack,
-                &models,
-            ));
-        }
-        Ok(found)
-    }
-
     fn compile_selection(
         &self,
         selection: &WorkspaceSelection,
@@ -443,7 +409,7 @@ impl StackManager {
         &self,
         preparation: StackPreparation<'_>,
     ) -> Result<(Vec<PreparedStackArtifact>, PlacementNotes), MmError> {
-        let (compiled, placement) = compile_document_for(DocumentCompilation {
+        let (compiled, mut placement) = compile_document_for(DocumentCompilation {
             document: preparation.document,
             environment: preparation.environment,
             target: preparation.target,
@@ -457,6 +423,11 @@ impl StackManager {
             ),
             user_ids: self.user_ids.as_deref(),
         })?;
+        placement.outside_host_namespace = user_namespace::files_outside_host_namespace(
+            preparation.document,
+            preparation.environment,
+            &compiled,
+        )?;
         if preparation.check_route_registry
             && let Some(routes) = &self.routes
         {

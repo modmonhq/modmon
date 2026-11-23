@@ -118,7 +118,7 @@ impl DeploymentManager {
             compiled.selection.runtime,
             &environment_review.secret_revisions,
         )?;
-        self.owners_hold_under_remap(selection, &compiled).await?;
+        self.owners_hold_under_remap(&compiled).await?;
         if let Some(required) = environment_review
             .delivery
             .mode
@@ -201,16 +201,25 @@ impl DeploymentManager {
     /// Refuses owned files whose owner Docker's `userns-remap` hides.
     async fn owners_hold_under_remap(
         &self,
-        selection: &WorkspaceSelection,
         compiled: &crate::app::stacks::DeploymentStackCompilation,
     ) -> Result<(), MmError> {
         if compiled.selection.runtime != crate::domain::runtime::RuntimeKind::DockerCompose {
             return Ok(());
         }
-        let owned = self
-            .stacks
-            .files_outside_host_namespace(selection, compiled)?;
-        if owned.is_empty() || !self.runtime.probe().await.remaps_user_ids() {
+        let owned = &compiled.placement.outside_host_namespace;
+        if owned.is_empty() {
+            return Ok(());
+        }
+        let Some(remapped) = self.runtime.probe().await.remaps_user_ids() else {
+            return Err(MmError::Remote {
+                code: "MM_USER_NAMESPACE",
+                message: format!(
+                    "mm could not read from `docker info` whether Docker on this host runs with userns-remap, which gives containers other user ids than the host's, and {} name an owner or a mode that only holds with the host's ids. Check that Docker answers (`docker info`), then run `mm deploy plan` again, or give each of these entries uid \"0\", gid \"0\" and a mode every user can read, such as 0o444",
+                    owned.join(", ")
+                ),
+            });
+        };
+        if !remapped {
             return Ok(());
         }
         Err(MmError::Remote {
