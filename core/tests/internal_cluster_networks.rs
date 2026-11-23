@@ -1,6 +1,7 @@
 //! An internal network that spans cluster nodes never carries a
-//! container's default route, on rootful Podman and on Docker Engine, and
-//! one an earlier mm created with a default route is created again.
+//! container's default route, on rootful Podman and on Docker Engine, one
+//! an earlier mm created with a default route is created again, and its
+//! containers on different nodes answer each other.
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -9,9 +10,10 @@ use mm::adapters::runtime::{DockerComposeRuntime, PodmanComposeRuntime};
 use mm::app::ports::{
     CommandOutput, CommandSpec, LocalDeploymentRuntime, ProcessRunner, RuntimeDriver,
 };
-use mm::domain::cluster_network::LocalNetwork;
+use mm::domain::cluster_network::{LocalNetwork, NetworkNeed, NetworkTable, SealedNetworks};
 use mm::domain::error::MmError;
 use mm::domain::ownership::{ResourceKind, ResourceOwnership};
+use mm::domain::repo_target::Ipv4Cidr;
 use mm::domain::runtime::ResourceEnsureResult;
 use mm::domain::target::{NamedTarget, TargetDefinition, TargetId};
 use zeroize::Zeroizing;
@@ -199,7 +201,8 @@ async fn an_internal_podman_network_is_created_without_a_default_route() -> Test
 }
 
 #[tokio::test]
-async fn an_internal_docker_network_is_internal_to_docker_and_gets_no_gateway() -> TestResult {
+async fn an_internal_docker_network_is_internal_to_docker_and_carries_no_default_route()
+-> TestResult {
     let docker = Engine::answering(vec![
         (0, "iptables\n".to_owned()),
         (0, docker_vault(false)),
@@ -247,5 +250,176 @@ async fn an_internal_docker_network_is_internal_to_docker_and_gets_no_gateway() 
         "{commands:#?}"
     );
     assert_eq!(commands.len(), 9, "an unchanged network gets no command");
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_network_no_longer_internal_is_planned_again_without_a_default_route() -> TestResult {
+    let ordinary = LocalNetwork {
+        internal: false,
+        ..vault()?
+    };
+    let podman = Engine::answering(vec![
+        (0, String::new()),
+        (
+            0,
+            podman_vault(serde_json::json!({"mtu": "1420", "no_default_route": "true"})),
+        ),
+    ]);
+    let observed = PodmanComposeRuntime::new(podman)
+        .observe_cluster_networks(std::slice::from_ref(&ordinary))
+        .await?
+        .into_iter()
+        .map(|seen| seen.map(|seen| (seen.current, seen.addresses)))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        observed,
+        [Some((
+            false,
+            "10.64.16.0/20, range 10.64.17.2-10.64.17.254, without a default route".to_owned()
+        ))]
+    );
+    let docker = Engine::answering(vec![(0, "iptables\n".to_owned()), (0, docker_vault(true))]);
+    let observed = DockerComposeRuntime::new(docker)
+        .observe_cluster_network("vault", Some(&ordinary))
+        .await?
+        .ok_or("the network was not observed")?;
+    assert_eq!(
+        (observed.current, observed.addresses.as_str()),
+        (
+            false,
+            "10.64.16.0/20, range 10.64.17.0/24, without a default route"
+        )
+    );
+    Ok(())
+}
+
+struct Packet<'a> {
+    from: &'a str,
+    to: &'a str,
+    input: &'a str,
+    output: &'a str,
+    state: &'a str,
+}
+
+fn matches(rule: &str, packet: &Packet) -> Result<bool, String> {
+    let rule = rule.split(" -m comment ").next().unwrap_or(rule);
+    let mut words = rule.split_whitespace().skip(2);
+    while let Some(word) = words.next() {
+        let value = words.next().unwrap_or_default();
+        let holds = match word {
+            "-s" => value
+                .parse::<Ipv4Cidr>()?
+                .contains(packet.from.parse().map_err(|_| "bad address")?),
+            "-d" => value
+                .parse::<Ipv4Cidr>()?
+                .contains(packet.to.parse().map_err(|_| "bad address")?),
+            "-i" => value == packet.input,
+            "-o" => value == packet.output,
+            "-m" => {
+                let _ = words.next();
+                words
+                    .next()
+                    .unwrap_or_default()
+                    .split(',')
+                    .any(|state| state == packet.state)
+            }
+            _ => return Err(format!("the test cannot read `{word}` in `{rule}`")),
+        };
+        if !holds {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn verdict(rules: &[String], packet: &Packet) -> Result<String, String> {
+    for rule in rules {
+        if matches(rule, packet)? {
+            return Ok(rule.rsplit(" -j ").next().unwrap_or_default().to_owned());
+        }
+    }
+    Ok("RETURN".to_owned())
+}
+
+#[test]
+fn an_internal_network_accepts_replies_between_its_nodes_ahead_of_docker() -> TestResult {
+    let space: Ipv4Cidr = "10.64.0.0/12".parse()?;
+    let mut table = NetworkTable::default();
+    for (key, node, internal) in [
+        ("mm-backend", "app-1", false),
+        ("mm-backend", "app-2", false),
+        ("mm-vault", "app-1", true),
+        ("mm-vault", "app-2", true),
+    ] {
+        table.assign(
+            space,
+            &NetworkNeed {
+                key,
+                node,
+                network: "mm-engine-name",
+                internal,
+            },
+        )?;
+    }
+    let node = SealedNetworks {
+        space,
+        mesh_interface: "mm0".to_owned(),
+        mtu: 1420,
+        table,
+        retired: Vec::new(),
+    }
+    .on_node("app-2");
+    let filter = node.firewall().filter;
+    let vault = node.local_network("mm-vault").ok_or("no vault")?;
+    let backend = node.local_network("mm-backend").ok_or("no backend")?;
+    let (here, there) = ("10.64.17.2", "10.64.16.2");
+    assert_eq!(
+        (vault.block.to_string(), vault.slice.to_string()),
+        ("10.64.16.0/20".to_owned(), "10.64.17.0/24".to_owned())
+    );
+    for state in ["NEW", "ESTABLISHED", "RELATED"] {
+        for (from, to, input, output) in [
+            (there, here, "mm0", vault.bridge.as_str()),
+            (here, there, vault.bridge.as_str(), "mm0"),
+        ] {
+            let packet = Packet {
+                from,
+                to,
+                input,
+                output,
+                state,
+            };
+            assert_eq!(
+                verdict(&filter, &packet)?,
+                "ACCEPT",
+                "{state} {from} to {to}\n{filter:#?}"
+            );
+        }
+    }
+    let reply_from_outside = Packet {
+        from: "203.0.113.7",
+        to: here,
+        input: "eth0",
+        output: vault.bridge.as_str(),
+        state: "ESTABLISHED",
+    };
+    assert_eq!(verdict(&filter, &reply_from_outside)?, "RETURN");
+    let way_out = Packet {
+        from: here,
+        to: "203.0.113.7",
+        input: vault.bridge.as_str(),
+        output: "eth0",
+        state: "NEW",
+    };
+    assert_eq!(verdict(&filter, &way_out)?, "DROP");
+    let ordinary_reply = Packet {
+        from: "10.64.0.2",
+        to: "10.64.1.2",
+        input: "mm0",
+        output: backend.bridge.as_str(),
+        state: "ESTABLISHED",
+    };
+    assert_eq!(verdict(&filter, &ordinary_reply)?, "RETURN");
     Ok(())
 }
