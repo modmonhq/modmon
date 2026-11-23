@@ -749,15 +749,21 @@ modules:
         host-user-namespace: shares its uploads with the host's backup job
 ```
 
-A Compose file that sets `userns_mode` on a service keeps it (`host` needs the
-`userns-host` exception in the host policy). With a mode other than `host`,
-such as `auto`, Podman picks the service's ids when it creates a container,
-after mm wrote the service's files, so each config file and `secret-files`
-entry of that service has to read the same for any owner: `uid` and `gid` 0
-(or left out) and a mode every user can read, such as the default 0o444.
-`mm config validate` and the plan refuse an entry that asks for more
-(`MM_USER_NAMESPACE`). Remove `userns_mode` from the service to give it ids of
-its own, and the file is given to its `uid` and `gid` again. A [shared
+A plain `userns_mode: auto` is what mm gives a service anyway: mm replaces it
+with the service's own block, the same 65536 ids Podman's `auto` would give at
+most, taken from the `mm-services` range instead of Podman's `containers`
+range, so the service's files get their owner. Any other mode a Compose file
+sets on a service is kept (`host` needs the `userns-host` exception in the
+host policy). With a mode other than `host`, such as `auto:size=1024`, Podman
+picks the service's ids when it creates a container, after mm wrote the
+service's files, so each config file and `secret-files` entry of that service
+has to read the same for any owner: `uid` and `gid` 0 (or left out) and a mode
+every user can read, such as the default 0o444. `mm config validate` and the
+plan refuse an entry that asks for more (`MM_USER_NAMESPACE`). Remove
+`userns_mode` from the service, or set it to plain `auto`, to give it ids of
+its own, and the file is given to its `uid` and `gid` again. With several
+Compose files, the last file that sets `userns_mode` decides, as in Compose;
+`userns_mode: ~` or `""` counts as not set. A [shared
 volume](#shared-volumes-across-nodes) has to reach a service with the same ids
 on every node: a node where another service already has that service's first
 choice refuses the plan and names that service.
@@ -1363,7 +1369,8 @@ a container counts as healthy once it has run for five seconds.
 publishes a fixed host port, sets `container_name`, or runs more than one
 container (`scale`). On Podman hosts the two containers have the service's
 own user ids, so the new one keeps the old one's volumes; a service whose
-Compose file sets `userns_mode` other than `host` is refused there, since
+Compose file sets `userns_mode` other than `host` or a plain `auto` is
+refused there, since
 its new container would get other ids. It takes effect when the
 service's configuration or image reference changes; a tag that was pushed
 again under the same name is replaced the ordinary way.

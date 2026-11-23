@@ -50,10 +50,12 @@ On hosts that run [Podman](./remote-daemon.md#run-podman-on-the-hosts), each
 service has user ids of its own: `uid` and `gid` are the container's, and mm
 gives the file to the host ids they are there (root's when left out). They
 have to be from 0 to 65535; `mm config validate` refuses others with
-`MM_USER_NAMESPACE`. A service whose Compose file sets its own `userns_mode`,
-such as `auto`, gets its ids from Podman only when its container is created,
-so its files keep root's `uid` and `gid` and a mode every user can read;
-remove `userns_mode` to give them an owner.
+`MM_USER_NAMESPACE`. A plain `userns_mode: auto` gets the service mm's own
+ids as well. A service whose Compose file picks its own user namespace, such
+as `userns_mode: auto:size=1024`, gets its ids from Podman only when its
+container is created, so its files keep root's `uid` and `gid` and a mode
+every user can read; remove `userns_mode`, or set it to plain `auto`, to give
+them an owner.
 
 ## Render a file from bindings
 
