@@ -43,6 +43,9 @@ pub(crate) struct PlacementNotes {
     pub scaled: Vec<ScaleNote>,
     /// The node's services that set `health:`, by stack and name.
     pub health: Vec<(String, String, crate::domain::healing::HealthConfig)>,
+    /// The owned secret files and config files of the node's services
+    /// that do not run in the host's user namespace, by key.
+    pub outside_host_namespace: Vec<String>,
 }
 
 /// A service of the node that does not run one container on each of its

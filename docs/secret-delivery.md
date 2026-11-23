@@ -126,9 +126,17 @@ a copy for each mode and owner the services ask for. With the default `0444`
 every user in the container can read the file, whatever user the image runs
 as, without `user: "0:0"` or extra capabilities. On a remote host, where `mmd`
 runs as root, the copy also belongs to the entry's `uid` and `gid`, which are
-the container's ids on Docker Engine. On your own machine mm runs as you, and
-only root can give a file to other ids: the file is yours, with the entry's
-`mode`. When an entry names other ids and that can matter, such as
+the container's ids on Docker Engine. A Docker daemon with `userns-remap`
+(`docker info` lists `name=userns` under Security Options) gives containers
+other ids than the host's: there the plan refuses a secret file or config
+file with an owner other than root or a mode not every user can read
+(`MM_USER_NAMESPACE`), unless its service runs in the host's user namespace
+(`userns_mode: host` in its Compose file, or
+[`host-user-namespace`](./reference/configuration.md#modules-services-and-builds)).
+Use `uid` 0, `gid` 0 and a mode such as the default `0444`, or turn off
+`userns-remap` in `/etc/docker/daemon.json`. On your own machine mm runs as
+you, and only root can give a file to other ids: the file is yours, with the
+entry's `mode`. When an entry names other ids and that can matter, such as
 `uid: "999"` or a mode that lets no other user read the file, the plan says so
 for that service and file, and so does `mm config validate` when the
 environment runs on Docker on this machine (`MM_SECRET_FILE_OWNER`).
@@ -138,12 +146,13 @@ whose Compose provider is Docker Compose too, mm keeps the same files, and
 each service that mounts a secret gets its own copy: given to the host ids
 that the entry's `uid` and `gid` are in the service's user namespace, with the
 entry's `mode`, in the same root-only directories. A rotation replaces only
-the services that mount the secret there as well. A service whose Compose
-file sets its own `userns_mode`, such as `auto`, gets its user ids from
-Podman when its container is created, too late for mm to give the copy to
-them: its entries have to use `uid` 0, `gid` 0 and a mode every user can
-read, and the plan refuses others (`MM_USER_NAMESPACE`) until you remove
-`userns_mode` from the service.
+the services that mount the secret there as well. A plain
+`userns_mode: auto` gets the service mm's own ids too. A service whose
+Compose file picks its own user namespace, such as `auto:size=1024`, gets
+its user ids from Podman when its container is created, too late for mm to
+give the copy to them: its entries have to use `uid` 0, `gid` 0 and a mode
+every user can read, and the plan refuses others (`MM_USER_NAMESPACE`) until
+you remove `userns_mode` from the service or set it to plain `auto`.
 
 Rotating a secret gives the services that mount it another file, so only they
 are replaced. The previous version stays until the deployment has succeeded,

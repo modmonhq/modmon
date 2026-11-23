@@ -101,6 +101,13 @@ impl From<&crate::domain::remote::NodeReport> for NodeLine {
             Some(rollout) => format!("{detail}  {rollout}"),
             None => detail,
         };
+        let detail = match &report.repo_address {
+            Some(_) => format!(
+                "{detail}  via {} (this device's address)",
+                crate::domain::target::host_and_port(&report.host, report.port)
+            ),
+            None => detail,
+        };
         Self {
             name: report.name.clone(),
             ready: report.reachable,

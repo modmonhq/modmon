@@ -116,22 +116,24 @@ fn start_first_is_refused_where_two_containers_cannot_run_side_by_side() -> Test
     );
 
     // Podman runs start-first too: both containers have the service's
-    // fixed user ids. A Compose `userns_mode` other than `host` would give
-    // the new one others.
+    // fixed user ids. A Compose `userns_mode` other than `host` or a
+    // plain `auto` gives the new one others.
     let podman = config("{order: start-first}", "runtime: {driver: podman-compose}");
     assert_eq!(findings(&podman, PLAIN)?, []);
-    let own = "services:\n  web:\n    image: nginx\n    userns_mode: auto\n";
+    let own = "services:\n  web:\n    image: nginx\n    userns_mode: auto:size=1024\n";
     let found = findings(&podman, own)?;
     assert!(
         found.len() == 1
-            && found[0].1.contains("sets `userns_mode: auto`")
+            && found[0].1.contains("sets `userns_mode: auto:size=1024`")
             && found[0]
                 .1
                 .contains("could not change what the old one wrote"),
         "{found:?}"
     );
-    let host = own.replace("userns_mode: auto", "userns_mode: host");
-    assert_eq!(findings(&podman, &host)?, []);
+    for mode in ["host", "auto"] {
+        let kept = own.replace("auto:size=1024", mode);
+        assert_eq!(findings(&podman, &kept)?, [], "{mode}");
+    }
     assert_eq!(findings(&start_first, own)?, []);
     Ok(())
 }

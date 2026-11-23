@@ -3557,6 +3557,75 @@ async fn docker_compose_runtime_secrets_are_staged_applied_reconciled_and_dispos
     Ok(())
 }
 
+/// Docker with `userns-remap` gives containers other ids than the host's:
+/// a secret file or config file given to an entry's owner, or readable by
+/// its owner only, would be no user's in there, unless the service runs in
+/// the host's user namespace.
+#[tokio::test]
+async fn an_owned_file_docker_remaps_away_is_refused_with_what_to_change()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = Fixture::new(false)?;
+    fixture.configure_runtime_secret().await?;
+    fixture.runtime.remap_user_ids.store(true, Ordering::SeqCst);
+    fixture.service.plan(&fixture.selection).await?;
+    fs::write(fixture.project.join("app/site.conf"), "listen 8080;\n")?;
+    let config_path = fixture.project.join(".config/mm.yaml");
+    let config = fs::read_to_string(&config_path)?.replace(
+        "            secret: database.password\n",
+        "            secret: database.password\n            uid: \"1000\"\n            gid: \"1000\"\n            mode: 0o400\n        config-files:\n          /etc/web/site.conf: {file: site.conf, mode: 0o600}\n",
+    );
+    fs::write(&config_path, &config)?;
+    let error = fixture
+        .service
+        .plan(&fixture.selection)
+        .await
+        .err()
+        .ok_or("owned files were planned under userns-remap")?;
+    assert_eq!(error.code(), "MM_USER_NAMESPACE");
+    let message = error.to_string();
+    for part in [
+        "runs with userns-remap",
+        "modules.app.services.web.secret-files.\"database-password\"",
+        "modules.app.services.web.config-files.\"/etc/web/site.conf\"",
+        "uid \"0\", gid \"0\" and a mode every user can read",
+        "`userns_mode: host`",
+        "/etc/docker/daemon.json",
+    ] {
+        assert!(message.contains(part), "{part}: {message}");
+    }
+    let host = config.replace(
+        "      web:\n        stack: app\n",
+        "      web:\n        stack: app\n        host-user-namespace: reads files of host users\n",
+    );
+    fs::write(&config_path, host)?;
+    fixture.service.plan(&fixture.selection).await?;
+    fs::write(&config_path, &config)?;
+    fixture
+        .runtime
+        .remap_user_ids
+        .store(false, Ordering::SeqCst);
+    fixture.service.plan(&fixture.selection).await?;
+    fixture
+        .runtime
+        .unreadable_security_options
+        .store(true, Ordering::SeqCst);
+    let unknown = fixture
+        .service
+        .plan(&fixture.selection)
+        .await
+        .err()
+        .ok_or("owned files were planned without knowing whether ids are remapped")?
+        .to_string();
+    for part in [
+        "could not read from `docker info` whether Docker on this host runs with userns-remap",
+        "modules.app.services.web.secret-files.\"database-password\"",
+        "run `mm deploy plan` again",
+    ] {
+        assert!(unknown.contains(part), "{part}: {unknown}");
+    }
+    Ok(())
+}
+
 /// The user these tests run as, whom a workstation's secret files belong to.
 fn this_user() -> mm::domain::runtime_secret::HostIds {
     mm::domain::runtime_secret::HostIds::unprivileged()
@@ -3763,7 +3832,7 @@ async fn a_file_secret_plan_names_the_first_host_id_of_each_consumer_with_ids_of
             host.path().join("subgid"),
         ));
     let fixture = Fixture::with_user_ids(user_ids)?;
-    fixture.configure_runtime_secret().await?;
+    fixture.configure_podman_runtime_secret().await?;
     let plan = fixture.service.plan(&fixture.selection).await?;
     let secrets = plan
         .runtime_secret_plan
@@ -3782,6 +3851,102 @@ async fn a_file_secret_plan_names_the_first_host_id_of_each_consumer_with_ids_of
     let record = fs::read_to_string(host.path().join("service-user-ids.json"))?;
     assert!(record.contains(&format!("\"first\": {first}")), "{record}");
     assert_eq!(secrets.canonical_hash()?, secrets.plan_hash);
+    Ok(())
+}
+
+/// A plain `userns_mode: auto` is what mm gives a service on rootful
+/// Podman anyway: the service gets mm's ids, and a 0400 secret file of uid
+/// 1000 is delivered to the host id its uid 1000 is.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_secret_file_of_a_service_with_plain_auto_belongs_to_its_uid_there()
+-> Result<(), Box<dyn std::error::Error>> {
+    use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+    let host = temp_dirs::tempdir()?;
+    let lines = "mm-services:3221225472:1073676288\n";
+    fs::write(host.path().join("subuid"), lines)?;
+    fs::write(host.path().join("subgid"), lines)?;
+    let user_ids: Arc<dyn mm::app::ports::ServiceUserIds> =
+        Arc::new(mm::adapters::user_namespace::FilesystemServiceUserIds::at(
+            host.path().join("service-user-ids.json"),
+            host.path().join("subuid"),
+            host.path().join("subgid"),
+        ));
+    let fixture = Fixture::with_user_ids(user_ids)?;
+    fixture.configure_podman_runtime_secret().await?;
+    fs::write(
+        fixture.project.join("compose.yaml"),
+        "services:\n  web:\n    image: example/web\n    expose: [8080]\n    userns_mode: auto\n",
+    )?;
+    let config_path = fixture.project.join(".config/mm.yaml");
+    let config = fs::read_to_string(&config_path)?.replace(
+        "            secret: database.password\n",
+        "            secret: database.password\n            uid: \"1000\"\n            gid: \"1000\"\n            mode: 0o400\n",
+    );
+    fs::write(&config_path, config)?;
+    let plan = fixture.service.plan(&fixture.selection).await?;
+    let secrets = plan
+        .runtime_secret_plan
+        .clone()
+        .ok_or("the plan has no runtime secrets")?;
+    let consumer = secrets
+        .items
+        .first()
+        .and_then(|item| item.consumers.first())
+        .ok_or("the secret has no consumer")?;
+    let first = secrets
+        .first_host_id(consumer)
+        .ok_or("web has no ids of its own")?;
+    let overlay: serde_yaml_ng::Value = serde_yaml_ng::from_str(&fs::read_to_string(
+        &plan.stacks[0].artifact.generated_overlay_path,
+    )?)?;
+    assert_eq!(
+        overlay["services"]["web"]["userns_mode"].as_str(),
+        Some(
+            mm::domain::user_namespace::ServiceIds { first }
+                .userns_mode()
+                .as_str()
+        )
+    );
+
+    assert_eq!(secrets.runtime, RuntimeKind::PodmanCompose);
+    let run = temp_dirs::tempdir()?;
+    let delivery =
+        mm::adapters::secrets::DockerComposeFileSecretDelivery::for_podman(run.path().join("run"))?;
+    let prepared = delivery
+        .prepare(
+            mm::domain::operation::OperationId::new(),
+            &secrets,
+            vec![mm::domain::runtime_secret::RuntimeSecretMaterial {
+                logical_name: "database.password".to_owned(),
+                material: SecretMaterial::new("runtime-secret-material".to_owned())?,
+            }],
+        )
+        .await;
+    if !rustix::process::geteuid().is_root() {
+        let error = prepared.err().ok_or("a file was given to another user")?;
+        assert!(
+            error.to_string().contains("giving a runtime secret file"),
+            "{error}"
+        );
+        return Ok(());
+    }
+    let prepared = prepared?;
+    let delivered: serde_yaml_ng::Value =
+        serde_yaml_ng::from_str(&fs::read_to_string(&prepared.overlays[0].1)?)?;
+    let key = delivered["services"]["web"]["secrets"][0]["source"]
+        .as_str()
+        .ok_or("web mounts no secret")?;
+    let file = delivered["secrets"][key]["file"]
+        .as_str()
+        .ok_or("the secret has no file")?;
+    let metadata = fs::metadata(file)?;
+    assert_eq!(
+        (metadata.uid(), metadata.gid()),
+        (first + 1000, first + 1000)
+    );
+    assert_eq!(metadata.permissions().mode() & 0o777, 0o400);
+    delivery.dispose(&prepared)?;
     Ok(())
 }
 
@@ -5332,10 +5497,16 @@ impl Fixture {
         let rootless = Arc::new(FakeRootlessInstaller::default());
         let privileged = Arc::new(FakePrivilegedInstaller::default());
         let runtime_secrets = Arc::new(FailingRuntimeSecretDelivery {
-            inner: mm::adapters::secrets::DockerComposeFileSecretDelivery::kept_for(
-                runtime_secret_directory.clone(),
-                Some(this_user()),
-            )?,
+            inner: if selection.user_ids.is_some() {
+                mm::adapters::secrets::DockerComposeFileSecretDelivery::for_podman(
+                    runtime_secret_directory.clone(),
+                )?
+            } else {
+                mm::adapters::secrets::DockerComposeFileSecretDelivery::kept_for(
+                    runtime_secret_directory.clone(),
+                    Some(this_user()),
+                )?
+            },
             fail_prepare: AtomicBool::new(false),
             fail_dispose: AtomicBool::new(false),
             fail_reconcile_at: AtomicUsize::new(0),
@@ -5440,7 +5611,16 @@ impl Fixture {
         self.runtime.report_docker.store(true, Ordering::SeqCst);
         let config_path = self.project.join(".config/mm.yaml");
         let config = fs::read_to_string(&config_path)?
-            .replace("driver: podman-compose", "driver: docker-compose")
+            .replace("driver: podman-compose", "driver: docker-compose");
+        fs::write(config_path, config)?;
+        self.configure_podman_runtime_secret().await
+    }
+
+    /// The file secret `database.password` mounted into web, on the
+    /// fixture's own runtime.
+    async fn configure_podman_runtime_secret(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let config_path = self.project.join(".config/mm.yaml");
+        let config = fs::read_to_string(&config_path)?
             .replace(
                 "      web:\n        stack: app\n",
                 "      web:\n        stack: app\n        secret-files:\n          database-password:\n            secret: database.password\n",
@@ -5516,6 +5696,8 @@ struct FakeRuntime {
     support_direct: AtomicBool,
     report_non_rootless: AtomicBool,
     report_docker: AtomicBool,
+    remap_user_ids: AtomicBool,
+    unreadable_security_options: AtomicBool,
     /// Running containers, as (service, id), whose configuration differs
     /// from the files about to be applied.
     outdated: Mutex<Vec<(String, String)>>,
@@ -5708,10 +5890,18 @@ impl RuntimeDriver for FakeRuntime {
                 version: Some("test".to_owned()),
                 executable: None,
             }),
-            rootless: Some(!self.report_non_rootless.load(Ordering::SeqCst)),
+            rootless: (!self.unreadable_security_options.load(Ordering::SeqCst))
+                .then(|| !self.report_non_rootless.load(Ordering::SeqCst)),
             socket_path: None,
             capabilities,
-            diagnostics: Vec::new(),
+            diagnostics: if self.remap_user_ids.load(Ordering::SeqCst) {
+                vec![mm::domain::diagnostic::Diagnostic::info(
+                    mm::domain::runtime::DOCKER_USERNS_REMAP,
+                    "userns-remap",
+                )]
+            } else {
+                Vec::new()
+            },
         }
     }
 

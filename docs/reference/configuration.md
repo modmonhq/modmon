@@ -492,7 +492,8 @@ nodes of a cluster target replace the service's stack at the same time.
 ran before) or `pause` (the deployment stops where it is). `start-first` is
 refused with `MM_UPDATE_ORDER` for a service that publishes a fixed host port,
 runs on the host's network, sets `container_name`, runs more than one
-container, or on Podman sets its own `userns_mode` other than `host`. See
+container, or on Podman sets its own `userns_mode` other than `host` or a
+plain `auto`. See
 [rolling deploys and rollback](../remote-daemon.md#rolling-deploys-and-rollback).
 
 Set `environments` on a service to run it only in the named environments. Omitted

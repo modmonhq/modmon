@@ -350,7 +350,7 @@ const COMPOSE: &str = "services:
     image: example/cache
   legacy:
     image: example/legacy
-    userns_mode: keep-id
+    userns_mode: auto:size=1024
 volumes:
   uploads: {}
 ";
@@ -713,8 +713,8 @@ fn a_file_of_a_service_whose_ids_podman_picks_has_to_hold_for_any_owner() -> Tes
         .to_string();
     for part in [
         "modules.shop.services.legacy.config-files.\"/etc/legacy.conf\"",
-        "sets `userns_mode: keep-id`",
-        "Remove `userns_mode` from service 'legacy'",
+        "sets `userns_mode: auto:size=1024`",
+        "Remove `userns_mode` from service 'legacy' or set it to plain `auto`",
         "uid \"0\", gid \"0\" and a mode every user can read",
     ] {
         assert!(error.contains(part), "{part}: {error}");
@@ -726,8 +726,78 @@ fn a_file_of_a_service_whose_ids_podman_picks_has_to_hold_for_any_owner() -> Tes
         "legacy: {stack: app, placement: all, ",
         "legacy: {stack: app, placement: all, host-user-namespace: reads host files, ",
     );
-    if let Err(error) = compile(kept, "app-1")? {
-        assert!(!error.to_string().contains("userns_mode"), "{error}");
+    match compile(kept, "app-1")? {
+        Ok(_) => {}
+        Err(error) if !rustix::process::geteuid().is_root() => assert!(
+            error
+                .to_string()
+                .contains("cannot give a file to another user"),
+            "{error}"
+        ),
+        Err(error) => {
+            return Err(format!(
+                "a file of a service that keeps the host's ids was refused: {error}"
+            )
+            .into());
+        }
+    }
+    Ok(())
+}
+
+/// A plain `userns_mode: auto`, or one that is `~`, is what mm gives a
+/// service anyway: the service gets mm's ids, and a 0400 file of uid 1000
+/// belongs to the host id its uid 1000 is.
+#[test]
+fn a_service_with_plain_auto_gets_its_own_ids_and_its_files_their_owner() -> TestResult {
+    let temporary = temp_dirs::tempdir()?;
+    let root = temporary.path().join("project");
+    write_project(&root)?;
+    let config = fs::read_to_string(root.join(".config/mm.yaml"))?.replace(
+        "legacy: {stack: app, placement: all}",
+        "legacy: {stack: app, placement: all, config-files: {/etc/legacy.conf: {file: api.conf, uid: \"1000\", gid: \"1000\", mode: 0o400}}}",
+    );
+    fs::write(root.join(".config/mm.yaml"), config)?;
+    let legacy = ServiceIdsOwner {
+        project: ProjectId(uuid::Uuid::parse_str(PROJECT_ID)?),
+        environment: "production".to_owned(),
+        stack: "app".to_owned(),
+        service: "legacy".to_owned(),
+    }
+    .first_choice(HostIdRange::default_range());
+    for (node, mode) in [("app-1", "auto"), ("app-2", "~")] {
+        fs::write(
+            root.join("compose.yaml"),
+            COMPOSE.replace("auto:size=1024", mode),
+        )?;
+        let host = Host::with_lines(SETUP_LINES)?;
+        let compiled = compile_on(&root, &temporary.path().join(node), node, host.ids.clone());
+        if !rustix::process::geteuid().is_root() {
+            let error = compiled.err().ok_or("a config file was given away")?;
+            assert!(
+                error
+                    .to_string()
+                    .contains("cannot give a file to another user"),
+                "{mode}: {error}"
+            );
+            continue;
+        }
+        let overlay = overlay_of(&compiled?)?;
+        let service = &overlay["services"]["legacy"];
+        assert_eq!(
+            service["userns_mode"].as_str(),
+            Some(legacy.userns_mode().as_str()),
+            "{mode}"
+        );
+        let mount = service["volumes"][0]
+            .as_str()
+            .ok_or("legacy mounts no config file")?;
+        let metadata = fs::metadata(mount.split(':').next().ok_or("no source")?)?;
+        assert_eq!(
+            (metadata.uid(), metadata.gid()),
+            (legacy.first + 1000, legacy.first + 1000),
+            "{mode}"
+        );
+        assert_eq!(metadata.permissions().mode() & 0o777, 0o400);
     }
     Ok(())
 }

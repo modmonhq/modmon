@@ -749,15 +749,21 @@ modules:
         host-user-namespace: shares its uploads with the host's backup job
 ```
 
-A Compose file that sets `userns_mode` on a service keeps it (`host` needs the
-`userns-host` exception in the host policy). With a mode other than `host`,
-such as `auto`, Podman picks the service's ids when it creates a container,
-after mm wrote the service's files, so each config file and `secret-files`
-entry of that service has to read the same for any owner: `uid` and `gid` 0
-(or left out) and a mode every user can read, such as the default 0o444.
-`mm config validate` and the plan refuse an entry that asks for more
-(`MM_USER_NAMESPACE`). Remove `userns_mode` from the service to give it ids of
-its own, and the file is given to its `uid` and `gid` again. A [shared
+A plain `userns_mode: auto` is what mm gives a service anyway: mm replaces it
+with the service's own block, the same 65536 ids Podman's `auto` would give at
+most, taken from the `mm-services` range instead of Podman's `containers`
+range, so the service's files get their owner. Any other mode a Compose file
+sets on a service is kept (`host` needs the `userns-host` exception in the
+host policy). With a mode other than `host`, such as `auto:size=1024`, Podman
+picks the service's ids when it creates a container, after mm wrote the
+service's files, so each config file and `secret-files` entry of that service
+has to read the same for any owner: `uid` and `gid` 0 (or left out) and a mode
+every user can read, such as the default 0o444. `mm config validate` and the
+plan refuse an entry that asks for more (`MM_USER_NAMESPACE`). Remove
+`userns_mode` from the service, or set it to plain `auto`, to give it ids of
+its own, and the file is given to its `uid` and `gid` again. With several
+Compose files, the last file that sets `userns_mode` decides, as in Compose;
+`userns_mode: ~` or `""` counts as not set. A [shared
 volume](#shared-volumes-across-nodes) has to reach a service with the same ids
 on every node: a node where another service already has that service's first
 choice refuses the plan and names that service.
@@ -1162,7 +1168,9 @@ deployment. The command exits with status 3 when a node is not ready, and
 prints the list either way. `--output json` prints the same facts as
 `{"target": ..., "nodes": [...], "addresses": {...}}`. Each node has `name`,
 `host`, `port`, `mesh_address`, `state`, `reachable`, `problem`,
-`mmd_version`, and `deployed`.
+`mmd_version`, and `deployed`. `host` and `port` are the address this device
+connected to; when it is [this device's own](#reach-the-nodes-at-another-address),
+`repo_address` holds the one in `targets.yaml`.
 
 Below the nodes, the command prints the addresses of the
 [networks that span the nodes](#networks-across-nodes), for the environment
@@ -1375,7 +1383,8 @@ a container counts as healthy once it has run for five seconds.
 publishes a fixed host port, sets `container_name`, or runs more than one
 container (`scale`). On Podman hosts the two containers have the service's
 own user ids, so the new one keeps the old one's volumes; a service whose
-Compose file sets `userns_mode` other than `host` is refused there, since
+Compose file sets `userns_mode` other than `host` or a plain `auto` is
+refused there, since
 its new container would get other ids. It takes effect when the
 service's configuration or image reference changes; a tag that was pushed
 again under the same name is replaced the ordinary way.
@@ -2806,6 +2815,45 @@ on one release: `mm doctor` warns with `MM_NODE_VERSION_SKEW` until they are.
 When `mm` and a node share no protocol, the error says which side to upgrade:
 `mm` on your machine (`mm update`), or the host (run
 `mm target setup plan --upgrade` and apply that plan with `--upgrade`).
+
+### Reach the nodes at another address
+
+Each node's `host` in `.config/mm/targets.yaml` is shared by everyone who
+deploys, CI included. When your workstation reaches the nodes another way, for
+example over a VPN at their private addresses while SSH on the public
+addresses is open only to CI, tell `mm` on your device where to connect:
+
+```sh
+mm target preference set-address staging app-1 10.0.0.3
+mm target preference set-address staging app-2 10.0.0.4
+mm target preference set-address staging app-3 10.0.0.5:2222
+mm target preference show
+```
+
+The arguments are the environment, the node's name from `nodes:`, and a
+hostname, IPv4 address, or IPv6 address with an optional port (`[fd00::3]:22`).
+Without a port, `mm` uses the node's `port`. The address is kept in
+`node-addresses.json` in this device's mm home, never in the repo, so CI and
+the other developers keep using `host`. `mm` refuses an environment the
+project does not declare and a node its target does not list. The address
+belongs to the target the environment used when you set it: if the
+environment moves to another target, `mm` warns and connects to that target's
+`host` until you set the address again.
+
+Only where `mm` connects changes. The node must still present the SSH host key
+and daemon identity recorded for it in `targets.yaml`; `mm` checks them against
+the node's recorded name, so another host at the new address is refused as
+before. Every command uses the address: deploys, logs, status, `mm target
+nodes`, the terminal UI, and the MCP server. `mm target nodes` shows it with a
+line that names the address in `targets.yaml`, and an `MM_UNREACHABLE` error
+names the address that was tried and says it is this device's own.
+`mm target setup` still connects to `host`.
+
+To use the repo's address again:
+
+```sh
+mm target preference unset-address staging app-1
+```
 
 ### When mmd stops answering
 

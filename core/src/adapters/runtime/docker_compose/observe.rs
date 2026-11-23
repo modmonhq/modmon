@@ -71,6 +71,7 @@ impl RuntimeDriver for DockerComposeRuntime {
         let rootless = info
             .as_ref()
             .and_then(|output| docker_rootless(output, &mut diagnostics));
+        diagnostics.extend(info.as_ref().and_then(docker_userns_remap));
         RuntimeProbe {
             kind: self.kind(),
             available,
@@ -361,4 +362,22 @@ fn docker_rootless(output: &CommandOutput, diagnostics: &mut Vec<Diagnostic>) ->
             None
         }
     }
+}
+
+fn docker_userns_remap(output: &CommandOutput) -> Option<Diagnostic> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&output.stdout) else {
+        return None;
+    };
+    let remapped = value
+        .get("SecurityOptions")?
+        .as_array()?
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .any(|option| option.split(',').any(|part| part == "name=userns"));
+    remapped.then(|| {
+        Diagnostic::info(
+            crate::domain::runtime::DOCKER_USERNS_REMAP,
+            "Docker runs with userns-remap: containers do not have the host's user ids, so a secret file can only be given to root (uid 0, gid 0) with a mode every user can read",
+        )
+    })
 }

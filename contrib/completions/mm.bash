@@ -2036,6 +2036,9 @@ _mm() {
             mm__subcmd__help__subcmd__target__subcmd__mesh,status)
                 cmd="mm__subcmd__help__subcmd__target__subcmd__mesh__subcmd__status"
                 ;;
+            mm__subcmd__help__subcmd__target__subcmd__preference,set-address)
+                cmd="mm__subcmd__help__subcmd__target__subcmd__preference__subcmd__set__subcmd__address"
+                ;;
             mm__subcmd__help__subcmd__target__subcmd__preference,set-runtime)
                 cmd="mm__subcmd__help__subcmd__target__subcmd__preference__subcmd__set__subcmd__runtime"
                 ;;
@@ -2044,6 +2047,9 @@ _mm() {
                 ;;
             mm__subcmd__help__subcmd__target__subcmd__preference,show)
                 cmd="mm__subcmd__help__subcmd__target__subcmd__preference__subcmd__show"
+                ;;
+            mm__subcmd__help__subcmd__target__subcmd__preference,unset-address)
+                cmd="mm__subcmd__help__subcmd__target__subcmd__preference__subcmd__unset__subcmd__address"
                 ;;
             mm__subcmd__help__subcmd__target__subcmd__preference,unset-runtime)
                 cmd="mm__subcmd__help__subcmd__target__subcmd__preference__subcmd__unset__subcmd__runtime"
@@ -2741,6 +2747,9 @@ _mm() {
             mm__subcmd__target__subcmd__help__subcmd__mesh,status)
                 cmd="mm__subcmd__target__subcmd__help__subcmd__mesh__subcmd__status"
                 ;;
+            mm__subcmd__target__subcmd__help__subcmd__preference,set-address)
+                cmd="mm__subcmd__target__subcmd__help__subcmd__preference__subcmd__set__subcmd__address"
+                ;;
             mm__subcmd__target__subcmd__help__subcmd__preference,set-runtime)
                 cmd="mm__subcmd__target__subcmd__help__subcmd__preference__subcmd__set__subcmd__runtime"
                 ;;
@@ -2749,6 +2758,9 @@ _mm() {
                 ;;
             mm__subcmd__target__subcmd__help__subcmd__preference,show)
                 cmd="mm__subcmd__target__subcmd__help__subcmd__preference__subcmd__show"
+                ;;
+            mm__subcmd__target__subcmd__help__subcmd__preference,unset-address)
+                cmd="mm__subcmd__target__subcmd__help__subcmd__preference__subcmd__unset__subcmd__address"
                 ;;
             mm__subcmd__target__subcmd__help__subcmd__preference,unset-runtime)
                 cmd="mm__subcmd__target__subcmd__help__subcmd__preference__subcmd__unset__subcmd__runtime"
@@ -2813,6 +2825,9 @@ _mm() {
             mm__subcmd__target__subcmd__preference,help)
                 cmd="mm__subcmd__target__subcmd__preference__subcmd__help"
                 ;;
+            mm__subcmd__target__subcmd__preference,set-address)
+                cmd="mm__subcmd__target__subcmd__preference__subcmd__set__subcmd__address"
+                ;;
             mm__subcmd__target__subcmd__preference,set-runtime)
                 cmd="mm__subcmd__target__subcmd__preference__subcmd__set__subcmd__runtime"
                 ;;
@@ -2821,6 +2836,9 @@ _mm() {
                 ;;
             mm__subcmd__target__subcmd__preference,show)
                 cmd="mm__subcmd__target__subcmd__preference__subcmd__show"
+                ;;
+            mm__subcmd__target__subcmd__preference,unset-address)
+                cmd="mm__subcmd__target__subcmd__preference__subcmd__unset__subcmd__address"
                 ;;
             mm__subcmd__target__subcmd__preference,unset-runtime)
                 cmd="mm__subcmd__target__subcmd__preference__subcmd__unset__subcmd__runtime"
@@ -2831,6 +2849,9 @@ _mm() {
             mm__subcmd__target__subcmd__preference__subcmd__help,help)
                 cmd="mm__subcmd__target__subcmd__preference__subcmd__help__subcmd__help"
                 ;;
+            mm__subcmd__target__subcmd__preference__subcmd__help,set-address)
+                cmd="mm__subcmd__target__subcmd__preference__subcmd__help__subcmd__set__subcmd__address"
+                ;;
             mm__subcmd__target__subcmd__preference__subcmd__help,set-runtime)
                 cmd="mm__subcmd__target__subcmd__preference__subcmd__help__subcmd__set__subcmd__runtime"
                 ;;
@@ -2839,6 +2860,9 @@ _mm() {
                 ;;
             mm__subcmd__target__subcmd__preference__subcmd__help,show)
                 cmd="mm__subcmd__target__subcmd__preference__subcmd__help__subcmd__show"
+                ;;
+            mm__subcmd__target__subcmd__preference__subcmd__help,unset-address)
+                cmd="mm__subcmd__target__subcmd__preference__subcmd__help__subcmd__unset__subcmd__address"
                 ;;
             mm__subcmd__target__subcmd__preference__subcmd__help,unset-runtime)
                 cmd="mm__subcmd__target__subcmd__preference__subcmd__help__subcmd__unset__subcmd__runtime"
@@ -16955,8 +16979,22 @@ _mm() {
             return 0
             ;;
         mm__subcmd__help__subcmd__target__subcmd__preference)
-            opts="show set-runtime unset-runtime set-target unset-target"
+            opts="show set-runtime unset-runtime set-target unset-target set-address unset-address"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mm__subcmd__help__subcmd__target__subcmd__preference__subcmd__set__subcmd__address)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
@@ -16997,6 +17035,20 @@ _mm() {
             return 0
             ;;
         mm__subcmd__help__subcmd__target__subcmd__preference__subcmd__show)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mm__subcmd__help__subcmd__target__subcmd__preference__subcmd__unset__subcmd__address)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -22535,8 +22587,22 @@ _mm() {
             return 0
             ;;
         mm__subcmd__target__subcmd__help__subcmd__preference)
-            opts="show set-runtime unset-runtime set-target unset-target"
+            opts="show set-runtime unset-runtime set-target unset-target set-address unset-address"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mm__subcmd__target__subcmd__help__subcmd__preference__subcmd__set__subcmd__address)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
@@ -22577,6 +22643,20 @@ _mm() {
             return 0
             ;;
         mm__subcmd__target__subcmd__help__subcmd__preference__subcmd__show)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mm__subcmd__target__subcmd__help__subcmd__preference__subcmd__unset__subcmd__address)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -23307,7 +23387,7 @@ _mm() {
             return 0
             ;;
         mm__subcmd__target__subcmd__preference)
-            opts="-e -h -V --root --environment --runtime --target --mm-home --output --help --version show set-runtime unset-runtime set-target unset-target help"
+            opts="-e -h -V --root --environment --runtime --target --mm-home --output --help --version show set-runtime unset-runtime set-target unset-target set-address unset-address help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -23349,7 +23429,7 @@ _mm() {
             return 0
             ;;
         mm__subcmd__target__subcmd__preference__subcmd__help)
-            opts="show set-runtime unset-runtime set-target unset-target help"
+            opts="show set-runtime unset-runtime set-target unset-target set-address unset-address help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -23363,6 +23443,20 @@ _mm() {
             return 0
             ;;
         mm__subcmd__target__subcmd__preference__subcmd__help__subcmd__help)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mm__subcmd__target__subcmd__preference__subcmd__help__subcmd__set__subcmd__address)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -23418,6 +23512,20 @@ _mm() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        mm__subcmd__target__subcmd__preference__subcmd__help__subcmd__unset__subcmd__address)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         mm__subcmd__target__subcmd__preference__subcmd__help__subcmd__unset__subcmd__runtime)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
@@ -23439,6 +23547,48 @@ _mm() {
                 return 0
             fi
             case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mm__subcmd__target__subcmd__preference__subcmd__set__subcmd__address)
+            opts="-e -h -V --root --environment --runtime --target --mm-home --output --help --version"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --root)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --environment)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -e)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --runtime)
+                    COMPREPLY=($(compgen -W "podman-compose docker-compose" -- "${cur}"))
+                    return 0
+                    ;;
+                --target)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --mm-home)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --output)
+                    COMPREPLY=($(compgen -W "human json" -- "${cur}"))
+                    return 0
+                    ;;
                 *)
                     COMPREPLY=()
                     ;;
@@ -23519,6 +23669,48 @@ _mm() {
             return 0
             ;;
         mm__subcmd__target__subcmd__preference__subcmd__show)
+            opts="-e -h -V --root --environment --runtime --target --mm-home --output --help --version"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --root)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --environment)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -e)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --runtime)
+                    COMPREPLY=($(compgen -W "podman-compose docker-compose" -- "${cur}"))
+                    return 0
+                    ;;
+                --target)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --mm-home)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --output)
+                    COMPREPLY=($(compgen -W "human json" -- "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        mm__subcmd__target__subcmd__preference__subcmd__unset__subcmd__address)
             opts="-e -h -V --root --environment --runtime --target --mm-home --output --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )

@@ -7066,6 +7066,41 @@ _arguments "${_arguments_options[@]}" : \
 '--version[Print version]' \
 && ret=0
 ;;
+(set-address)
+_arguments "${_arguments_options[@]}" : \
+'--root=[Project root or a path inside the project]:PATH:_files' \
+'-e+[Environment to operate on (overrides MM_ENVIRONMENT and default-environment)]:NAME:_default' \
+'--environment=[Environment to operate on (overrides MM_ENVIRONMENT and default-environment)]:NAME:_default' \
+'--runtime=[Ephemeral runtime adapter for this invocation only]:RUNTIME:(podman-compose docker-compose)' \
+'--target=[Ephemeral target name for this invocation only]:NAME:_default' \
+'--mm-home=[Directory containing mm'\''s local state and target catalog]:PATH:_files' \
+'--output=[Human text or machine-readable JSON. JSON errors stay JSON]:OUTPUT:(human json)' \
+'-h[Print help]' \
+'--help[Print help]' \
+'-V[Print version]' \
+'--version[Print version]' \
+':address_environment -- The environment whose target lists the node:_default' \
+':address_node -- The node'\''s name under `nodes\:`:_default' \
+':address -- A hostname, IPv4 or IPv6 address, with an optional port:_default' \
+&& ret=0
+;;
+(unset-address)
+_arguments "${_arguments_options[@]}" : \
+'--root=[Project root or a path inside the project]:PATH:_files' \
+'-e+[Environment to operate on (overrides MM_ENVIRONMENT and default-environment)]:NAME:_default' \
+'--environment=[Environment to operate on (overrides MM_ENVIRONMENT and default-environment)]:NAME:_default' \
+'--runtime=[Ephemeral runtime adapter for this invocation only]:RUNTIME:(podman-compose docker-compose)' \
+'--target=[Ephemeral target name for this invocation only]:NAME:_default' \
+'--mm-home=[Directory containing mm'\''s local state and target catalog]:PATH:_files' \
+'--output=[Human text or machine-readable JSON. JSON errors stay JSON]:OUTPUT:(human json)' \
+'-h[Print help]' \
+'--help[Print help]' \
+'-V[Print version]' \
+'--version[Print version]' \
+':address_environment -- The environment whose target lists the node:_default' \
+':address_node -- The node'\''s name under `nodes\:`:_default' \
+&& ret=0
+;;
 (help)
 _arguments "${_arguments_options[@]}" : \
 ":: :_mm__subcmd__target__subcmd__preference__subcmd__help_commands" \
@@ -7095,6 +7130,14 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (unset-target)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(set-address)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(unset-address)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -7540,6 +7583,14 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (unset-target)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(set-address)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(unset-address)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -9469,6 +9520,14 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (unset-target)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(set-address)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(unset-address)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -13733,8 +13792,15 @@ _mm__subcmd__help__subcmd__target__subcmd__preference_commands() {
 'unset-runtime:Remove a private runtime preference' \
 'set-target:Persist a private target preference' \
 'unset-target:Remove a private target preference' \
+'set-address:Connect this device to a cluster node at an address of its own, such as a VPN address, instead of the node'\''s host in targets.yaml. The node'\''s pinned host key and daemon identity must still match' \
+'unset-address:Connect to a cluster node at its host in targets.yaml again' \
     )
     _describe -t commands 'mm help target preference commands' commands "$@"
+}
+(( $+functions[_mm__subcmd__help__subcmd__target__subcmd__preference__subcmd__set-address_commands] )) ||
+_mm__subcmd__help__subcmd__target__subcmd__preference__subcmd__set-address_commands() {
+    local commands; commands=()
+    _describe -t commands 'mm help target preference set-address commands' commands "$@"
 }
 (( $+functions[_mm__subcmd__help__subcmd__target__subcmd__preference__subcmd__set-runtime_commands] )) ||
 _mm__subcmd__help__subcmd__target__subcmd__preference__subcmd__set-runtime_commands() {
@@ -13750,6 +13816,11 @@ _mm__subcmd__help__subcmd__target__subcmd__preference__subcmd__set-target_comman
 _mm__subcmd__help__subcmd__target__subcmd__preference__subcmd__show_commands() {
     local commands; commands=()
     _describe -t commands 'mm help target preference show commands' commands "$@"
+}
+(( $+functions[_mm__subcmd__help__subcmd__target__subcmd__preference__subcmd__unset-address_commands] )) ||
+_mm__subcmd__help__subcmd__target__subcmd__preference__subcmd__unset-address_commands() {
+    local commands; commands=()
+    _describe -t commands 'mm help target preference unset-address commands' commands "$@"
 }
 (( $+functions[_mm__subcmd__help__subcmd__target__subcmd__preference__subcmd__unset-runtime_commands] )) ||
 _mm__subcmd__help__subcmd__target__subcmd__preference__subcmd__unset-runtime_commands() {
@@ -15177,8 +15248,15 @@ _mm__subcmd__target__subcmd__help__subcmd__preference_commands() {
 'unset-runtime:Remove a private runtime preference' \
 'set-target:Persist a private target preference' \
 'unset-target:Remove a private target preference' \
+'set-address:Connect this device to a cluster node at an address of its own, such as a VPN address, instead of the node'\''s host in targets.yaml. The node'\''s pinned host key and daemon identity must still match' \
+'unset-address:Connect to a cluster node at its host in targets.yaml again' \
     )
     _describe -t commands 'mm target help preference commands' commands "$@"
+}
+(( $+functions[_mm__subcmd__target__subcmd__help__subcmd__preference__subcmd__set-address_commands] )) ||
+_mm__subcmd__target__subcmd__help__subcmd__preference__subcmd__set-address_commands() {
+    local commands; commands=()
+    _describe -t commands 'mm target help preference set-address commands' commands "$@"
 }
 (( $+functions[_mm__subcmd__target__subcmd__help__subcmd__preference__subcmd__set-runtime_commands] )) ||
 _mm__subcmd__target__subcmd__help__subcmd__preference__subcmd__set-runtime_commands() {
@@ -15194,6 +15272,11 @@ _mm__subcmd__target__subcmd__help__subcmd__preference__subcmd__set-target_comman
 _mm__subcmd__target__subcmd__help__subcmd__preference__subcmd__show_commands() {
     local commands; commands=()
     _describe -t commands 'mm target help preference show commands' commands "$@"
+}
+(( $+functions[_mm__subcmd__target__subcmd__help__subcmd__preference__subcmd__unset-address_commands] )) ||
+_mm__subcmd__target__subcmd__help__subcmd__preference__subcmd__unset-address_commands() {
+    local commands; commands=()
+    _describe -t commands 'mm target help preference unset-address commands' commands "$@"
 }
 (( $+functions[_mm__subcmd__target__subcmd__help__subcmd__preference__subcmd__unset-runtime_commands] )) ||
 _mm__subcmd__target__subcmd__help__subcmd__preference__subcmd__unset-runtime_commands() {
@@ -15387,6 +15470,8 @@ _mm__subcmd__target__subcmd__preference_commands() {
 'unset-runtime:Remove a private runtime preference' \
 'set-target:Persist a private target preference' \
 'unset-target:Remove a private target preference' \
+'set-address:Connect this device to a cluster node at an address of its own, such as a VPN address, instead of the node'\''s host in targets.yaml. The node'\''s pinned host key and daemon identity must still match' \
+'unset-address:Connect to a cluster node at its host in targets.yaml again' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'mm target preference commands' commands "$@"
@@ -15399,6 +15484,8 @@ _mm__subcmd__target__subcmd__preference__subcmd__help_commands() {
 'unset-runtime:Remove a private runtime preference' \
 'set-target:Persist a private target preference' \
 'unset-target:Remove a private target preference' \
+'set-address:Connect this device to a cluster node at an address of its own, such as a VPN address, instead of the node'\''s host in targets.yaml. The node'\''s pinned host key and daemon identity must still match' \
+'unset-address:Connect to a cluster node at its host in targets.yaml again' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'mm target preference help commands' commands "$@"
@@ -15407,6 +15494,11 @@ _mm__subcmd__target__subcmd__preference__subcmd__help_commands() {
 _mm__subcmd__target__subcmd__preference__subcmd__help__subcmd__help_commands() {
     local commands; commands=()
     _describe -t commands 'mm target preference help help commands' commands "$@"
+}
+(( $+functions[_mm__subcmd__target__subcmd__preference__subcmd__help__subcmd__set-address_commands] )) ||
+_mm__subcmd__target__subcmd__preference__subcmd__help__subcmd__set-address_commands() {
+    local commands; commands=()
+    _describe -t commands 'mm target preference help set-address commands' commands "$@"
 }
 (( $+functions[_mm__subcmd__target__subcmd__preference__subcmd__help__subcmd__set-runtime_commands] )) ||
 _mm__subcmd__target__subcmd__preference__subcmd__help__subcmd__set-runtime_commands() {
@@ -15423,6 +15515,11 @@ _mm__subcmd__target__subcmd__preference__subcmd__help__subcmd__show_commands() {
     local commands; commands=()
     _describe -t commands 'mm target preference help show commands' commands "$@"
 }
+(( $+functions[_mm__subcmd__target__subcmd__preference__subcmd__help__subcmd__unset-address_commands] )) ||
+_mm__subcmd__target__subcmd__preference__subcmd__help__subcmd__unset-address_commands() {
+    local commands; commands=()
+    _describe -t commands 'mm target preference help unset-address commands' commands "$@"
+}
 (( $+functions[_mm__subcmd__target__subcmd__preference__subcmd__help__subcmd__unset-runtime_commands] )) ||
 _mm__subcmd__target__subcmd__preference__subcmd__help__subcmd__unset-runtime_commands() {
     local commands; commands=()
@@ -15432,6 +15529,11 @@ _mm__subcmd__target__subcmd__preference__subcmd__help__subcmd__unset-runtime_com
 _mm__subcmd__target__subcmd__preference__subcmd__help__subcmd__unset-target_commands() {
     local commands; commands=()
     _describe -t commands 'mm target preference help unset-target commands' commands "$@"
+}
+(( $+functions[_mm__subcmd__target__subcmd__preference__subcmd__set-address_commands] )) ||
+_mm__subcmd__target__subcmd__preference__subcmd__set-address_commands() {
+    local commands; commands=()
+    _describe -t commands 'mm target preference set-address commands' commands "$@"
 }
 (( $+functions[_mm__subcmd__target__subcmd__preference__subcmd__set-runtime_commands] )) ||
 _mm__subcmd__target__subcmd__preference__subcmd__set-runtime_commands() {
@@ -15447,6 +15549,11 @@ _mm__subcmd__target__subcmd__preference__subcmd__set-target_commands() {
 _mm__subcmd__target__subcmd__preference__subcmd__show_commands() {
     local commands; commands=()
     _describe -t commands 'mm target preference show commands' commands "$@"
+}
+(( $+functions[_mm__subcmd__target__subcmd__preference__subcmd__unset-address_commands] )) ||
+_mm__subcmd__target__subcmd__preference__subcmd__unset-address_commands() {
+    local commands; commands=()
+    _describe -t commands 'mm target preference unset-address commands' commands "$@"
 }
 (( $+functions[_mm__subcmd__target__subcmd__preference__subcmd__unset-runtime_commands] )) ||
 _mm__subcmd__target__subcmd__preference__subcmd__unset-runtime_commands() {
