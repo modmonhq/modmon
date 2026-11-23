@@ -696,14 +696,21 @@ under `sysctls`, and the plan lists those services under `ports:`.
 
 Podman before 5.8 splits each argument of an exec-form health check at
 whitespace, so a check such as `["CMD", "node", "-e", "<script with
-spaces>"]` never passes there. `mm config validate` warns about it
-(`MM_HEALTHCHECK_ARGUMENTS`) and gives the same check in shell form, which
-needs `/bin/sh` in the image:
+spaces>"]` never passes there. The supported hosts are affected: Debian 13 and
+Ubuntu 25.04 ship Podman 5.4. `mm config validate`, `mm doctor` and the
+deployment plan warn about such a check (`MM_HEALTHCHECK_ARGUMENTS`), after
+merging the stack's Compose files and following `extends`, and give the same
+check in shell form, which needs `/bin/sh` in the image:
 
 ```yaml
 healthcheck:
-  test: ["CMD-SHELL", "node -e 'require(\"http\").get(\"http://127.0.0.1:3000\")'"]
+  test: ["CMD-SHELL", "node -e 'require(\"http\").get(\"http://127.0.0.1:3000\", (r) => process.exit(r.statusCode < 400 ? 0 : 1)).on(\"error\", () => process.exit(1))'"]
 ```
+
+mm does not know the values of `${VAR}` interpolations in a Compose file, so
+it also warns about an argument that is a whole `${VAR}` or `$VAR`, or whose
+`${VAR:-default}` default contains whitespace; the warning says the value
+decides. `mm doctor` says nothing when this machine's Podman is 5.8 or later.
 
 Requirements on each host:
 
