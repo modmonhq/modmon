@@ -17,4 +17,10 @@ pub trait ServiceUserIds: std::fmt::Debug + Send + Sync {
 
     /// Forgets the ids of `owners`, which a refused plan gave them.
     fn release(&self, owners: &BTreeSet<ServiceIdsOwner>) -> Result<(), MmError>;
+
+    /// How the host confines a container that shares a process namespace
+    /// beyond its own.
+    fn shared_pid_apparmor(&self) -> crate::domain::remote::SharedPidAppArmor {
+        crate::domain::remote::SharedPidAppArmor::NotConfined
+    }
 }

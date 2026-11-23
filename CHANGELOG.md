@@ -14,6 +14,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   identity are checked as before. `unset-address` goes back to the repo's
   address, `show` lists them, and `mm target nodes`, the terminal UI and
   `MM_UNREACHABLE` say when one is in effect.
+- `mm config validate`, `mm doctor` and the deployment plan warn
+  (`MM_HEALTHCHECK_ARGUMENTS`) about a Compose health check in exec form
+  (`CMD`) with an argument that contains whitespace or is empty, on Podman:
+  Podman before 5.8 splits such an argument, so the check never passes. The
+  warning names the service and file and gives the equivalent `CMD-SHELL`
+  check.
 
 ### Changed
 
@@ -26,6 +32,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Security: a remote host or cluster node no longer runs a service that
+  reaches the host or another container without an exception.
+  `container:NAME` in `pid`, `ipc` and `network_mode` is refused
+  (`container-join`, which no exception allows; use `service:<service>`). A
+  `service:` join that reaches a service with a host namespace needs the same
+  exception as that service, such as `pid-host`. A guardrail key whose value
+  comes from a variable, such as `privileged: ${PRIVILEGED:-true}`, a
+  `security_opt` entry, `external` or a secret's `file`, is refused as the
+  feature it could turn on; write the value itself. A quoted
+  `privileged: "true"` and the `external: {name: ...}` form are caught too.
+  `mm config validate --for-remote` reports the same.
 - A container that resolves its own `tasks.<service>` name as soon as it
   starts finds itself: `mmd` reads the engine for a lookup from a container it
   has not seen yet before answering it, for up to three seconds when the
@@ -89,6 +106,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   from variables or inherited through `extends`, and from the health checks
   other services wait for. A cluster rollout waits that long on top of its
   own steps.
+- Processes in a container on a Podman host whose kernel runs AppArmor can
+  signal each other again. `mm target setup` installs and loads the
+  `mm-containers` profile, Podman's own plus signals and `ptrace (read)`
+  between the processes a container sees, and points Podman at it. A
+  service that shares the host's or another container's process namespace
+  gets `mm-containers-shared-pid`, Podman's rules unchanged, and a plan
+  that would run such a service under `mm-containers` is refused. `mm doctor`
+  warns about a host whose containers run under Podman's default profile
+  (`MM_PODMAN_APPARMOR`).
 
 ## [0.1.1] - 2026-11-19
 

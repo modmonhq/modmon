@@ -334,6 +334,61 @@
           userns = "auto"
       when: mm_runtime == 'podman-compose' and not mm_runtime_rootless
 
+    - name: Read whether the kernel runs AppArmor
+      ansible.builtin.command:
+        argv: [cat, /sys/module/apparmor/parameters/enabled]
+      register: mm_apparmor
+      changed_when: false
+      failed_when: false
+      when: mm_access_apparmor_profiles | length > 0
+
+    - name: Install mm's AppArmor profiles for Podman's containers
+      ansible.builtin.copy:
+        src: "{{ mm_access_files }}/{{ item }}"
+        dest: "/etc/apparmor.d/{{ item }}"
+        owner: root
+        group: root
+        mode: '0644'
+        validate: apparmor_parser --skip-kernel-load --skip-cache %s
+      loop: "{{ mm_access_apparmor_profiles }}"
+      register: mm_apparmor_profiles
+      when: (mm_apparmor.stdout | default('')) == 'Y'
+
+    - name: Read the AppArmor profiles the kernel holds
+      ansible.builtin.command:
+        argv: [cat, /sys/kernel/security/apparmor/profiles]
+      register: mm_apparmor_loaded
+      changed_when: false
+      when: (mm_apparmor.stdout | default('')) == 'Y'
+
+    - name: Load mm's AppArmor profiles
+      ansible.builtin.command:
+        argv: [apparmor_parser, --replace, --write-cache, "/etc/apparmor.d/{{ item.item }}"]
+      loop: "{{ mm_apparmor_profiles.results | default([]) }}"
+      when:
+        - (mm_apparmor.stdout | default('')) == 'Y'
+        - item.changed or (item.item ~ ' (enforce)') not in mm_apparmor_loaded.stdout_lines
+
+    - name: Give Podman's containers mm's AppArmor profile
+      ansible.builtin.copy:
+        dest: /etc/containers/containers.conf.d/50-mm-apparmor.conf
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          # Written by mm: /etc/apparmor.d/mm-containers.
+          [containers]
+          apparmor_profile = "mm-containers"
+      when: (mm_apparmor.stdout | default('')) == 'Y'
+
+    - name: Remove mm's AppArmor setting where the kernel has no AppArmor
+      ansible.builtin.file:
+        path: /etc/containers/containers.conf.d/50-mm-apparmor.conf
+        state: absent
+      when:
+        - mm_access_apparmor_profiles | length > 0
+        - (mm_apparmor.stdout | default('')) != 'Y'
+
     - name: Read how Podman starts containers at boot
       ansible.builtin.command:
         argv: [systemctl, cat, podman-restart.service]

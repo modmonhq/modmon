@@ -139,6 +139,14 @@ file that `mm deploy` or `mm dev up` would refuse in the environments it
 names, such as `network_mode: host` on a service of this machine without
 [`host-network`](./configuration.md#modules-services-and-builds); the
 message names the file, the service, and what to change.
+`MM_PODMAN_APPARMOR` refuses a plan on a Podman host for a service that
+sees processes beyond its own containers (`pid: host`, `container:` or
+`service:` of such a service) when it sets `apparmor=mm-containers`, or
+when the host gives containers `mm-containers` without having loaded
+`mm-containers-shared-pid`. A job, a rollback, or a scale-up that would
+create such a service's containers from files rendered before setup
+installed the profile fails with it too; deploy again. See
+[AppArmor](../remote-daemon.md#apparmor).
 `MM_USER_NAMESPACE` is the finding for `host-user-namespace` without a
 reason, and, on Podman hosts, where each service has [user ids of its
 own](../remote-daemon.md#run-podman-on-the-hosts), for two services with ids
@@ -161,6 +169,15 @@ file belongs to you: the entry names other ids than yours, and they can
 matter, either because they are not root's or because the `mode` lets no
 other user read the file. The default mode `0444` lets every user in the
 container read it. See [file delivery](../secret-delivery.md#file-delivery).
+`MM_HEALTHCHECK_ARGUMENTS` is the warning for a Compose `healthcheck:` whose
+`test` is in exec form (`["CMD", ...]`) with an argument that contains
+whitespace or is empty, or that comes from a `${VAR}` whose value could, in an
+environment that runs on Podman: Podman before 5.8 splits such an argument at
+whitespace, so the check never passes. `mm config validate` and `mm doctor`
+report it, and the deployment plan lists it unless it depends on a `${VAR}`
+or the engine is Podman 5.8 or later. The help gives the same command
+as a `CMD-SHELL` check, quoted for the shell. See [run Podman on the
+hosts](../remote-daemon.md#run-podman-on-the-hosts).
 `MM_UPDATE_ORDER` is the finding for a service's `update:` that cannot work:
 `order: start-first` on a service that publishes a fixed host port, sets
 `container_name`, runs more than one container, or on Podman sets its own
@@ -217,7 +234,9 @@ environment that `environments:` does not declare.
 a Compose feature that [a remote host refuses](../remote-access.md#what-a-deploy-may-run)
 in a service the named environment runs. With `--host-policy`, a feature the
 policy's `allow` list grants is the information `MM_REMOTE_GUARDRAIL_ALLOWED`
-instead, which does not fail the command.
+instead, which does not fail the command. A `container:` join
+(`container-join`) is always an error: no `allow` entry covers it, and the
+help says to join a service with `service:` instead.
 A deployment that does not become healthy says why inside its message:
 `MM_RUNTIME_UNHEALTHY` (the health check fails), `MM_RUNTIME_EXITED` (the
 container exited), `MM_RUNTIME_RESTARTING` (the engine keeps restarting it),
@@ -243,8 +262,13 @@ ones anyway; fix the service or its `healthcheck:`), `MM_SERVICE_RESTART_LIMIT`
 `mm service logs` shows why, and a deployment or `mm service restart` starts
 it again), what each node says about its container engine: `MM_NODE_ENGINE` (the engine
 does not answer), `MM_PODMAN_VERSION` (Podman older than 5.0), and
-`MM_PODMAN_COMPOSE` (`podman compose` does not run Docker Compose); a
-target that names one host is asked for these three and for how its `mmd`
+`MM_PODMAN_COMPOSE` (`podman compose` does not run Docker Compose), and
+`MM_PODMAN_APPARMOR` (a warning that Podman's containers run under its
+default AppArmor profile, under which processes in a container may not be
+able to signal each other, or that `mm-containers-shared-pid` is not loaded;
+an error when Podman is pointed at mm's profile and the kernel has not
+loaded it); a
+target that names one host is asked for these four and for how its `mmd`
 fares (below), not for the rest. For every remote environment, cluster or single host, it reports how each host's
 `mmd` fares: `MM_DAEMON_NOT_ANSWERING` (a part of the daemon does not
 answer), the note `MM_DAEMON_RESTARTED` (it started in the last 15 minutes),

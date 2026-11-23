@@ -38,6 +38,14 @@ pub struct GuardrailFinding {
     pub detail: String,
 }
 
+impl GuardrailFinding {
+    /// Whether a host exception can allow this finding.
+    #[must_use]
+    pub fn grantable(&self) -> bool {
+        self.feature != namespaces::CONTAINER_JOIN
+    }
+}
+
 impl std::fmt::Display for GuardrailFinding {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -49,8 +57,8 @@ impl std::fmt::Display for GuardrailFinding {
 }
 
 /// Findings for the services a project checkout runs in `environment`,
-/// minus host exceptions. Each Compose file is checked on its own: merging
-/// files only adds.
+/// minus host exceptions. Each Compose file is checked on its own, as
+/// merging files only adds, and `service:` joins across all of them.
 pub fn check_project(
     document: &crate::domain::config::ConfigDocument,
     environment: &str,
@@ -79,18 +87,19 @@ fn project_findings(
                     services.remove(left_out.service.as_str());
                 }
             }
-            sources.push(compose);
+            sources.push((file.display().to_string(), compose));
         }
-        let runs_a_service = sources.iter().any(|compose| {
+        let runs_a_service = sources.iter().any(|(_, compose)| {
             compose
                 .get("services")
                 .and_then(Value::as_mapping)
                 .is_some_and(|services| !services.is_empty())
         });
         if runs_a_service {
-            for compose in &sources {
-                findings.extend(compose_findings(stack, compose, &document.root));
+            for (file, compose) in &sources {
+                findings.extend(compose_findings(stack, file, compose, &document.root));
             }
+            namespaces::check_joins(stack, &sources, &mut findings);
         }
     }
     Ok(findings)
@@ -125,22 +134,31 @@ fn read_compose(path: &Path) -> Result<Mapping, crate::domain::error::MmError> {
 
 /// Whether a host exception covers `finding`.
 fn allows(allowed: &[GuardrailException], finding: &GuardrailFinding) -> bool {
-    allowed.iter().any(|exception| {
-        exception.service == finding.subject && exception.features.contains(&finding.feature)
-    })
+    finding.grantable()
+        && allowed.iter().any(|exception| {
+            exception.service == finding.subject && exception.features.contains(&finding.feature)
+        })
 }
 
-fn compose_findings(stack: &str, compose: &Mapping, project_root: &Path) -> Vec<GuardrailFinding> {
+fn compose_findings(
+    stack: &str,
+    file: &str,
+    compose: &Mapping,
+    project_root: &Path,
+) -> Vec<GuardrailFinding> {
     let mut findings = Vec::new();
     if let Some(services) = compose.get("services").and_then(Value::as_mapping) {
         for (name, service) in services {
             let (Some(name), Some(service)) = (name.as_str(), service.as_mapping()) else {
                 continue;
             };
-            check_service(&format!("{stack}/{name}"), service, &mut findings);
+            let subject = format!("{stack}/{name}");
+            check_service(&subject, file, service, &mut findings);
+            check_options(&subject, file, service, &mut findings);
+            namespaces::check_service(&subject, file, service, &mut findings);
         }
     }
-    check_project_resources(stack, compose, project_root, &mut findings);
+    check_project_resources(stack, file, compose, project_root, &mut findings);
     findings
 }
 
@@ -152,19 +170,79 @@ fn push(findings: &mut Vec<GuardrailFinding>, subject: &str, feature: &str, deta
     });
 }
 
-fn check_service(subject: &str, service: &Mapping, findings: &mut Vec<GuardrailFinding>) {
-    if service.get("privileged").and_then(Value::as_bool) == Some(true) {
-        push(
+/// Whether Compose puts a variable into `text`: an unescaped `$`.
+fn interpolates(text: &str) -> bool {
+    text.replace("$$", "").contains('$')
+}
+
+/// A checked key set from a variable, refused as the feature it could turn
+/// on.
+fn push_variable(
+    findings: &mut Vec<GuardrailFinding>,
+    (subject, feature): (&str, &str),
+    (key, text): (&str, &str),
+    file: &str,
+) {
+    push(
+        findings,
+        subject,
+        feature,
+        format!("{key}: {text} in {file} comes from a variable; write the value itself"),
+    );
+}
+
+/// A Compose boolean as it turns a feature on, or the text of the variable
+/// that sets it.
+fn turns_on(value: Option<&Value>) -> Result<bool, &str> {
+    match value {
+        Some(Value::Bool(flag)) => Ok(*flag),
+        Some(Value::String(text)) if interpolates(text) => Err(text),
+        Some(Value::String(text)) => Ok(!matches!(
+            text.trim().to_ascii_lowercase().as_str(),
+            "false" | "no" | "off" | "0" | ""
+        )),
+        _ => Ok(false),
+    }
+}
+
+fn check_service(
+    subject: &str,
+    file: &str,
+    service: &Mapping,
+    findings: &mut Vec<GuardrailFinding>,
+) {
+    match turns_on(service.get("privileged")) {
+        Ok(true) => push(
             findings,
             subject,
             "privileged",
-            "privileged: true".to_owned(),
-        );
+            format!(
+                "privileged: {}",
+                service
+                    .get("privileged")
+                    .map(value_text)
+                    .unwrap_or_default()
+            ),
+        ),
+        Err(text) => push_variable(
+            findings,
+            (subject, "privileged"),
+            ("privileged", text),
+            file,
+        ),
+        Ok(false) => {}
     }
     let defaults = DEFAULT_CAPABILITIES.into_iter().collect::<BTreeSet<_>>();
     for capability in strings(service.get("cap_add")) {
         let normalized = capability.trim_start_matches("CAP_").to_ascii_uppercase();
-        if normalized == "ALL" || !defaults.contains(normalized.as_str()) {
+        if interpolates(&capability) {
+            push_variable(
+                findings,
+                (subject, "cap-add"),
+                ("cap_add", &capability),
+                file,
+            );
+        } else if normalized == "ALL" || !defaults.contains(normalized.as_str()) {
             push(
                 findings,
                 subject,
@@ -192,18 +270,6 @@ fn check_service(subject: &str, service: &Mapping, findings: &mut Vec<GuardrailF
             "deploy.resources.reservations.devices is set".to_owned(),
         );
     }
-    for (key, feature) in [
-        ("pid", "pid-host"),
-        ("ipc", "ipc-host"),
-        ("uts", "uts-host"),
-        ("userns_mode", "userns-host"),
-        ("cgroup", "cgroup-host"),
-        ("network_mode", "network-host"),
-    ] {
-        if service.get(key).and_then(Value::as_str) == Some("host") {
-            push(findings, subject, feature, format!("{key}: host"));
-        }
-    }
     if service.get("cgroup_parent").is_some() {
         push(
             findings,
@@ -212,9 +278,32 @@ fn check_service(subject: &str, service: &Mapping, findings: &mut Vec<GuardrailF
             "cgroup_parent is set".to_owned(),
         );
     }
+    if service.get("build").is_some() {
+        push(
+            findings,
+            subject,
+            "build",
+            "remote hosts never build; publish images from CI".to_owned(),
+        );
+    }
+}
+
+fn check_options(
+    subject: &str,
+    file: &str,
+    service: &Mapping,
+    findings: &mut Vec<GuardrailFinding>,
+) {
     for option in strings(service.get("security_opt")) {
         let compact = option.replace([' ', '='], ":").to_ascii_lowercase();
-        if [
+        if interpolates(&option) {
+            push_variable(
+                findings,
+                (subject, "security-opt"),
+                ("security_opt", &option),
+                file,
+            );
+        } else if [
             "seccomp:unconfined",
             "apparmor:unconfined",
             "label:disable",
@@ -234,23 +323,76 @@ fn check_service(subject: &str, service: &Mapping, findings: &mut Vec<GuardrailF
     }
     if let Some(sysctls) = service.get("sysctls") {
         for name in sysctl_names(sysctls) {
-            if !name.starts_with("net.") {
+            if interpolates(&name) {
+                push_variable(findings, (subject, "sysctls"), ("sysctls", &name), file);
+            } else if !name.starts_with("net.") {
                 push(findings, subject, "sysctls", format!("sysctl {name}"));
             }
         }
     }
-    if service.get("build").is_some() {
+}
+
+/// `external:` of a top-level volume or network.
+fn check_external(
+    findings: &mut Vec<GuardrailFinding>,
+    (subject, feature): (&str, &str),
+    entry: &Value,
+    file: &str,
+) {
+    let external = entry.get("external");
+    if external.is_some_and(Value::is_mapping) {
+        push(findings, subject, feature, "external is set".to_owned());
+        return;
+    }
+    match turns_on(external) {
+        Ok(true) => push(findings, subject, feature, "external: true".to_owned()),
+        Err(text) => push_variable(findings, (subject, feature), ("external", text), file),
+        Ok(false) => {}
+    }
+}
+
+fn check_driver_options(
+    findings: &mut Vec<GuardrailFinding>,
+    subject: &str,
+    options: &Mapping,
+    file: &str,
+) {
+    let variable = options.iter().find(|(key, value)| {
+        matches!(key.as_str(), Some("o" | "type")) && interpolates(&value_text(value))
+    });
+    if let Some((key, value)) = variable {
+        let key = format!("driver_opts.{}", key.as_str().unwrap_or_default());
+        push_variable(
+            findings,
+            (subject, "volume-bind"),
+            (&key, &value_text(value)),
+            file,
+        );
+        return;
+    }
+    let binds = options.iter().any(|(key, value)| {
+        let key = key.as_str().unwrap_or_default();
+        let value = value_text(value);
+        key == "device"
+            || (key == "o"
+                && value
+                    .split(',')
+                    .any(|part| part.trim() == "bind" || part.trim() == "rbind"))
+            || (key == "type" && value == "none")
+    });
+    if binds {
         push(
             findings,
             subject,
-            "build",
-            "remote hosts never build; publish images from CI".to_owned(),
+            "volume-bind",
+            "driver_opts bind or device mount".to_owned(),
         );
     }
 }
 
 fn check_project_resources(
     stack: &str,
+    file: &str,
     compose: &Mapping,
     project_root: &Path,
     findings: &mut Vec<GuardrailFinding>,
@@ -259,47 +401,17 @@ fn check_project_resources(
         for (name, volume) in volumes {
             let name = name.as_str().unwrap_or_default();
             let subject = format!("{stack}/volume:{name}");
-            if volume.get("external").and_then(Value::as_bool) == Some(true) {
-                push(
-                    findings,
-                    &subject,
-                    "external-volume",
-                    "external: true".to_owned(),
-                );
-            }
+            check_external(findings, (&subject, "external-volume"), volume, file);
             if let Some(options) = volume.get("driver_opts").and_then(Value::as_mapping) {
-                let binds = options.iter().any(|(key, value)| {
-                    let key = key.as_str().unwrap_or_default();
-                    let value = value_text(value);
-                    key == "device"
-                        || (key == "o"
-                            && value
-                                .split(',')
-                                .any(|part| part.trim() == "bind" || part.trim() == "rbind"))
-                        || (key == "type" && value == "none")
-                });
-                if binds {
-                    push(
-                        findings,
-                        &subject,
-                        "volume-bind",
-                        "driver_opts bind or device mount".to_owned(),
-                    );
-                }
+                check_driver_options(findings, &subject, options, file);
             }
         }
     }
     if let Some(networks) = compose.get("networks").and_then(Value::as_mapping) {
         for (name, network) in networks {
-            if network.get("external").and_then(Value::as_bool) == Some(true) {
-                let name = name.as_str().unwrap_or_default();
-                push(
-                    findings,
-                    &format!("{stack}/network:{name}"),
-                    "external-network",
-                    "external: true".to_owned(),
-                );
-            }
+            let name = name.as_str().unwrap_or_default();
+            let subject = format!("{stack}/network:{name}");
+            check_external(findings, (&subject, "external-network"), network, file);
         }
     }
     for key in ["configs", "secrets"] {
@@ -307,22 +419,32 @@ fn check_project_resources(
             continue;
         };
         for (name, entry) in entries {
-            let Some(file) = entry.get("file").and_then(Value::as_str) else {
+            let Some(source) = entry.get("file").and_then(Value::as_str) else {
                 continue;
             };
-            let path = Path::new(file);
+            let name = name.as_str().unwrap_or_default();
+            let subject = format!("{stack}/{key}:{name}");
+            if interpolates(source) {
+                push_variable(
+                    findings,
+                    (&subject, "file-outside-project"),
+                    (&format!("{key}.{name}.file"), source),
+                    file,
+                );
+                continue;
+            }
+            let path = Path::new(source);
             let inside = path.is_relative()
                 && !path
                     .components()
                     .any(|component| matches!(component, std::path::Component::ParentDir));
             let absolute_inside = path.is_absolute() && path.starts_with(project_root);
             if !inside && !absolute_inside {
-                let name = name.as_str().unwrap_or_default();
                 push(
                     findings,
-                    &format!("{stack}/{key}:{name}"),
+                    &subject,
                     "file-outside-project",
-                    format!("{key}.{name}.file: {file}"),
+                    format!("{key}.{name}.file: {source}"),
                 );
             }
         }
@@ -372,6 +494,7 @@ fn is_empty(value: &Value) -> bool {
     }
 }
 
+mod namespaces;
 mod review;
 pub(super) use review::on_local_target;
 pub use review::remote_guardrail_diagnostics;
