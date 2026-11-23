@@ -29,7 +29,8 @@ pub(crate) fn healthcheck_argument_diagnostics(
         .collect()
 }
 
-/// [`healthcheck_arguments`] when `selection` runs on Podman.
+/// [`healthcheck_arguments`] whose argument is split whatever the
+/// interpolations hold, when `selection` runs on Podman.
 pub(crate) fn podman_checks(
     document: &ConfigDocument,
     environment: &str,
@@ -37,6 +38,9 @@ pub(crate) fn podman_checks(
 ) -> Vec<HealthcheckArgumentNote> {
     if selection.runtime == RuntimeKind::PodmanCompose {
         healthcheck_arguments(document, environment)
+            .into_iter()
+            .filter(|note| note.interpolated.is_none())
+            .collect()
     } else {
         Vec::new()
     }

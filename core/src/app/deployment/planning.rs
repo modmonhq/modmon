@@ -100,11 +100,25 @@ impl DeploymentManager {
         Ok(plan)
     }
 
+    async fn keep_split_healthchecks(
+        &self,
+        checks: &mut Vec<crate::domain::compose_healthcheck::HealthcheckArgumentNote>,
+    ) {
+        if !checks.is_empty()
+            && (self.runtime.probe().await.engine_version.as_deref())
+                .is_some_and(crate::domain::compose_healthcheck::podman_keeps_arguments)
+        {
+            checks.clear();
+        }
+    }
+
     async fn prepare_deployment(
         &self,
         selection: &WorkspaceSelection,
     ) -> Result<DeploymentPreparation, MmError> {
-        let compiled = self.compile(selection)?;
+        let mut compiled = self.compile(selection)?;
+        self.keep_split_healthchecks(&mut compiled.healthcheck_arguments)
+            .await;
         let environment_review = self
             .environments
             .review_for_deployment(
