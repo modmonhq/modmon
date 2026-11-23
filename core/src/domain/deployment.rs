@@ -150,6 +150,10 @@ pub struct DeploymentPlan {
     /// applies the plan, so they are not part of its hash.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub secret_file_owners: Vec<crate::domain::runtime_secret::SecretFileOwnerNote>,
+    /// Services whose `CMD` health check Podman before 5.8 splits. Not
+    /// part of the plan's hash.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub healthcheck_arguments: Vec<crate::domain::compose_healthcheck::HealthcheckArgumentNote>,
     pub plan_hash: String,
 }
 

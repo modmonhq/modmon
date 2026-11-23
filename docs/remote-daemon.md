@@ -694,6 +694,27 @@ mm sets it to 0 on each service that has a network namespace of its own
 (not `network_mode: host`, `container:` or `service:`) and does not set it
 under `sysctls`, and the plan lists those services under `ports:`.
 
+Podman before 5.8 splits each argument of an exec-form health check at
+whitespace, so a check such as `["CMD", "node", "-e", "<script with
+spaces>"]` never passes there. The supported hosts are affected: Debian 13 and
+Ubuntu 25.04 ship Podman 5.4. `mm config validate`, `mm doctor` and the
+deployment plan warn about such a check (`MM_HEALTHCHECK_ARGUMENTS`), after
+merging the stack's Compose files and following `extends` within a file (mm
+refuses `extends.file`), and give the same
+check in shell form, which needs `/bin/sh` in the image:
+
+```yaml
+healthcheck:
+  test: ["CMD-SHELL", "node -e 'require(\"http\").get(\"http://127.0.0.1:3000\", (r) => process.exit(r.statusCode < 400 ? 0 : 1)).on(\"error\", () => process.exit(1))'"]
+```
+
+mm does not know the values of `${VAR}` interpolations in a Compose file, so
+`mm config validate` and `mm doctor` also warn about an argument that is a
+whole `${VAR}` or `$VAR`, or whose `${VAR:-default}` default contains
+whitespace; the warning says the value decides. The deployment plan lists
+only arguments that split whatever the values are. `mm doctor` and the plan
+say nothing when the engine's Podman is 5.8 or later.
+
 Requirements on each host:
 
 - Podman 5.0 or later: Debian 13, or Ubuntu 25.04 or later.

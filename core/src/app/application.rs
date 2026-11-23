@@ -264,6 +264,11 @@ impl Application {
                         &context,
                         &mut validation,
                     );
+                    super::config_validation::validate_healthcheck_arguments(
+                        &document,
+                        &context,
+                        &mut validation,
+                    );
                     (
                         context.target.name,
                         Some(context.selection.target_source.as_str().to_owned()),
