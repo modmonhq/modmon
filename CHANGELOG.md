@@ -48,6 +48,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and `mm deploy status` show which image a host is pulling.
 - A job stopped at its timeout keeps the output it wrote, and `mm deploy logs`
   and `mm job history` show it.
+- `mm job run` of a job with `retry` no longer waits forever after a failed
+  attempt: reading the runs starts the next attempt once it is due.
 
 ## [0.1.1] - 2026-11-19
 

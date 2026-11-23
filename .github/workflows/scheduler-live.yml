@@ -57,6 +57,7 @@ jobs:
       - name: Run manual, failure, scheduled, restart-safe, and cleanup evidence
         env:
           MM_BIN: ${{ github.workspace }}/.live-target/debug/mm
+        shell: bash
         run: ./scripts/live-scheduler.sh "${{ matrix.runtime }}" 2>&1 | tee scheduler-live.log
       - name: Clean build and runtime resources
         if: always()
