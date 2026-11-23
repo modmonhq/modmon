@@ -58,6 +58,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (default `20m`). A large image on a slow registry no longer fails the
   deployment with `MM_PROCESS_TIMEOUT` after 120 seconds. `mm deploy apply`
   and `mm deploy status` show which image a host is pulling.
+- `compose up`, `compose down`, and stopping replaced containers no longer
+  stop after a fixed limit (two minutes on Podman, five on Docker). The limit
+  now comes from the stack's `stop_grace_period` values, including ones set
+  from variables or inherited through `extends`, and from the health checks
+  other services wait for. A cluster rollout waits that long on top of its
+  own steps.
 
 ## [0.1.1] - 2026-11-19
 

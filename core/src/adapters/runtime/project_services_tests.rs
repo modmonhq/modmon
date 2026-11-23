@@ -145,7 +145,14 @@ async fn services_are_read_from_container_labels_on_both_engines() -> TestResult
 async fn a_service_is_stopped_then_removed_and_the_rest_keeps_running() -> TestResult {
     for name in ["Docker", "Podman"] {
         let engine = Engine::new(name, &CONTAINERS);
-        remove_services(&engine, "shop", &["worker".to_owned()], false).await?;
+        remove_services(
+            &engine,
+            "shop",
+            &["worker".to_owned()],
+            false,
+            Duration::from_secs(300),
+        )
+        .await?;
         let commands = engine.commands();
         let stop = commands.iter().position(|command| command == "stop c2 c3");
         let remove = commands
@@ -172,7 +179,14 @@ async fn a_service_is_stopped_then_removed_and_the_rest_keeps_running() -> TestR
 #[tokio::test]
 async fn the_last_service_of_a_project_takes_its_networks_and_no_volume() -> TestResult {
     let engine = Engine::new("Docker", &[("c1", "web", false)]);
-    remove_services(&engine, "shop", &["web".to_owned()], true).await?;
+    remove_services(
+        &engine,
+        "shop",
+        &["web".to_owned()],
+        true,
+        Duration::from_secs(300),
+    )
+    .await?;
     let commands = engine.commands();
     assert!(
         commands.contains(&"network rm net1".to_owned()),
@@ -185,7 +199,14 @@ async fn the_last_service_of_a_project_takes_its_networks_and_no_volume() -> Tes
 
     // With a service left, the networks stay even for a whole-project call.
     let engine = Engine::new("Docker", &CONTAINERS);
-    remove_services(&engine, "shop", &["worker".to_owned()], true).await?;
+    remove_services(
+        &engine,
+        "shop",
+        &["worker".to_owned()],
+        true,
+        Duration::from_secs(300),
+    )
+    .await?;
     assert!(
         !engine
             .commands()
@@ -195,7 +216,14 @@ async fn the_last_service_of_a_project_takes_its_networks_and_no_volume() -> Tes
 
     // Nothing to remove is not an error: the step can run twice.
     let engine = Engine::new("Podman", &[]);
-    remove_services(&engine, "shop", &["web".to_owned()], false).await?;
+    remove_services(
+        &engine,
+        "shop",
+        &["web".to_owned()],
+        false,
+        Duration::from_secs(300),
+    )
+    .await?;
     assert!(
         !engine
             .commands()

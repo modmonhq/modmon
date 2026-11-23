@@ -138,6 +138,9 @@ pub struct RemoteEnvironment {
     /// How long a host may show no progress on a step before the client
     /// stops waiting (`deploy.progress-timeout`).
     progress_timeout: std::time::Duration,
+    /// The longest a Compose `up` or `down` of one of the stacks waits for
+    /// stop grace periods and health checks.
+    compose_wait: std::time::Duration,
     /// The environment's `deploy.mm-version`.
     version_pin: Option<crate::domain::version_pin::VersionPin>,
     /// Every environment of the project, which tells this environment's
@@ -162,6 +165,7 @@ impl RemoteEnvironment {
             pushed: None,
             last_status: services::LastStatus::default(),
             progress_timeout: crate::domain::config::DEFAULT_PROGRESS_TIMEOUT,
+            compose_wait: std::time::Duration::ZERO,
             version_pin: None,
             environments: Vec::new(),
         })
@@ -172,6 +176,14 @@ impl RemoteEnvironment {
     #[must_use]
     pub fn with_progress_timeout(mut self, timeout: std::time::Duration) -> Self {
         self.progress_timeout = timeout;
+        self
+    }
+
+    /// How long a Compose `up` or `down` of one of the stacks may wait for
+    /// its containers (`domain::compose_timing::compose_wait`).
+    #[must_use]
+    pub fn with_compose_wait(mut self, wait: std::time::Duration) -> Self {
+        self.compose_wait = wait;
         self
     }
 

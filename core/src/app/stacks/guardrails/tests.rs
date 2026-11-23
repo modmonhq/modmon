@@ -103,7 +103,7 @@ fn a_feature_inherited_through_extends_is_found_under_the_extending_service()
     let mut source = compose(
         "services:\n  base:\n    image: busybox\n    privileged: true\n    cap_add: [SYS_ADMIN]\n  child:\n    extends: base\n    cap_add: [NET_ADMIN]\n  grandchild:\n    extends: {service: child}\n  calm:\n    extends: {service: base}\n    privileged: false\n  loop-a:\n    extends: loop-b\n    pid: host\n  loop-b:\n    extends: loop-a\n",
     )?;
-    resolve_extends(&mut source);
+    crate::domain::compose_extends::resolve_extends(&mut source);
     let findings = check_compose("app", &source, Path::new("/srv/project"), &[]);
     let of = |subject: &str| {
         findings
