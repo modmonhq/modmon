@@ -439,12 +439,28 @@ report that the container is not reachable.
 ## What a deploy may run
 
 Trusting the repo means trusting it inside the host's limits. A remote host
-refuses Compose features that would reach the host itself: `privileged`,
-capabilities beyond Docker's defaults, devices, host namespaces (`pid`, `ipc`,
-`uts`, `userns_mode`, `cgroup`, `network_mode: host`), `cgroup_parent`,
-unconfined `security_opt`, non-`net.*` sysctls, bind or device `driver_opts`
-volumes, external volumes and networks, `configs`/`secrets` files outside the
-project, and `build:` (remote hosts never build).
+refuses Compose features that would reach the host itself or another
+project. Each has a feature name, which a host exception names to allow it:
+
+| Feature                                                                                  | What a host refuses                                                                                                              |
+| ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `privileged`                                                                             | `privileged: true`                                                                                                               |
+| `cap-add`                                                                                | `cap_add` beyond Docker's default capabilities                                                                                   |
+| `devices`                                                                                | `devices`, `device_cgroup_rules`, `gpus`, device reservations                                                                    |
+| `pid-host`, `ipc-host`, `uts-host`, `userns-host`, `cgroup-host`, `network-host`         | `pid`, `ipc`, `uts`, `userns_mode`, `cgroup` or `network_mode` set to `host`                                                     |
+| `cgroup-parent`                                                                          | `cgroup_parent`                                                                                                                  |
+| `security-opt`                                                                           | any `security_opt` entry other than `no-new-privileges` (also `:true` or `=true`) and `seccomp=builtin`                          |
+| `sysctls`                                                                                | sysctls outside `net.*`                                                                                                          |
+| `volume-bind`                                                                            | a volume whose `driver_opts` bind a path or mount a device                                                                       |
+| `external-volume`, `external-network`                                                    | `external`, or a `name:`, which is host-wide: leave it out and Compose names the volume or network after the stack               |
+| `file-outside-project`                                                                   | a config's or secret's `file` outside the project, or reached through a symlink                                                  |
+| `build`                                                                                  | `build:` (remote hosts never build; publish images from CI)                                                                      |
+| `container-join`                                                                         | a namespace other than the service's own, a service's of its stack, or the host's, such as `container:NAME`; no exception allows it |
+
+Without an exception a service may set `pid: private`, `ipc` to `none`,
+`private` or `shareable`, `uts: private`, `userns_mode` to `auto` or
+`private`, `cgroup: private`, `network_mode` to `bridge`, `none`, `default`
+or `private`, and `service:<service>` in `pid`, `ipc` and `network_mode`.
 
 A key on this list whose value comes from a variable, such as
 `privileged: ${PRIVILEGED:-false}` or `external: ${EXTERNAL}`, is refused as
@@ -473,9 +489,8 @@ the host's, the joining service needs the same exception: here `web` needs
 `pid-host` as well as `agent`. The check follows joins across all the
 stack's Compose files and through `extends`.
 
-A host refuses `container:NAME` in `pid`, `ipc` and `network_mode` outright,
-as the feature `container-join`, and no exception allows it: a name can match
-any container on the host, including another project's. Write
+A name in `container:NAME` can match any container on the host, including
+another project's, so a host refuses it as `container-join`. Write
 `service:<service>` to join a service of the same stack.
 
 A host checks only the services the environment it plans runs: the ones

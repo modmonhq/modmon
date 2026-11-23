@@ -37,6 +37,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   feature it could turn on; write the value itself. A quoted
   `privileged: "true"` and the `external: {name: ...}` form are caught too.
   `mm config validate --for-remote` reports the same.
+- Security: a remote host checks more Compose keys against the values it
+  runs rather than a list of known-bad ones. `security_opt` accepts only
+  `no-new-privileges` and `seccomp=builtin` without the `security-opt`
+  exception; a namespace mode other than the service's own, a `service:`
+  join or `host` counts as `container-join`; a volume or network `name:`
+  counts as `external-volume` or `external-network`; and a config's or
+  secret's `file` reached through a symlink or a `..` out of the project
+  counts as `file-outside-project`. `cap_add` entries in lower case, such as
+  `cap_chown`, are no longer refused.
 - A container that resolves its own `tasks.<service>` name as soon as it
   starts finds itself: `mmd` reads the engine for a lookup from a container it
   has not seen yet before answering it, instead of letting the name fall
