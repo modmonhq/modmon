@@ -3544,7 +3544,11 @@ mm_as alice deploy plan >/dev/null || fail "the plan still fails after the route
 printf '  ok   the plan names app-2, its route, and the key, and passes once the route is gone\n'
 
 step "a rule removed by hand is reported, shown by the plan, and repaired by its apply"
-on app-2 iptables -t "$FORWARD_TABLE" -D MM-CLUSTER 3
+BACKEND_IN=$(on app-2 iptables -t "$FORWARD_TABLE" -S MM-CLUSTER | grep -F -e ' -i mm0 -o mmn-' | grep -F -e '-production-backend" -j ACCEPT' || true)
+[ -n "$BACKEND_IN" ] && [ "$(printf '%s\n' "$BACKEND_IN" | wc -l)" = 1 ] \
+  || fail "app-2 should hold one rule that lets backend in from the mesh, not '$BACKEND_IN'"
+eval "BACKEND_RULE=($BACKEND_IN)"
+on app-2 iptables -t "$FORWARD_TABLE" -D "${BACKEND_RULE[@]:1}"
 cut_off_from app-1 api "$WEB_2" "web on app-2 while its rule is missing"
 mm_as alice service status >"$TMP/net-drift-status.log" 2>&1 || true
 has "$TMP/net-drift-status.log" "node app-2: cluster networks differ from the last deployment" "missing rule"
