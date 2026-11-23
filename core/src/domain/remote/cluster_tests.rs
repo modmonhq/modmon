@@ -142,6 +142,7 @@ fn report(states: &[(&str, NodeApplyState)]) -> ClusterApplyReport<String> {
                 stopped: Vec::new(),
                 unchanged: false,
                 code: None,
+                kept: false,
             })
             .collect(),
         skipped: Vec::new(),

@@ -12,12 +12,19 @@ impl DeploymentService {
         let mut guard = self
             .prepare_environment(selection, plan, operation_id)
             .await?;
-        // What the apply changed, so that a failure puts back only that.
         let mut changes = crate::domain::rollout::RolloutChanges::default();
-        let result = match self
-            .apply_locked(selection, plan, target, guard.bundle(), &mut changes)
+        let applied = match self
+            .apply_stacks(selection, plan, target, guard.bundle(), &mut changes)
             .await
         {
+            Ok(()) => self.settle(plan, target).await,
+            Err(error) if previous.is_none() && !changes.begun().is_empty() => {
+                let kept = kept_first_deployment(operation_id, plan, &changes, error);
+                return dispose_guard(operation_id, &mut guard, Err(kept));
+            }
+            Err(error) => Err(error),
+        };
+        let result = match applied {
             Ok(result) => Ok(result),
             Err(error) => {
                 let mut cleanup_failures = Vec::new();
@@ -43,25 +50,7 @@ impl DeploymentService {
                 }
             }
         };
-        let cleanup = guard.dispose();
-        match (result, cleanup) {
-            (Ok(result), Ok(())) => Ok(result),
-            (Err(error), Ok(())) => Err(error),
-            (Ok(_), Err(cleanup)) => Err(MmError::operation_failure(
-                operation_id.0.to_string(),
-                crate::domain::error::MutationStatus::Applied,
-                cleanup,
-                Vec::new(),
-                "remove the operation-scoped environment artifacts before retrying",
-            )),
-            (Err(primary), Err(cleanup)) => Err(MmError::operation_failure(
-                operation_id.0.to_string(),
-                crate::domain::error::MutationStatus::Unknown,
-                primary,
-                vec![cleanup.to_string()],
-                "inspect the target and remove operation-scoped environment artifacts before retrying",
-            )),
-        }
+        dispose_guard(operation_id, &mut guard, result)
     }
 
     pub(super) async fn prepare_environment(
@@ -163,4 +152,50 @@ impl DeploymentService {
             runtime_prepared,
         ))
     }
+}
+
+fn dispose_guard(
+    operation_id: OperationId,
+    guard: &mut EnvironmentArtifactGuard,
+    result: Result<DeploymentResult, MmError>,
+) -> Result<DeploymentResult, MmError> {
+    match (result, guard.dispose()) {
+        (Ok(result), Ok(())) => Ok(result),
+        (Err(error), Ok(())) => Err(error),
+        (Ok(_), Err(cleanup)) => Err(MmError::operation_failure(
+            operation_id.0.to_string(),
+            crate::domain::error::MutationStatus::Applied,
+            cleanup,
+            Vec::new(),
+            "remove the operation-scoped environment artifacts before retrying",
+        )),
+        (Err(primary), Err(cleanup)) => Err(MmError::operation_failure(
+            operation_id.0.to_string(),
+            crate::domain::error::MutationStatus::Unknown,
+            primary,
+            vec![cleanup.to_string()],
+            "inspect the target and remove operation-scoped environment artifacts before retrying",
+        )),
+    }
+}
+
+/// A first deployment that failed in a stack: nothing ran before, so
+/// nothing is rolled back and what it started stays for a look.
+fn kept_first_deployment(
+    operation_id: OperationId,
+    plan: &DeploymentPlan,
+    changes: &crate::domain::rollout::RolloutChanges,
+    error: MmError,
+) -> MmError {
+    let environment = &plan.environment;
+    MmError::operation_failure(
+        operation_id.0.to_string(),
+        crate::domain::error::MutationStatus::Kept,
+        error,
+        Vec::new(),
+        format!(
+            "nothing ran before this first deployment of '{environment}', so nothing was rolled back: the stacks it started keep running as they are, the one that failed too ({}). `mm service status --environment {environment}` shows each container and `mm service logs SERVICE --environment {environment}` its log; fix what failed, then `mm deploy plan --environment {environment}` deploys over them",
+            changes.begun().join(", ")
+        ),
+    )
 }

@@ -360,6 +360,10 @@ pub struct NodeApplyOutcome<T> {
     /// than a service that did not become healthy.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub code: Option<String>,
+    /// On a failed node: no node had finished a deployment of the
+    /// environment, so every node keeps what the deployment started.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub kept: bool,
 }
 
 /// Codes of a step that ran out of time on a host or showed no progress.
@@ -475,7 +479,9 @@ impl<T> ClusterApplyReport<T> {
             facts.push(format!("Not changed: {nodes}"));
         }
         message.push_str(&facts.join(". "));
-        message.push_str(&if left.is_some() {
+        message.push_str(&if failed.kept {
+            format!(". `mm deploy status` shows each node; fix the cause, then `{replan}` deploys over what they run")
+        } else if left.is_some() {
             format!(
                 ". `mm deploy status` shows each node; `mm deploy rollback` returns the changed nodes to what they ran before, and `{replan}` plans again from what each one runs now"
             )

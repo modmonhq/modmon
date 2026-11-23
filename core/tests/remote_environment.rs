@@ -41,6 +41,8 @@ struct FakeNode {
     answers_as: Option<String>,
     up: AtomicBool,
     fail_apply: AtomicBool,
+    /// The host has finished a deployment of the environment.
+    deployed: AtomicBool,
     /// The services this node's plan moves to other nodes.
     moved_away: Mutex<Vec<LeavingService>>,
     fail_finish: AtomicBool,
@@ -67,6 +69,7 @@ impl FakeNode {
             answers_as: answers_as.map(str::to_owned),
             up: AtomicBool::new(true),
             fail_apply: AtomicBool::new(false),
+            deployed: AtomicBool::new(false),
             moved_away: Mutex::new(Vec::new()),
             fail_finish: AtomicBool::new(false),
             calls: Mutex::new(Vec::new()),
@@ -311,7 +314,22 @@ impl RemoteTransport for FakeNode {
         scope: RemoteScope,
     ) -> Result<mm::domain::rollout::NodeDeploymentStatus, MmError> {
         self.call("deployment_status", &scope)?;
-        Ok(mm::domain::rollout::NodeDeploymentStatus::default())
+        let current =
+            self.deployed
+                .load(Ordering::SeqCst)
+                .then(|| mm::domain::rollout::DeploymentRecord {
+                    commit: COMMIT.to_owned(),
+                    deployed_at_unix_ms: 1,
+                    deployed_by: "alice".to_owned(),
+                    runs_services: true,
+                    plan_hash: None,
+                    receipt: None,
+                    release: None,
+                });
+        Ok(mm::domain::rollout::NodeDeploymentStatus {
+            current,
+            ..mm::domain::rollout::NodeDeploymentStatus::default()
+        })
     }
 
     async fn finish_moves(
@@ -966,6 +984,7 @@ async fn a_node_that_cannot_begin_rolls_the_earlier_ones_back_and_spares_the_lat
     let (environment, fakes) = cluster()?;
     let plan = environment.plan_deployment(COMMIT, None, None).await?;
     fakes[1].fail_apply.store(true, Ordering::SeqCst);
+    fakes[0].deployed.store(true, Ordering::SeqCst);
     let visited = Mutex::new(Vec::new());
     let report = environment
         .apply_deployment(&plan.plan_hash, &|node| {

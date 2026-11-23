@@ -384,7 +384,13 @@ fn cluster() -> Result<Cluster, MmError> {
                 name: (*name).to_owned(),
                 steps: Arc::clone(&steps),
                 seal: Mutex::new(None),
-                script: Mutex::new(Script::default()),
+                script: Mutex::new(Script {
+                    status: NodeDeploymentStatus {
+                        current: Some(finished('0', 1, '0')),
+                        ..NodeDeploymentStatus::default()
+                    },
+                    ..Script::default()
+                }),
             })
         })
         .collect::<Vec<_>>();
@@ -680,6 +686,78 @@ async fn a_failure_on_the_second_node_rolls_both_back_and_never_touches_the_thir
     ] {
         assert!(failure.contains(expected), "{expected}: {failure}");
     }
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_failed_first_deployment_leaves_every_node_as_it_is_and_says_what_to_run() -> TestResult {
+    let cluster = cluster()?;
+    for node in &cluster.nodes {
+        locked(&node.script).status = NodeDeploymentStatus::default();
+    }
+    locked(&cluster.nodes[1].script).sick = Some(sick("app", "web"));
+    let hash = cluster.reviewed(vec![
+        stage("db", &[&["db-1"]]),
+        stage("app", &[&["app-1"], &["app-2"]]),
+    ])?;
+    let report = cluster.environment.apply_deployment(&hash, &|_| {}).await?;
+    assert_eq!(
+        states(&report),
+        [
+            ("app-1", NodeApplyState::Unfinished),
+            ("app-2", NodeApplyState::Failed),
+            ("db-1", NodeApplyState::Unfinished),
+        ]
+    );
+    for node in ["app-1", "app-2", "db-1"] {
+        let steps = cluster.steps_of(node);
+        assert_eq!(
+            steps.last().map(String::as_str),
+            Some("release"),
+            "{node}: {steps:?}"
+        );
+        assert!(
+            !steps.iter().any(|step| step == "rollback"),
+            "{node}: {steps:?}"
+        );
+    }
+    let failed = &report.nodes[1];
+    assert!(!failed.rolled_back);
+    let error = failed.error.as_deref().unwrap_or_default();
+    for expected in [
+        "service 'web' of stack 'app': its health check fails",
+        "nothing was rolled back",
+        "`mm service logs web --environment production`",
+        "`mm deploy plan --environment production`",
+    ] {
+        assert!(error.contains(expected), "{expected}: {error}");
+    }
+    assert!(failed.kept);
+    let failure = report.failure("mm deploy plan").unwrap_or_default();
+    assert!(
+        failure.ends_with("fix the cause, then `mm deploy plan` deploys over what they run"),
+        "{failure}"
+    );
+    assert!(!failure.contains("mm deploy rollback"), "{failure}");
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_new_node_of_a_serving_environment_is_still_rolled_back() -> TestResult {
+    let cluster = cluster()?;
+    locked(&cluster.nodes[1].script).status = NodeDeploymentStatus::default();
+    locked(&cluster.nodes[1].script).sick = Some(sick("app", "web"));
+    let hash = cluster.reviewed(vec![stage("app", &[&["app-1"], &["app-2"]])])?;
+    let report = cluster.environment.apply_deployment(&hash, &|_| {}).await?;
+    assert_eq!(
+        states(&report),
+        [
+            ("app-1", NodeApplyState::RolledBack),
+            ("app-2", NodeApplyState::Failed),
+            ("db-1", NodeApplyState::NotStarted),
+        ]
+    );
+    assert!(report.nodes[1].rolled_back);
     Ok(())
 }
 
