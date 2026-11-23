@@ -453,6 +453,7 @@ fn outcome(node: &str, state: NodeApplyState, error: Option<&str>) -> NodeApplyO
         stopped: Vec::new(),
         unchanged: false,
         code: None,
+        kept: false,
     }
 }
 

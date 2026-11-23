@@ -109,6 +109,8 @@ pub trait StateStore: Send + Sync {
         environment: &str,
         target_id: TargetId,
     ) -> Result<Option<DeploymentPlan>, MmError>;
+    /// The deployments of one owner that succeeded, run, or failed, newest
+    /// first.
     fn deployment_candidates_for_owner(
         &self,
         project_id: ProjectId,

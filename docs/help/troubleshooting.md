@@ -339,7 +339,10 @@ apply. Select the same runtime that owned the interrupted operation, run
 delete SQLite state or generated ownership metadata to clear the error.
 
 Recovery restores the previous workloads using the environment configuration
-from the newly reviewed plan. Configuration edits after the interruption do not
+from the newly reviewed plan. When the interrupted deployment was the
+environment's first, there are no previous workloads: recovery keeps the
+stacks, networks, and ingress the new plan also has, which it applies next,
+and removes the rest. Configuration edits after the interruption do not
 require restoring an old configuration file. If `mm ingress start` has since
 established installation-wide ingress, project recovery leaves it in place.
 

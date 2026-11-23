@@ -613,6 +613,7 @@ where
                 stopped: Vec::new(),
                 unchanged: false,
                 code: None,
+                kept: false,
             });
             continue;
         }
@@ -630,6 +631,7 @@ where
                 stopped: Vec::new(),
                 unchanged: false,
                 code: None,
+                kept: false,
             }),
             Err(error) => {
                 stopped = true;
@@ -651,6 +653,7 @@ where
                     stopped: Vec::new(),
                     unchanged: false,
                     code: Some(error.code().to_owned()),
+                    kept: false,
                 });
             }
         }
@@ -670,6 +673,7 @@ fn applied<T>(result: Option<T>) -> NodeApplyOutcome<T> {
         stopped: Vec::new(),
         unchanged: false,
         code: None,
+        kept: false,
     }
 }
 
