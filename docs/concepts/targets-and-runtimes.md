@@ -39,6 +39,11 @@ The target must already exist. To register a remote host, follow
 [remote daemon setup](../remote-daemon.md#connect-a-client); it requires verified
 SSH host and daemon identities, not just a hostname.
 
+When this device reaches a cluster node at another address than the repo's,
+`mm target preference set-address ENVIRONMENT NODE HOST[:PORT]` sets it for
+this device only; see
+[reach the nodes at another address](../remote-daemon.md#reach-the-nodes-at-another-address).
+
 ## Which setting wins?
 
 Environment selection uses `--environment`/`MM_ENVIRONMENT`, then
