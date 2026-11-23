@@ -197,17 +197,19 @@ pub(crate) async fn outdated_containers(
     Ok(outdated)
 }
 
-/// Stops, then removes, the containers `containers` names by id.
+/// Stops, then removes, the containers `containers` names by id; the stop
+/// may take `stop_for`.
 pub(crate) async fn remove_containers(
     engine: &dyn ContainerEngine,
     containers: &[String],
+    stop_for: Duration,
 ) -> Result<(), MmError> {
     if containers.is_empty() {
         return Ok(());
     }
     let mut stop = vec!["stop".to_owned()];
     stop.extend(containers.iter().cloned());
-    engine.engine(stop, Duration::from_secs(300)).await?;
+    engine.engine(stop, stop_for).await?;
     let mut remove = vec!["rm".to_owned(), "--force".to_owned()];
     remove.extend(containers.iter().cloned());
     engine.engine(remove, Duration::from_secs(120)).await?;
@@ -256,12 +258,14 @@ pub(crate) async fn log_tail(
 
 /// Stops, then removes, the containers of `services` in `project`. With
 /// `whole_project` and no container left, the networks Compose created for
-/// the project are removed as well. Volumes stay.
+/// the project are removed as well. Volumes stay. The stop may take
+/// `stop_for`.
 pub(crate) async fn remove_services(
     engine: &dyn ContainerEngine,
     project: &str,
     services: &[String],
     whole_project: bool,
+    stop_for: Duration,
 ) -> Result<(), MmError> {
     let mut containers = Vec::new();
     for service in services {
@@ -270,7 +274,7 @@ pub(crate) async fn remove_services(
     if !containers.is_empty() {
         let mut stop = vec!["stop".to_owned()];
         stop.extend(containers.iter().cloned());
-        engine.engine(stop, Duration::from_secs(300)).await?;
+        engine.engine(stop, stop_for).await?;
         let mut remove = vec!["rm".to_owned(), "--force".to_owned()];
         remove.extend(containers);
         engine.engine(remove, Duration::from_secs(120)).await?;

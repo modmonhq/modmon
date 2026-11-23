@@ -308,9 +308,18 @@ verify_revision updated
 section cleanup
 cleanup
 trap - EXIT HUP INT TERM
-if "$engine" network inspect "$network" >/dev/null 2>&1 ||
-  "$engine" volume inspect "$volume" >/dev/null 2>&1; then
-  printf '%s\n' 'owned resources remain after cleanup' >&2
+remaining=
+if "$engine" network inspect "$network" >/dev/null 2>&1; then
+  remaining="$remaining network:$network"
+fi
+if "$engine" volume inspect "$volume" >/dev/null 2>&1; then
+  remaining="$remaining volume:$volume"
+fi
+for container in $("$engine" ps --all --format '{{.Names}}' --filter "label=io.mm.target-id=$target_id"); do
+  remaining="$remaining container:$container"
+done
+if [ -n "$remaining" ]; then
+  printf '%s\n' "owned resources remain after cleanup:$remaining" >&2
   exit 1
 fi
 printf '%s\n' 'cleanup complete: stacks, services, network, volume, and failure fixture removed'
