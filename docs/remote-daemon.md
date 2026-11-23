@@ -2019,9 +2019,9 @@ services get an `/etc/resolv.conf` that names that address. `mmd` knows the
 containers of its own node by watching the engine. A lookup from an address
 where `mmd` knows no container yet waits for the engine to show one there: up
 to a second, or on an engine that takes longer to list its containers, until
-one listing started after the lookup has finished. So a container that
-resolves its own `tasks.<service>` name as its entrypoint's first step finds
-itself in the first answer. It learns the
+one listing started after the lookup has finished, and never more than three
+seconds. So a container that resolves its own `tasks.<service>` name as its
+entrypoint's first step finds itself in the first answer. It learns the
 containers of the other nodes by asking each node every two seconds, over the
 mesh, what it runs. Nothing is stored and no deployment pushes anything: what
 runs decides the answers. Because each node answers its own containers, it can

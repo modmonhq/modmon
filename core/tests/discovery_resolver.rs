@@ -155,6 +155,7 @@ struct Engine {
     looks: std::sync::atomic::AtomicUsize,
     /// How long each listing of the containers takes, in milliseconds.
     slowness: std::sync::atomic::AtomicU64,
+    failing: std::sync::atomic::AtomicBool,
 }
 
 impl Engine {
@@ -164,6 +165,7 @@ impl Engine {
             changed: Notify::new(),
             looks: std::sync::atomic::AtomicUsize::new(0),
             slowness: std::sync::atomic::AtomicU64::new(0),
+            failing: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
@@ -206,6 +208,9 @@ impl RuntimeDriver for Engine {
         self.looks.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let slowness = self.slowness.load(std::sync::atomic::Ordering::SeqCst);
         tokio::time::sleep(Duration::from_millis(slowness)).await;
+        if self.failing.load(std::sync::atomic::Ordering::SeqCst) {
+            return unsupported();
+        }
         self.containers
             .lock()
             .map(|containers| containers.clone())
@@ -881,6 +886,151 @@ async fn a_new_container_finds_itself_on_a_slow_engine() -> TestResult {
     assert_eq!(first, Some((0, vec![web])));
     let again = ask(web, server, "tasks.web", Duration::from_secs(1)).await?;
     assert_eq!(again, Some((0, vec![web])));
+    Ok(())
+}
+
+/// A node `a` whose engine shows `api-1`, answering lookups once it looked.
+async fn node_a(
+    engine: &Arc<Engine>,
+    held: NodeNetworks,
+) -> Result<(SocketAddrV4, tempfile::TempDir), Box<dyn std::error::Error>> {
+    let directory = temp_dirs::tempdir()?;
+    let resolv_conf = directory.path().join("resolv.conf");
+    std::fs::write(&resolv_conf, format!("search .\nnameserver {UPSTREAM}\n"))?;
+    let options = ResolverOptions {
+        lookup_port: free_port(GATEWAY_A).await?,
+        exchange_port: free_port(MESH_A).await?,
+        upstream_port: free_port(UPSTREAM).await?,
+        resolv_conf,
+        address_patience: Duration::from_secs(30),
+    };
+    let node = NameResolver::with_options(
+        Arc::new(Networks(held)),
+        Arc::new(Mesh(mesh(MESH_A, "b", MESH_B))),
+        Arc::clone(engine) as Arc<dyn RuntimeDriver>,
+        options.clone(),
+    );
+    tokio::spawn(Arc::clone(&node).run());
+    let server = SocketAddrV4::new(GATEWAY_A, options.lookup_port);
+    becomes(API_A, server, "api", &[API_A]).await?;
+    Ok((server, directory))
+}
+
+/// How long a lookup of `api` from `from` takes to be answered.
+async fn answered_in(from: Ipv4Addr, server: SocketAddrV4) -> Result<Duration, String> {
+    let started = std::time::Instant::now();
+    let answer = ask(from, server, "api", Duration::from_secs(8))
+        .await
+        .map_err(|error| error.to_string())?;
+    if answer.is_none() {
+        return Err(format!("{from} got no answer"));
+    }
+    Ok(started.elapsed())
+}
+
+/// Asks until an answer comes, as a client retries a lost datagram.
+async fn answered_eventually(from: Ipv4Addr, server: SocketAddrV4) -> Result<(), String> {
+    for _ in 0..3 {
+        if ask(from, server, "api", Duration::from_secs(2))
+            .await
+            .map_err(|error| error.to_string())?
+            .is_some()
+        {
+            return Ok(());
+        }
+    }
+    Err(format!("{from} got no answer"))
+}
+
+/// On an engine slower than a lookup's cap, the lookup is answered at the
+/// cap, its asker is not taken for a stranger, and the listing it started
+/// goes on: the container it shows is found by the next lookup.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_lookup_waits_for_a_slow_engine_no_longer_than_its_cap() -> TestResult {
+    let engine = Engine::new(vec![container("api-1", "api", API_A, Health::Healthy)]);
+    let (server, _directory) = node_a(&engine, networks("a")?).await?;
+    let web = Ipv4Addr::new(127, 77, 0, 7);
+    engine
+        .containers
+        .lock()
+        .map_err(|_| "poisoned")?
+        .push(container("web-1", "web", web, Health::Starting));
+    engine
+        .slowness
+        .store(5000, std::sync::atomic::Ordering::SeqCst);
+    assert!(answered_in(web, server).await? < Duration::from_secs(4));
+    becomes(web, server, "tasks.web", &[web]).await?;
+
+    let stranger = Ipv4Addr::new(127, 77, 0, 9);
+    assert!(answered_in(stranger, server).await? < Duration::from_secs(4));
+    engine
+        .slowness
+        .store(300, std::sync::atomic::Ordering::SeqCst);
+    tokio::time::sleep(Duration::from_secs(6)).await;
+    assert!(
+        answered_in(stranger, server).await? >= Duration::from_millis(900),
+        "a lookup cut at the cap does not make its asker a stranger"
+    );
+    assert!(
+        answered_in(stranger, server).await? < Duration::from_millis(300),
+        "a listing that finished without the asker does"
+    );
+    Ok(())
+}
+
+/// An engine that cannot list its containers makes no stranger of an asker.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_failing_engine_makes_no_stranger() -> TestResult {
+    let engine = Engine::new(vec![container("api-1", "api", API_A, Health::Healthy)]);
+    let (server, _directory) = node_a(&engine, networks("a")?).await?;
+    engine
+        .failing
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let stranger = Ipv4Addr::new(127, 77, 0, 9);
+    for _ in 0..2 {
+        assert!(answered_in(stranger, server).await? >= Duration::from_millis(900));
+    }
+    Ok(())
+}
+
+/// With 256 strangers remembered, the next one takes the place of the
+/// oldest.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_oldest_stranger_makes_room_for_a_new_one() -> TestResult {
+    let engine = Engine::new(vec![container("api-1", "api", API_A, Health::Healthy)]);
+    let mut wide = networks("a")?;
+    for network in wide.table.networks.values_mut() {
+        for (node, slice) in [("a", "127.77.0.0/23"), ("b", "127.77.2.0/24")] {
+            if let Some(held) = network.nodes.get_mut(node) {
+                held.slice = cidr(slice)?;
+            }
+        }
+    }
+    let (server, _directory) = node_a(&engine, wide).await?;
+    let oldest = Ipv4Addr::new(127, 77, 0, 9);
+    assert!(answered_in(oldest, server).await? >= Duration::from_millis(900));
+    let pinned = std::time::Instant::now();
+    assert!(answered_in(oldest, server).await? < Duration::from_millis(300));
+    for half in [0_u8, 128] {
+        let mut asking = tokio::task::JoinSet::new();
+        for index in half..=half.saturating_add(127) {
+            asking.spawn(answered_eventually(
+                Ipv4Addr::new(127, 77, 1, index),
+                server,
+            ));
+        }
+        while let Some(asked) = asking.join_next().await {
+            asked??;
+        }
+    }
+    assert!(
+        pinned.elapsed() < Duration::from_secs(9),
+        "the strangers were all met before the first one expired"
+    );
+    assert!(
+        answered_in(oldest, server).await? >= Duration::from_millis(900),
+        "the oldest stranger was forgotten"
+    );
     Ok(())
 }
 

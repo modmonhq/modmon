@@ -182,10 +182,10 @@ the context is never sent.
 
 The context keeps only one mode bit from your checkout: whether a file's owner
 may execute it, which is the bit Git records. Directories reach the engine as
-0755, files executable by their owner as 0755, and other files as 0644, whatever your umask, so a non-root user in the image
-can read what `COPY` put there. Set other modes in the Dockerfile with
-`COPY --chmod`. Making a file executable, or no longer executable, rebuilds
-the image.
+0755, files executable by their owner as 0755, and other files as 0644,
+whatever your umask, so a non-root user in the image can read what `COPY` put
+there. Set other modes in the Dockerfile with `COPY --chmod`. Making a file
+executable, or no longer executable, rebuilds the image.
 
 The plan refuses a file that would be sent when it is a symlink, a socket or
 other special file, or looks like a secret (`.env`, `.env.*`, SSH private

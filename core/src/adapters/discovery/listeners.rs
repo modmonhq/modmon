@@ -239,7 +239,7 @@ async fn serve_streams(resolver: Arc<NameResolver>, listener: TcpListener) {
 /// length. The stream stays open for more until the client closes it or
 /// goes quiet.
 async fn serve_stream(
-    resolver: &NameResolver,
+    resolver: &Arc<NameResolver>,
     mut stream: TcpStream,
     peer: SocketAddr,
 ) -> std::io::Result<()> {

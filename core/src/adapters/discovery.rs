@@ -516,7 +516,12 @@ impl NameResolver {
     /// The reply to one lookup, or `None` for a message that gets none: a
     /// lookup that does not come from a container of this node is not
     /// answered at all.
-    async fn reply(&self, message: &[u8], source: IpAddr, limit: usize) -> Option<Vec<u8>> {
+    async fn reply(
+        self: &Arc<Self>,
+        message: &[u8],
+        source: IpAddr,
+        limit: usize,
+    ) -> Option<Vec<u8>> {
         let IpAddr::V4(source) = source else {
             return None;
         };

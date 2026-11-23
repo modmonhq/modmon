@@ -2,12 +2,15 @@
 
 use std::collections::BTreeMap;
 use std::net::Ipv4Addr;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use super::{NameResolver, leaving};
 
 /// How long a lookup waits for its asker to show in the engine.
 const MEET_WITHIN: Duration = Duration::from_secs(1);
+/// How long a lookup waits for the engine at most; a listing under way goes on.
+const MEET_AT_MOST: Duration = Duration::from_secs(3);
 /// How soon the engine is read again while the asker does not show.
 const MEET_AGAIN: Duration = Duration::from_millis(100);
 /// How long an address that never showed skips the engine read.
@@ -44,25 +47,26 @@ impl Strangers {
 
 impl NameResolver {
     /// Reads the engine until it shows a container at `source`, for at least
-    /// [`MEET_WITHIN`] and until a listing started since has finished.
-    pub(super) async fn meet(&self, source: Ipv4Addr) {
+    /// [`MEET_WITHIN`] and until a listing started since has finished, but
+    /// never longer than [`MEET_AT_MOST`].
+    pub(super) async fn meet(self: &Arc<Self>, source: Ipv4Addr) {
         if self.read().strangers.recent(source) {
             return;
         }
+        if tokio::time::timeout(MEET_AT_MOST, self.seek(source))
+            .await
+            .is_err()
+        {
+            tracing::debug!(%source, "the engine did not list its containers in time for a lookup");
+        }
+    }
+
+    async fn seek(self: &Arc<Self>, source: Ipv4Addr) {
         let began = Instant::now();
         let mut since = began;
         loop {
-            {
-                let mut listing = self.listing.lock().await;
-                if self.read().knows(source) {
-                    return;
-                }
-                if listing.is_none_or(|started| started < since) {
-                    *listing = Some(Instant::now());
-                    self.list_containers().await;
-                }
-            }
-            if self.read().knows(source) {
+            let listing = tokio::spawn(Arc::clone(self).list_since(source, since));
+            if listing.await.is_err() || self.read().knows(source) {
                 return;
             }
             if began.elapsed() >= MEET_WITHIN {
@@ -75,6 +79,17 @@ impl NameResolver {
             since = Instant::now();
             tokio::time::sleep(MEET_AGAIN).await;
         }
+    }
+
+    /// Lists the engine's containers unless a listing started at or after
+    /// `since` has finished, or `source` is known by now.
+    async fn list_since(self: Arc<Self>, source: Ipv4Addr, since: Instant) {
+        let mut listing = self.listing.lock().await;
+        if self.read().knows(source) || listing.is_some_and(|started| started >= since) {
+            return;
+        }
+        *listing = Some(Instant::now());
+        self.list_containers().await;
     }
 
     /// Takes this node's containers from the engine; a failure is left to the next look.
