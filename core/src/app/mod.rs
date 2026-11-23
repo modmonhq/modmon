@@ -90,7 +90,9 @@ pub use observability::{
 };
 pub use onboarding::{OnboardingService, transition as transition_onboarding};
 pub(crate) use scheduler::desired_definitions;
-pub use scheduler::{JobSchedulerDependencies, JobSchedulerService, SchedulerCycleReport};
+pub use scheduler::{
+    JobPullSlots, JobSchedulerDependencies, JobSchedulerService, SchedulerCycleReport,
+};
 #[cfg(test)]
 pub(crate) use secret_backends::plan_remote_secret_backend_setup;
 pub use secret_backends::{ProviderDriverRegistration, SecretBackendManager};

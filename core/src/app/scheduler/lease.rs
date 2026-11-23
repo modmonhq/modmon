@@ -2,9 +2,9 @@
 //! it apart from the look that claimed it.
 
 use std::future::Future;
-use std::sync::LazyLock;
+use std::sync::{Mutex, PoisonError};
 
-use tokio::sync::Semaphore;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use super::*;
 
@@ -12,13 +12,28 @@ const RENEW_EVERY: Duration = Duration::from_secs(SCHEDULER_LEASE.as_secs() / 3)
 /// After a renewal the store did not answer, the next try comes sooner.
 const RENEW_AGAIN: Duration = Duration::from_secs(2);
 /// A claim whose lease ends sooner than this without a renewal is given up
-/// before another worker may take the run.
-const GIVE_UP_BEFORE: Duration = Duration::from_secs(4);
-/// How many runs one process starts in the background at once.
-const BACKGROUND_LAUNCHES: usize = 4;
+/// before another worker may take the run; longer than the state store's
+/// busy timeout, so one more try still fits.
+const GIVE_UP_BEFORE: Duration = Duration::from_secs(6);
+/// How many job images one environment pulls at once in the background.
+const PULLS_PER_ENVIRONMENT: usize = 4;
 
-static LAUNCH_SLOTS: LazyLock<Arc<Semaphore>> =
-    LazyLock::new(|| Arc::new(Semaphore::new(BACKGROUND_LAUNCHES)));
+/// The image pulls background starts may run at once, per environment.
+/// Shared by every look of one host, so a later look waits for the pulls
+/// an earlier one started.
+#[derive(Default)]
+pub struct JobPullSlots(Mutex<BTreeMap<String, Arc<Semaphore>>>);
+
+impl JobPullSlots {
+    fn of(&self, run: &JobRun) -> Arc<Semaphore> {
+        let mut slots = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        Arc::clone(
+            slots
+                .entry(format!("{}/{}", run.project_id.0, run.environment))
+                .or_insert_with(|| Arc::new(Semaphore::new(PULLS_PER_ENVIRONMENT))),
+        )
+    }
+}
 
 enum Renewal {
     Held { until_unix_ms: i64 },
@@ -33,7 +48,35 @@ impl JobSchedulerService {
     #[must_use]
     pub fn with_background_launches(mut self) -> Self {
         self.background_launches = true;
+        self.pull_slots.get_or_insert_with(Default::default);
         self
+    }
+
+    /// Background starts take their pull slots from `slots`, which the
+    /// host keeps from one look to the next.
+    #[must_use]
+    pub fn with_pull_slots(mut self, slots: Arc<JobPullSlots>) -> Self {
+        self.pull_slots = Some(slots);
+        self
+    }
+
+    /// A slot for the claimed run's image pull: `None` when pulls are not
+    /// limited. Waits, with the run's lease held, until one is free.
+    pub(super) async fn pull_slot(
+        &self,
+        claim: &ClaimedJobRun,
+    ) -> Result<Option<OwnedSemaphorePermit>, MmError> {
+        let Some(slots) = &self.pull_slots else {
+            return Ok(None);
+        };
+        slots
+            .of(&claim.run)
+            .acquire_owned()
+            .await
+            .map(Some)
+            .map_err(|closed| MmError::State {
+                message: format!("the job pull slots were closed: {closed}"),
+            })
     }
 
     /// Runs `work` while the claim's lease is renewed, from the start. `None`
@@ -88,8 +131,7 @@ impl JobSchedulerService {
     }
 
     /// Starts the claimed run's container: in a task of its own with
-    /// background launches, before returning otherwise. With every
-    /// background slot taken, the run waits for a later look.
+    /// background launches, before returning otherwise.
     pub(super) async fn launch_claimed(
         &self,
         document: &ConfigDocument,
@@ -103,10 +145,6 @@ impl JobSchedulerService {
                 .start(document, selection, target, &claim, output_limit)
                 .await;
         }
-        let Ok(slot) = Arc::clone(&LAUNCH_SLOTS).try_acquire_owned() else {
-            tracing::debug!(run_id = %claim.run.id, "every background launch slot is taken; a later look starts the run");
-            return Ok(());
-        };
         let (service, document, selection, target) = (
             self.clone(),
             document.clone(),
@@ -122,7 +160,6 @@ impl JobSchedulerService {
             })
         };
         tokio::spawn(async move {
-            let _slot = slot;
             let ended = match starting.await {
                 Ok(started) => started,
                 Err(stopped) => {

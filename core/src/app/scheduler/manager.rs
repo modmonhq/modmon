@@ -12,6 +12,7 @@ impl JobSchedulerService {
             clock: dependencies.clock,
             launch_targets: None,
             background_launches: false,
+            pull_slots: None,
         }
     }
 

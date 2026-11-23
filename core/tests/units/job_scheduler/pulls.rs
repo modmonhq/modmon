@@ -307,3 +307,48 @@ async fn a_background_start_records_every_way_it_ends() -> Result<(), Box<dyn st
     );
     Ok(())
 }
+
+fn pulls_started(setup: &Setup) -> Result<usize, MmError> {
+    Ok(ordered(setup)?
+        .iter()
+        .filter(|event| event.starts_with("runtime:pull"))
+        .count())
+}
+
+#[tokio::test]
+async fn a_fifth_pull_in_one_environment_waits_for_a_free_slot_and_then_starts()
+-> Result<(), Box<dyn std::error::Error>> {
+    let setup = setup(true)?;
+    let gate = setup.runtime.gate_pulls()?;
+    for sequence in 30..35 {
+        setup.repository.queue_run(launching(sequence))?;
+        setup.runtime.observe(Ok(RuntimeJobState::Missing))?;
+    }
+    let controller = setup.service.clone().with_background_launches();
+    controller.cycle(&setup.selection, &approval()).await?;
+    let looked_at = &setup;
+    let started = |count: usize| {
+        tokio::time::timeout(Duration::from_secs(10), async move {
+            while pulls_started(looked_at).ok() != Some(count) {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+    };
+    started(4).await.map_err(|_| "four pulls did not start")?;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(
+        pulls_started(&setup)?,
+        4,
+        "the fifth pull took no free slot"
+    );
+
+    gate.add_permits(1);
+    started(5)
+        .await
+        .map_err(|_| "the fifth pull did not start once a slot was free")?;
+    gate.add_permits(4);
+    for sequence in 130..135 {
+        settled(&setup, sequence, JobRunState::Running).await?;
+    }
+    Ok(())
+}

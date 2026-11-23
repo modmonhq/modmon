@@ -109,6 +109,7 @@ impl JobSchedulerService {
             .environments
             .get(&claim.run.environment)
             .and_then(|environment| environment.deploy.as_ref());
+        let slot = self.pull_slot(claim).await?;
         self.runtime
             .pull_image(
                 &target,
@@ -117,6 +118,7 @@ impl JobSchedulerService {
                     .unwrap_or(crate::domain::config::DEFAULT_PULL_TIMEOUT),
             )
             .await?;
+        drop(slot);
         self.runtime
             .launch(JobLaunch {
                 run_id: claim.run.id,
