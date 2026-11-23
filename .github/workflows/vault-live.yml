@@ -27,6 +27,10 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   external:
     runs-on: ubuntu-latest
@@ -56,6 +60,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes podman podman-compose
           podman info
+      - name: Let Podman stop pasta under AppArmor
+        if: matrix.runtime == 'podman-compose'
+        run: |
+          profile=/etc/apparmor.d/usr.bin.pasta
+          if [ -f "$profile" ] && ! grep -q 'peer=podman' "$profile"; then
+            sudo sed -i '/^profile pasta /a\  signal (receive) peer=podman,' "$profile"
+            sudo apparmor_parser --replace "$profile"
+          fi
       - run: ./scripts/live-vault-provider.sh managed "${{ matrix.runtime }}" "${{ matrix.provider }}" 2>&1 | tee managed-live.log
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()

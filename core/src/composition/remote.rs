@@ -106,12 +106,13 @@ pub(crate) fn remote_environment_as(
         node: None,
     };
     let nodes = if context.target.definition.is_cluster() {
-        cluster_nodes(&document, &context.target, access, &scope)?
+        cluster_nodes(&document, &context.target, (access, &home), &scope)?
     } else {
         vec![crate::app::RemoteNode {
             name: None,
             host: host.clone(),
             port: *port,
+            repo_address: None,
             private_address: None,
             transport: Ok(Arc::new(SshRemoteTransport::for_target(
                 &context.target,
@@ -143,11 +144,37 @@ pub(crate) fn remote_environment_as(
             .with_storage_node(storage_node)
             .with_pushed_commits(pushed)
             .with_progress_timeout(progress_timeout)
+            .with_compose_wait(compose_wait(&document))
             .with_version_pin(crate::domain::version_pin::VersionPin::of(
                 &document.config,
                 &environment,
             )),
     ))
+}
+
+/// The longest `domain::compose_timing::compose_wait` of the
+/// configuration's stacks, for any provider and with each variable at its
+/// default; a file that cannot be read counts for nothing.
+fn compose_wait(document: &crate::domain::config::ConfigDocument) -> std::time::Duration {
+    document
+        .config
+        .stacks
+        .values()
+        .map(|stack| {
+            let models = stack
+                .files
+                .iter()
+                .filter_map(|file| std::fs::read_to_string(document.root.join(file)).ok())
+                .filter_map(|text| serde_yaml_ng::from_str(&text).ok())
+                .collect::<Vec<serde_yaml_ng::Value>>();
+            crate::domain::compose_timing::compose_wait(
+                &models,
+                &|_| None,
+                crate::domain::compose_timing::ComposeOrder::OneByOne,
+            )
+        })
+        .max()
+        .unwrap_or_default()
 }
 
 pub struct DaemonUseCaseAdapter {

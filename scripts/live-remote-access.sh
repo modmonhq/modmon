@@ -250,7 +250,7 @@ for _ in $(seq 1 30); do
   docker exec "$TARGET" test -S /run/mm/mm.sock && break
   sleep 0.5
 done
-docker exec "$TARGET" sh -c 'grep -c "^restrict," /etc/ssh/mm_authorized_keys' | grep -qx 1 \
+docker exec "$TARGET" sh -c 'grep -c "^restrict," /etc/ssh/mm_authorized_keys' | grep -x 1 >/dev/null \
   || fail "authorized_keys should hold only the break-glass key before any reconcile"
 
 OPS_PRIVATE=$(cat "$TMP/keys/ops")
@@ -265,7 +265,7 @@ step "break-glass reconciles staging from the repo"
 as_ops team whoami
 SYNC=$(as_ops --output json team sync | plan_hash)
 as_ops team sync --plan "$SYNC" --yes
-docker exec "$TARGET" sh -c 'grep -c "^restrict," /etc/ssh/mm_authorized_keys' | grep -qx 2 \
+docker exec "$TARGET" sh -c 'grep -c "^restrict," /etc/ssh/mm_authorized_keys' | grep -x 2 >/dev/null \
   || fail "the reconcile should add alice's key to authorized_keys"
 
 step "the developer deploys a commit the host fetched itself"
@@ -303,7 +303,7 @@ docker exec "$CLIENT" test ! -e "$ALICE_PRIVATE.passphrase" || fail "the passphr
 # command prompts (there is no terminal here to prompt on).
 as_alice team whoami >"$TMP/whoami-protected.log" </dev/null
 grep -q '"level":"deploy"' "$TMP/whoami-protected.log" || fail "alice lost access when her key was protected"
-as_alice service logs api </dev/null | grep -q access-live-started || fail "logs did not reach the client with the protected key"
+as_alice service logs api </dev/null | grep access-live-started >/dev/null || fail "logs did not reach the client with the protected key"
 as_alice --output json doctor >"$TMP/doctor-protected.json" 2>/dev/null || true
 if grep -q 'MM_KEY_' "$TMP/doctor-protected.json"; then fail "mm doctor still reports a key problem"; fi
 
@@ -324,8 +324,8 @@ step "the developer's connection stays open between commands, for her alone"
 kept() { docker exec "$CLIENT" sh -c "find $1/run/ssh -type s 2>/dev/null | wc -l"; }
 traced() { docker exec "${KEYRING[@]}" -e MM_TIMING=1 "$CLIENT" mm --root /project --mm-home /home-alice --runtime docker-compose --environment staging team whoami 2>&1 >/dev/null; }
 [ "$(kept /home-alice)" -eq 1 ] || fail "alice's connection to the host was not kept"
-docker exec "$CLIENT" stat -c '%a %u' /home-alice/run/ssh | grep -qx '700 0' || fail "the socket directory is open to others"
-docker exec "$CLIENT" sh -c 'stat -c %a $(find /home-alice/run/ssh -type s)' | grep -qx 600 || fail "the socket is open to others"
+docker exec "$CLIENT" stat -c '%a %u' /home-alice/run/ssh | grep -x '700 0' >/dev/null || fail "the socket directory is open to others"
+docker exec "$CLIENT" sh -c 'stat -c %a $(find /home-alice/run/ssh -type s)' | grep -x 600 >/dev/null || fail "the socket is open to others"
 traced >"$TMP/kept-trace.log"
 grep -q 'ssh.connect .*, kept' "$TMP/kept-trace.log" || fail "the next command did not use the kept connection"
 # A command on a kept connection authenticates nothing, so it asks no vault.
@@ -334,10 +334,10 @@ if grep -q 'key.unlock' "$TMP/kept-trace.log"; then fail "a command on a kept co
 as_alice target connections | tee "$TMP/connections.log"
 grep -q "mm@$TARGET:22  key $ALICE_PRIVATE" "$TMP/connections.log" || fail "mm target connections did not list the kept connection"
 if grep -q "no longer answering" "$TMP/connections.log"; then fail "the kept connection is listed as dead"; fi
-as_alice --output json target connections | grep -q '"open": true' || fail "the JSON list does not show an open connection"
-as_alice target connections --close | grep -q "^Closed:" || fail "mm target connections --close did not say what it closed"
+as_alice --output json target connections | grep '"open": true' >/dev/null || fail "the JSON list does not show an open connection"
+as_alice target connections --close | grep "^Closed:" >/dev/null || fail "mm target connections --close did not say what it closed"
 [ "$(kept /home-alice)" -eq 0 ] || fail "mm target connections --close left a connection open"
-as_alice target connections | grep -q "No connection is kept open." || fail "the list is not empty after closing"
+as_alice target connections | grep "No connection is kept open." >/dev/null || fail "the list is not empty after closing"
 traced >"$TMP/anew-trace.log"
 grep -q 'key.unlock' "$TMP/anew-trace.log" || fail "a new connection did not read the passphrase from the vault"
 if grep -q ', kept' "$TMP/anew-trace.log"; then fail "a connection was used after it was closed"; fi
@@ -475,7 +475,7 @@ for _ in $(seq 1 20); do
   sleep 0.5
 done
 grep -q receipt-web-started "$TMP/web.log" || fail "the deployed build's logs did not reach the client"
-docker exec "$TARGET" grep '"result":"planned"' /var/lib/mm/audit.jsonl | grep '"build_receipt"' | grep -q "$DIGEST" \
+docker exec "$TARGET" grep '"result":"planned"' /var/lib/mm/audit.jsonl | grep '"build_receipt"' | grep "$DIGEST" >/dev/null \
   || fail "the plan's audit record lacks the receipt's digest"
 # The host recorded the receipt as the commit's build.
 as_alice deploy plan >/dev/null
@@ -598,7 +598,7 @@ AGENT_SYNC=$(as_ops --output json team sync | plan_hash)
 as_ops team sync --plan "$AGENT_SYNC" --yes
 as_alice --output json team whoami | tee "$TMP/alice-whoami.log"
 grep -q '"level": "admin"' "$TMP/alice-whoami.log" || fail "alice should be admin on staging"
-as_alice service exec api -- echo alice-ran-this | grep -q alice-ran-this || fail "an admin could not exec"
+as_alice service exec api -- echo alice-ran-this | grep alice-ran-this >/dev/null || fail "an admin could not exec"
 
 # The agent's limits, through the MCP server, which is the only thing that
 # opens the agent key: the client speaks JSON-RPC to `mm mcp serve`, and the
@@ -647,7 +647,7 @@ done
 [ "$(keyring_entries)" -eq 2 ] || fail "a refused command changed the keyring"
 mcp mm_access '{}' | tee "$TMP/mcp-access.log"
 grep -q '"access": "view", "environment": "staging"' "$TMP/mcp-access.log" || fail "mm_access should report view on staging"
-mcp mm_logs "{$STAGING, \"service\": \"api\"}" | grep -q access-live-started || fail "the agent could not read logs through MCP"
+mcp mm_logs "{$STAGING, \"service\": \"api\"}" | grep access-live-started >/dev/null || fail "the agent could not read logs through MCP"
 mcp mm_exec "{$STAGING, \"service\": \"api\", \"argv\": [\"echo\", \"escaped\"]}" | tee "$TMP/mcp-exec.log"
 grep -q MM_AGENT_HANDOFF "$TMP/mcp-exec.log" || fail "exec outside the grant was not handed to the user"
 grep -q 'mm --environment staging service exec api -- echo escaped' "$TMP/mcp-exec.log" || fail "the handoff did not carry the user's command"
@@ -729,7 +729,7 @@ as_alice target connections --close >/dev/null
 if as_alice team whoami >"$TMP/lost.log" 2>&1 </dev/null; then fail "alice connected without her key's passphrase"; fi
 grep -q "its passphrase is not in the system keychain" "$TMP/lost.log" || fail "the missing passphrase was not named"
 grep -q '`mm key rotate`' "$TMP/lost.log" || fail "the missing passphrase did not point at mm key rotate"
-as_alice key show | grep -q "passphrase missing from the system keychain" || fail "mm key show does not say the passphrase is missing"
+as_alice key show | grep "passphrase missing from the system keychain" >/dev/null || fail "mm key show does not say the passphrase is missing"
 as_alice --output json doctor >"$TMP/doctor-lost.json" 2>/dev/null || true
 grep -q MM_KEY_PASSPHRASE_MISSING "$TMP/doctor-lost.json" || fail "mm doctor did not report the missing passphrase"
 as_alice key rotate | tee "$TMP/rotate-plan.log"
@@ -750,7 +750,7 @@ git_repo commit --quiet -am "alice's new key"
 publish main
 REENROL=$(as_ops --output json team sync | plan_hash)
 as_ops team sync --plan "$REENROL" --yes
-as_alice --output json team whoami | grep -q '"level": "admin"' || fail "alice has no access with her new key after it was registered"
+as_alice --output json team whoami | grep '"level": "admin"' >/dev/null || fail "alice has no access with her new key after it was registered"
 
 step "removing the agent key takes its passphrase with it"
 REMOVE=$(docker exec "${KEYRING[@]}" "$CLIENT" mm --mm-home /home-alice --output json key remove --agent | python3 -c 'import json,sys; print(json.load(sys.stdin)["plan_hash"])')
@@ -763,7 +763,7 @@ step "a machine without a keyring keeps the passphrase in a file, and says so"
 docker exec "$CLIENT" mm --mm-home /home-headless key create | tee "$TMP/headless.log"
 grep -q "passphrase in a file beside the key" "$TMP/headless.log" || fail "the headless key does not say where its passphrase is"
 grep -q "does not stop a program that reads both files" "$TMP/headless.log" || fail "mm did not say what a passphrase file is worth"
-docker exec "$CLIENT" stat -c %a /home-headless/identities/ssh/id_ed25519.passphrase | grep -qx 600 || fail "the passphrase file is open to others"
+docker exec "$CLIENT" stat -c %a /home-headless/identities/ssh/id_ed25519.passphrase | grep -x 600 >/dev/null || fail "the passphrase file is open to others"
 if loads_alone /home-headless/identities/ssh/id_ed25519; then fail "the headless key loads without a passphrase"; fi
 [ "$(keyring_entries)" -eq 1 ] || fail "a command without the session bus reached the keyring"
 
@@ -778,7 +778,7 @@ publish main
 REVOKE=$(as_ops --output json team sync | plan_hash)
 as_ops team sync --plan "$REVOKE" --yes
 if as_alice team whoami >"$TMP/revoked.log" 2>&1; then fail "alice kept access after removal"; fi
-docker exec "$TARGET" sh -c 'grep -c "^restrict," /etc/ssh/mm_authorized_keys' | grep -qx 1 \
+docker exec "$TARGET" sh -c 'grep -c "^restrict," /etc/ssh/mm_authorized_keys' | grep -x 1 >/dev/null \
   || fail "alice's key should leave authorized_keys"
 docker exec "$TARGET" grep -q '"result":"denied"' /var/lib/mm/audit.jsonl || true
 

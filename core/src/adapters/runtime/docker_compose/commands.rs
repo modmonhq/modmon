@@ -5,6 +5,8 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 
+use crate::adapters::runtime::compose_limit::project_limit;
+use crate::domain::compose_timing::ComposeOrder;
 use crate::adapters::runtime::inspect::{
     ownership_label_args, parse_inspected_resource, parse_resource_ids,
     require_inspected_project_ownership,
@@ -31,6 +33,7 @@ use crate::domain::runtime::{
 use crate::domain::target::{NamedTarget, TargetTransport};
 
 const VOLUME_HELPER_IMAGE: &str = "docker.io/library/busybox@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0";
+const DOCKER_FLOOR: Duration = Duration::from_secs(300);
 
 #[derive(Clone)]
 pub struct DockerComposeRuntime {

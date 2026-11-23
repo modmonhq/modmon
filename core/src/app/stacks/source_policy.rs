@@ -83,7 +83,7 @@ pub(super) fn reject_reserved_ingress_configuration(
             ),
         })?;
     if let Some(root) = document.as_mapping_mut() {
-        super::guardrails::resolve_extends(root);
+        crate::domain::compose_extends::resolve_extends(root);
     }
     let Some(root) = document.as_mapping() else {
         return Ok(());

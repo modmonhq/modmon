@@ -37,7 +37,7 @@ mod inherited;
 pub use inherited::{DOCKER_INHERITED_ENVIRONMENT, PODMAN_INHERITED_ENVIRONMENT};
 #[path = "runtime/probe.rs"]
 mod probe;
-pub use probe::{PROBE_TIMEOUT_CODE, probe_failure_code};
+pub use probe::{DOCKER_USERNS_REMAP, PROBE_TIMEOUT_CODE, probe_failure_code};
 #[path = "runtime/registry.rs"]
 mod registry;
 pub use registry::{RegistryCredential, registry_auth_config};

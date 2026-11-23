@@ -630,6 +630,7 @@ fn small_findings_name_the_place_and_the_next_step() -> TestResult {
         name: "app-1".to_owned(),
         host: "203.0.113.11".to_owned(),
         port: 22,
+        repo_address: None,
         mesh_address: None,
         state,
         reachable: false,

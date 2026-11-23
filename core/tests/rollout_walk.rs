@@ -77,6 +77,8 @@ struct Script {
 struct Node {
     name: String,
     steps: Steps,
+    /// How long the client gave each step, as `(step, patience)`.
+    patience: Mutex<Vec<(String, Duration)>>,
     seal: Mutex<Option<ClusterPlanSeal>>,
     script: Mutex<Script>,
 }
@@ -100,8 +102,9 @@ impl RemoteTransport for Node {
         _scope: RemoteScope,
         _plan_hash: String,
         step: RolloutStep,
-        _patience: Duration,
+        patience: Duration,
     ) -> Result<RolloutAnswer, MmError> {
+        locked(&self.patience).push((step.name().to_owned(), patience));
         let stack = match &step {
             RolloutStep::Start { stack } | RolloutStep::Apply { stack } => format!(":{stack}"),
             RolloutStep::Job { stack, job } => format!(":{stack}/{job}"),
@@ -383,6 +386,7 @@ fn cluster() -> Result<Cluster, MmError> {
             Arc::new(Node {
                 name: (*name).to_owned(),
                 steps: Arc::clone(&steps),
+                patience: Mutex::new(Vec::new()),
                 seal: Mutex::new(None),
                 script: Mutex::new(Script {
                     status: NodeDeploymentStatus {
@@ -402,6 +406,7 @@ fn cluster() -> Result<Cluster, MmError> {
                 name: Some(node.name.clone()),
                 host: "203.0.113.10".to_owned(),
                 port: 22,
+                repo_address: None,
                 private_address: None,
                 transport: Ok(Arc::clone(node) as Arc<dyn RemoteTransport>),
                 scope: scope(Some(&node.name)),
@@ -685,6 +690,40 @@ async fn a_failure_on_the_second_node_rolls_both_back_and_never_touches_the_thir
     ] {
         assert!(failure.contains(expected), "{expected}: {failure}");
     }
+    Ok(())
+}
+
+/// The patience the client gave `node` for each of `steps`, in order.
+async fn patience_after_failure(
+    compose_wait: Duration,
+) -> Result<Vec<Duration>, Box<dyn std::error::Error>> {
+    let mut cluster = cluster()?;
+    cluster.environment = cluster.environment.with_compose_wait(compose_wait);
+    locked(&cluster.nodes[0].script).sick = Some(sick("app", "web"));
+    let hash = cluster.reviewed(vec![stage("db", &[&["db-1"]]), stage("app", &[&["app-1"]])])?;
+    cluster.environment.apply_deployment(&hash, &|_| {}).await?;
+    Ok(locked(&cluster.nodes[0].patience)
+        .iter()
+        .filter(|(step, _)| step == "apply" || step == "rollback")
+        .map(|(_, patience)| *patience)
+        .collect())
+}
+
+#[tokio::test]
+async fn a_stack_step_and_a_rollback_wait_as_long_as_compose_may_take() -> TestResult {
+    let without = patience_after_failure(Duration::ZERO).await?;
+    let with = patience_after_failure(Duration::from_secs(600)).await?;
+    assert_eq!(without.len(), 2, "{without:?}");
+    assert_eq!(
+        with[0] - without[0],
+        Duration::from_secs(600),
+        "one stack step"
+    );
+    assert_eq!(
+        with[1] - without[1],
+        Duration::from_secs(2 * 600),
+        "a rollback of two stages"
+    );
     Ok(())
 }
 

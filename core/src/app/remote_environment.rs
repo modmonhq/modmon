@@ -77,8 +77,12 @@ impl NodeUnavailable {
 pub struct RemoteNode {
     /// The node's name; `None` for a target that names one host.
     pub name: Option<String>,
+    /// Where this device connects to the node.
     pub host: String,
     pub port: u16,
+    /// The repo's host and port for the node, when this device connects at
+    /// an address of its own instead.
+    pub repo_address: Option<(String, u16)>,
     /// The node's address on the cluster's private network.
     pub private_address: Option<Ipv4Addr>,
     /// The connection, or why there is none (a node not set up yet).
@@ -134,6 +138,9 @@ pub struct RemoteEnvironment {
     /// How long a host may show no progress on a step before the client
     /// stops waiting (`deploy.progress-timeout`).
     progress_timeout: std::time::Duration,
+    /// The longest a Compose `up` or `down` of one of the stacks waits for
+    /// stop grace periods and health checks.
+    compose_wait: std::time::Duration,
     /// The environment's `deploy.mm-version`.
     version_pin: Option<crate::domain::version_pin::VersionPin>,
     /// Every environment of the project, which tells this environment's
@@ -158,6 +165,7 @@ impl RemoteEnvironment {
             pushed: None,
             last_status: services::LastStatus::default(),
             progress_timeout: crate::domain::config::DEFAULT_PROGRESS_TIMEOUT,
+            compose_wait: std::time::Duration::ZERO,
             version_pin: None,
             environments: Vec::new(),
         })
@@ -168,6 +176,14 @@ impl RemoteEnvironment {
     #[must_use]
     pub fn with_progress_timeout(mut self, timeout: std::time::Duration) -> Self {
         self.progress_timeout = timeout;
+        self
+    }
+
+    /// How long a Compose `up` or `down` of one of the stacks may wait for
+    /// its containers (`domain::compose_timing::compose_wait`).
+    #[must_use]
+    pub fn with_compose_wait(mut self, wait: std::time::Duration) -> Self {
+        self.compose_wait = wait;
         self
     }
 
@@ -343,6 +359,10 @@ impl RemoteEnvironment {
             name: self.name_of(node).to_owned(),
             host: node.host.clone(),
             port: node.port,
+            repo_address: node
+                .repo_address
+                .as_ref()
+                .map(|(host, port)| crate::domain::target::host_and_port(host, *port)),
             mesh_address: node.private_address,
             state: NodeState::Ready,
             reachable: true,

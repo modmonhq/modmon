@@ -111,7 +111,9 @@ mod manifest;
 use manifest::*;
 mod shared_volumes;
 pub(crate) use shared_volumes::volume_users;
-pub(crate) use user_namespace::{chosen_user_namespaces, files_in_chosen_namespaces};
+pub(crate) use user_namespace::{
+    ChosenUserns, chosen_user_namespaces, files_in_chosen_namespaces, services_without_own_userns,
+};
 mod compose_environment;
 mod hardening;
 pub(crate) use compose_environment::compose_environment_refusals;
@@ -403,7 +405,7 @@ impl StackManager {
         &self,
         preparation: StackPreparation<'_>,
     ) -> Result<(Vec<PreparedStackArtifact>, PlacementNotes), MmError> {
-        let (compiled, placement) = compile_document_for(DocumentCompilation {
+        let (compiled, mut placement) = compile_document_for(DocumentCompilation {
             document: preparation.document,
             environment: preparation.environment,
             target: preparation.target,
@@ -417,6 +419,11 @@ impl StackManager {
             ),
             user_ids: self.user_ids.as_deref(),
         })?;
+        placement.outside_host_namespace = user_namespace::files_outside_host_namespace(
+            preparation.document,
+            preparation.environment,
+            &compiled,
+        )?;
         if preparation.check_route_registry
             && let Some(routes) = &self.routes
         {
