@@ -196,6 +196,7 @@ pub struct NameResolver {
     /// One listing of the engine's containers at a time, and when the
     /// last one started.
     listing: tokio::sync::Mutex<Option<Instant>>,
+    follow_up: newcomer::FollowUp,
 }
 
 impl std::fmt::Debug for NameResolver {
@@ -260,6 +261,7 @@ impl NameResolver {
             sockets,
             settling: tokio::sync::Mutex::new(()),
             listing: tokio::sync::Mutex::new(None),
+            follow_up: newcomer::FollowUp::default(),
         })
     }
 
