@@ -47,6 +47,10 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   live:
     name: real-openssh-relay
