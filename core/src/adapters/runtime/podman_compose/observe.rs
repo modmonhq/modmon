@@ -582,7 +582,8 @@ fn probed_capabilities(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Vec<RuntimeCapability> {
     if available {
-        let mut capabilities = runtime_descriptor(RuntimeKind::PodmanCompose).advertised_capabilities();
+        let mut capabilities =
+            runtime_descriptor(RuntimeKind::PodmanCompose).advertised_capabilities();
         if !local {
             capabilities.retain(|capability| {
                 !matches!(
