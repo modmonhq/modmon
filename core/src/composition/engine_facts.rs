@@ -20,6 +20,20 @@ pub(crate) struct HostEngine {
     last: Mutex<Option<(Instant, EngineFacts)>>,
 }
 
+/// Whether the host's Docker Engine mounts a bind recursively read-only
+/// when asked, by what its API says about itself; `false` when it does not
+/// answer in time.
+async fn recursive_read_only(runtime: RuntimeKind) -> bool {
+    let Some(api) = super::engine_api::host_api(runtime) else {
+        return false;
+    };
+    let asked = crate::adapters::runtime::engine_containers::engine_versions(&api);
+    matches!(
+        tokio::time::timeout(PATIENCE, asked).await,
+        Ok(Ok((api, kernel))) if crate::domain::remote::recursive_read_only(&api, &kernel)
+    )
+}
+
 impl HostEngine {
     /// The engine `runtime` as it answers now, or as it answered less than
     /// a minute ago.
@@ -35,7 +49,7 @@ impl HostEngine {
             return facts.clone();
         }
         let driver = super::RuntimeComposition::new().driver(runtime);
-        let facts = match tokio::time::timeout(PATIENCE, driver.probe()).await {
+        let mut facts = match tokio::time::timeout(PATIENCE, driver.probe()).await {
             Ok(probe) => EngineFacts::of(&probe),
             Err(_) => EngineFacts {
                 runtime,
@@ -46,8 +60,16 @@ impl HostEngine {
                     "the engine did not answer within {} seconds",
                     PATIENCE.as_secs()
                 )),
+                apparmor: None,
+                recursive_read_only: false,
             },
         };
+        if runtime == RuntimeKind::PodmanCompose {
+            facts.apparmor =
+                crate::adapters::runtime::podman_apparmor::container_apparmor(facts.release());
+        }
+        facts.recursive_read_only =
+            runtime == RuntimeKind::DockerCompose && recursive_read_only(runtime).await;
         *self
             .last
             .lock()

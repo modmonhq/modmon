@@ -47,6 +47,10 @@ pub struct BootstrapAccess {
     /// when the plan was made.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notices: Vec<String>,
+    /// The AppArmor profiles setup installs in `/etc/apparmor.d` and gives
+    /// rootful Podman's containers, where the host's kernel runs AppArmor.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub apparmor_profiles: Vec<String>,
 }
 
 impl BootstrapAccess {
@@ -65,6 +69,15 @@ impl BootstrapAccess {
             )?;
         } else if self.origin_host_key.is_some() {
             return Err("an origin host key needs an origin".to_owned());
+        }
+        if self
+            .apparmor_profiles
+            .iter()
+            .any(|profile| !crate::domain::remote::CONTAINER_PROFILES.contains(&profile.as_str()))
+        {
+            return Err(
+                "remote access setup names an AppArmor profile mm does not ship".to_owned(),
+            );
         }
         if self.break_glass.is_empty() || self.break_glass.len() > MAX_BREAK_GLASS_KEYS {
             return Err(format!(
@@ -142,6 +155,13 @@ impl BootstrapAccess {
         for (set, flag) in [(self.upgrade, "upgrade"), (self.downgrade, "downgrade")] {
             if set {
                 hash_field(hasher, flag);
+            }
+        }
+        if !self.apparmor_profiles.is_empty() {
+            hash_field(hasher, "apparmor-profiles");
+            hasher.update(&(self.apparmor_profiles.len() as u64).to_le_bytes());
+            for profile in &self.apparmor_profiles {
+                hash_field(hasher, profile);
             }
         }
         if !self.notices.is_empty() {

@@ -34,7 +34,14 @@ async fn a_failed_first_deployment_keeps_what_it_started_and_the_next_one_deploy
     assert_eq!(*mutation_status, mm::MutationStatus::Kept);
     assert!(error.kept());
     assert!(cleanup_failures.is_empty());
-    assert!(matches!(**primary, MmError::RuntimeResponse { .. }));
+    assert!(matches!(
+        **primary,
+        MmError::Unhealthy {
+            code: "MM_RUNTIME_RESPONSE",
+            ..
+        }
+    ));
+    assert!(error.step_failure().is_some(), "{error:?}");
     assert_eq!(error.code(), primary.code());
     assert!(
         recovery.contains("nothing was rolled back")

@@ -11,7 +11,7 @@ use base64::Engine;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-use crate::adapters::keys::ManagedKeys;
+use crate::adapters::keys::{ManagedKeys, PrivateAgent};
 use crate::adapters::private_fs::{
     ensure_no_symlink_components, ensure_user_controlled_directory, read_regular_file,
 };
@@ -168,16 +168,8 @@ impl AnsibleTargetBootstrapExecutor {
     }
 }
 
-#[async_trait]
-impl TargetBootstrapExecutor for AnsibleTargetBootstrapExecutor {
-    async fn execute(
-        &self,
-        project_root: &Path,
-        plan: &TargetBootstrapPlan,
-    ) -> Result<BootstrapExecution, MmError> {
-        plan.validate()
-            .map_err(|message| MmError::Security { message })?;
-        prepare_staging_root(&self.staging_root)?;
+impl AnsibleTargetBootstrapExecutor {
+    fn private_staging(&self) -> Result<(tempfile::TempDir, PathBuf), MmError> {
         let staging = tempfile::Builder::new()
             .prefix(".bootstrap-")
             .tempdir_in(&self.staging_root)
@@ -192,14 +184,17 @@ impl TargetBootstrapExecutor for AnsibleTargetBootstrapExecutor {
             context: "resolving private bootstrap staging directory".to_owned(),
             source,
         })?;
-        snapshot_inputs(project_root, &staging_path, plan)?;
+        Ok((staging, staging_path))
+    }
 
-        let mut known_hosts_path = None;
-        let mut ssh_auth_sock = None;
+    async fn ssh_access(
+        &self,
+        plan: &TargetBootstrapPlan,
+        staging_path: &Path,
+    ) -> Result<(SshAccess, Option<PrivateAgent>), MmError> {
         // Ansible starts `ssh` itself, many times. A key mm keeps the
         // passphrase of goes into an agent of mm's own, which holds it for
-        // as long as the playbooks run and ends with this function.
-        let mut private_agent = None;
+        // as long as the playbooks run and ends with the bootstrap.
         if let TargetTransport::Ssh {
             host,
             port,
@@ -208,13 +203,14 @@ impl TargetBootstrapExecutor for AnsibleTargetBootstrapExecutor {
             ..
         } = &plan.target.definition.transport
         {
-            if let Some(identity_file) = identity_file {
-                private_agent = self.keys.agent_for(identity_file).await?;
-            }
+            let private_agent = match identity_file {
+                Some(identity_file) => self.keys.agent_for(identity_file).await?,
+                None => None,
+            };
             // A target that names its own key authenticates with that file, so
             // an agent is only passed through when one is usable (for a key
             // with a passphrase). Without a key file the agent is required.
-            ssh_auth_sock = if let Some(agent) = &private_agent {
+            let auth_sock = if let Some(agent) = &private_agent {
                 Some(agent.socket().to_str().map(str::to_owned).ok_or_else(|| {
                     MmError::Security {
                         message: "the private ssh-agent's socket path is not valid UTF-8"
@@ -229,14 +225,42 @@ impl TargetBootstrapExecutor for AnsibleTargetBootstrapExecutor {
             let known_hosts = self.known_hosts(host, *port, host_key_fingerprint).await?;
             let path = staging_path.join("known_hosts");
             write_private_file(&path, known_hosts.as_bytes())?;
-            known_hosts_path = Some(path);
+            let access = SshAccess {
+                known_hosts: Some(path),
+                auth_sock,
+            };
+            return Ok((access, private_agent));
         }
+        Ok((SshAccess::default(), None))
+    }
+}
+
+#[derive(Default)]
+struct SshAccess {
+    known_hosts: Option<PathBuf>,
+    auth_sock: Option<String>,
+}
+
+#[async_trait]
+impl TargetBootstrapExecutor for AnsibleTargetBootstrapExecutor {
+    async fn execute(
+        &self,
+        project_root: &Path,
+        plan: &TargetBootstrapPlan,
+    ) -> Result<BootstrapExecution, MmError> {
+        plan.validate()
+            .map_err(|message| MmError::Security { message })?;
+        prepare_staging_root(&self.staging_root)?;
+        let (_staging, staging_path) = self.private_staging()?;
+        snapshot_inputs(project_root, &staging_path, plan)?;
+
+        let (ssh, private_agent) = self.ssh_access(plan, &staging_path).await?;
         let local_user = if matches!(plan.target.definition.transport, TargetTransport::Local) {
             Some(self.local_user().await?)
         } else {
             None
         };
-        let inventory = inventory(plan, known_hosts_path.as_deref(), local_user.as_deref())?;
+        let inventory = inventory(plan, ssh.known_hosts.as_deref(), local_user.as_deref())?;
         let inventory_path = staging_path.join("inventory.yml");
         write_private_file(&inventory_path, inventory.as_bytes())?;
         let local_temp = staging_path.join("local-temp");
@@ -261,7 +285,7 @@ impl TargetBootstrapExecutor for AnsibleTargetBootstrapExecutor {
                 &local_temp,
                 &playbook,
                 None,
-                ssh_auth_sock.as_deref(),
+                ssh.auth_sock.as_deref(),
             ))
             .await?;
         require_playbook_success(&self.ansible_playbook, &output)?;
@@ -275,7 +299,7 @@ impl TargetBootstrapExecutor for AnsibleTargetBootstrapExecutor {
                         &local_temp,
                         &staged.playbook,
                         Some(&staged.variables),
-                        ssh_auth_sock.as_deref(),
+                        ssh.auth_sock.as_deref(),
                     ))
                     .await?;
                 require_playbook_success(&self.ansible_playbook, &output)?;
@@ -395,7 +419,34 @@ fn inventory(
         "mm_runtime_rootless".to_owned(),
         serde_yaml_ng::Value::Bool(plan.rootless),
     );
-    match &plan.target.definition.transport {
+    connection_variables(
+        &mut variables,
+        &plan.target.definition.transport,
+        known_hosts,
+        local_user,
+    )?;
+    let inventory = Inventory {
+        all: InventoryAll {
+            children: BTreeMap::from([(
+                "mm_targets".to_owned(),
+                InventoryGroup {
+                    hosts: BTreeMap::from([("mm_target".to_owned(), variables)]),
+                },
+            )]),
+        },
+    };
+    serde_yaml_ng::to_string(&inventory).map_err(|error| MmError::Target {
+        message: format!("serializing private Ansible inventory: {error}"),
+    })
+}
+
+fn connection_variables(
+    variables: &mut BTreeMap<String, serde_yaml_ng::Value>,
+    transport: &TargetTransport,
+    known_hosts: Option<&Path>,
+    local_user: Option<&str>,
+) -> Result<(), MmError> {
+    match transport {
         TargetTransport::Local => {
             variables.insert(
                 "ansible_connection".to_owned(),
@@ -463,19 +514,7 @@ fn inventory(
             );
         }
     }
-    let inventory = Inventory {
-        all: InventoryAll {
-            children: BTreeMap::from([(
-                "mm_targets".to_owned(),
-                InventoryGroup {
-                    hosts: BTreeMap::from([("mm_target".to_owned(), variables)]),
-                },
-            )]),
-        },
-    };
-    serde_yaml_ng::to_string(&inventory).map_err(|error| MmError::Target {
-        message: format!("serializing private Ansible inventory: {error}"),
-    })
+    Ok(())
 }
 
 /// The known_hosts lines of the keys `host` presents whose fingerprint is

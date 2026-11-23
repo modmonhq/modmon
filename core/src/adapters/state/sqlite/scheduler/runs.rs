@@ -85,7 +85,15 @@ macro_rules! scheduler_runs { () => {
                  WHERE id=?1 AND (lease_expires_at_ms IS NULL OR lease_expires_at_ms<=?4)
                    AND (state IN ('launching','running','cancelling','unknown')
                      OR (state IN ('queued','retry_wait')
-                         AND (next_attempt_at_ms IS NULL OR next_attempt_at_ms<=?4)))",
+                         AND (next_attempt_at_ms IS NULL OR next_attempt_at_ms<=?4)
+                         AND (schedule_concurrency IS NULL OR schedule_concurrency!='forbid'
+                           OR NOT EXISTS (
+                              SELECT 1 FROM job_runs active
+                              WHERE active.project_id=job_runs.project_id
+                                AND active.environment_name=job_runs.environment_name
+                                AND active.schedule_name=job_runs.schedule_name
+                                AND active.id!=job_runs.id
+                                AND active.state IN ('launching','running','cancelling','unknown')))))",
                 params![run_id.to_string(), owner.to_string(), expires, now_unix_ms],
             )
             .map_err(state_error)?;
@@ -101,6 +109,31 @@ macro_rules! scheduler_runs { () => {
             schedule_definition: schedule,
             lease_owner: owner,
         }))
+    }
+
+    fn renew_lease(
+        &self,
+        claim: &ClaimedJobRun,
+        now_unix_ms: i64,
+        lease: Duration,
+    ) -> Result<bool, MmError> {
+        let expires = lease_expiry(now_unix_ms, lease)?;
+        let changed = self
+            .connection()?
+            .execute(
+                "UPDATE job_runs SET lease_expires_at_ms=?4
+                 WHERE id=?1 AND lease_owner=?2 AND fence_token=?3
+                   AND state IN ('launching','running','unknown')
+                   AND cancellation_requested=0",
+                params![
+                    claim.run.id.to_string(),
+                    claim.lease_owner.to_string(),
+                    i64::try_from(claim.run.fence_token).unwrap_or(i64::MAX),
+                    expires,
+                ],
+            )
+            .map_err(state_error)?;
+        Ok(changed == 1)
     }
 
     fn mark_run_running(

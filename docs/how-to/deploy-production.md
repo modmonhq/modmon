@@ -115,3 +115,14 @@ environments:
 A pull that runs past the limit stops the deployment with `MM_TIMEOUT` before
 anything of the stack was stopped or started. The layers that arrived stay on
 the host, so the next `mm deploy apply` carries on from them.
+
+On a single host, `mm deploy apply` waits at most one hour for the whole
+deployment, pulls included. If several stacks each pull for a long time, the
+command can stop with `MM_TIMEOUT` after an hour even though no pull passed
+its own limit. Run `mm deploy status` to see where the host got to, then run
+`mm deploy apply` again: the images that arrived stay, so the next deployment
+has less to pull.
+
+The local services that `mm dev setup` and `mm dev services` start (ingress,
+Mailpit and the others) do not take this step: Compose pulls their images
+itself, under its own limit.

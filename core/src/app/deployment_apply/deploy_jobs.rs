@@ -82,7 +82,11 @@ impl DeploymentService {
                 )
                 .await?;
             if run.state != crate::domain::scheduler::JobRunState::Succeeded {
-                return Ok(Some(crate::domain::rollout::job_failure(stack, &run)));
+                return Ok(Some(crate::domain::rollout::job_failure(
+                    stack,
+                    &run,
+                    plan.rollout.failure_log_lines(),
+                )));
             }
         }
         Ok(None)

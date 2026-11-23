@@ -163,6 +163,7 @@ impl DaemonUseCaseAdapter {
             runtime,
             &RuntimeComposition::new(),
         )?
+        .with_pull_slots(std::sync::Arc::clone(&self.job_pulls))
         .keep(&selection, &approval)
         .await
     }

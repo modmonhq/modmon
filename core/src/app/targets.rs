@@ -356,7 +356,11 @@ impl TargetManager {
         let input_files = collect_bootstrap_inputs(&document.root)?;
         let access = access
             .map(|(request, binaries)| reviewed_access(request, binaries))
-            .transpose()?;
+            .transpose()?
+            .map(|access| BootstrapAccess {
+                apparmor_profiles: requirements.apparmor_profiles.clone(),
+                ..access
+            });
         let mut plan = TargetBootstrapPlan {
             project_id: document.config.project.id,
             project_name: document.config.project.name,
@@ -396,6 +400,7 @@ fn reviewed_access(
         upgrade: request.upgrade,
         downgrade: request.downgrade,
         notices: Vec::new(),
+        apparmor_profiles: Vec::new(),
     };
     access
         .validate()

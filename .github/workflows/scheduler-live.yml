@@ -46,6 +46,14 @@ jobs:
       - name: Install rootless Podman Compose
         if: matrix.runtime == 'podman-compose'
         run: sudo apt-get update && sudo apt-get install --yes podman podman-compose
+      - name: Let Podman stop pasta under AppArmor
+        if: matrix.runtime == 'podman-compose'
+        run: |
+          profile=/etc/apparmor.d/usr.bin.pasta
+          if [ -f "$profile" ] && ! grep -q 'peer=podman' "$profile"; then
+            sudo sed -i '/^profile pasta /a\  signal (receive) peer=podman,' "$profile"
+            sudo apparmor_parser --replace "$profile"
+          fi
       - name: Build mm in the constrained Cargo container
         run: |
           mkdir -p .live-cargo .live-target
@@ -57,6 +65,7 @@ jobs:
       - name: Run manual, failure, scheduled, restart-safe, and cleanup evidence
         env:
           MM_BIN: ${{ github.workspace }}/.live-target/debug/mm
+        shell: bash
         run: ./scripts/live-scheduler.sh "${{ matrix.runtime }}" 2>&1 | tee scheduler-live.log
       - name: Clean build and runtime resources
         if: always()

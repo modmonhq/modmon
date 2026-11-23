@@ -386,6 +386,7 @@ fn finish_stack_artifact(input: StackArtifactInput<'_>) -> Result<CompiledStackA
         user_ids: &input.host.user_ids,
         low_ports: &input.host.low_ports,
         host_userns: &input.host_network.host_userns,
+        shared_pid: &input.host.shared_pid,
     })?;
     let mut manifest = StackArtifactManifest {
         project_id: input.document.config.project.id,

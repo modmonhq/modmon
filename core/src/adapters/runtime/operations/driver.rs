@@ -548,6 +548,11 @@ impl RuntimeJobDriver for RuntimeOperationsAdapter {
                 message: "refusing a one-shot without explicit reviewed Compose files".to_owned(),
             });
         }
+        if self.kind == RuntimeKind::PodmanCompose {
+            crate::adapters::runtime::podman_apparmor::require_shared_pid_confined(
+                &launch.target,
+            )?;
+        }
         let mut args = self.compose_prefix(&launch.target)?;
         args.extend([
             "run".to_owned(),

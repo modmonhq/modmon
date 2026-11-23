@@ -480,7 +480,9 @@ pub fn load_host_policy(path: &Path) -> Result<(HostPolicy, Vec<u8>), MmError> {
         context: format!("reading host policy {}", path.display()),
         source,
     })?;
-    Ok((parse_host_policy(path, &bytes)?, bytes))
+    let policy = parse_host_policy(path, &bytes)?;
+    host_paths::check_resolved(path, &policy)?;
+    Ok((policy, bytes))
 }
 
 /// Checks `bytes`, read from `path`, as `mmd` checks its host policy.
@@ -758,6 +760,7 @@ fn security(message: &str) -> MmError {
 }
 
 mod deploy_key;
+mod host_paths;
 mod rollout;
 pub use rollout::StoredRollout;
 

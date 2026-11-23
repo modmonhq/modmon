@@ -204,11 +204,66 @@ impl StepFailure {
     /// message, which has no room for a list.
     #[must_use]
     pub fn with_log(&self) -> String {
-        if self.log.is_empty() {
-            return self.to_string();
-        }
-        format!("{self}. Its last log lines: {}", self.log.join(" | "))
+        format!("{self}{}", self.log_suffix())
     }
+
+    /// What [`Self::with_log`] adds to the failure: the end of its log.
+    #[must_use]
+    pub fn log_suffix(&self) -> String {
+        if self.log.is_empty() {
+            return String::new();
+        }
+        format!(
+            ". Its last log lines: {}",
+            failure_log_summary(&self.log).join(" | ")
+        )
+    }
+}
+
+/// How many last lines of a failed container's log a host keeps when the
+/// environment sets no `deploy.failure-log-lines`.
+pub const DEFAULT_FAILURE_LOG_LINES: u32 = 200;
+
+/// The most `deploy.failure-log-lines` may ask for.
+pub const MAX_FAILURE_LOG_LINES: u32 = 1000;
+
+/// The most bytes of a failed container's log a host keeps, whatever the
+/// number of lines.
+pub const FAILURE_LOG_BYTES: usize = 64 * 1024;
+
+/// How many of the kept lines a one-line message shows.
+pub const FAILURE_SUMMARY_LINES: usize = 20;
+
+/// The most characters of one kept line.
+pub const FAILURE_LINE_CHARS: usize = 400;
+
+/// The last `lines` of `log`, each cut to [`FAILURE_LINE_CHARS`] without
+/// control characters, and of those no more than [`FAILURE_LOG_BYTES`].
+#[must_use]
+pub fn kept_failure_log<S: AsRef<str>>(log: &[S], lines: usize) -> Vec<String> {
+    let mut kept = Vec::new();
+    let mut bytes = 0_usize;
+    for line in log.iter().rev().take(lines) {
+        let line = line
+            .as_ref()
+            .chars()
+            .filter(|character| !character.is_control())
+            .take(FAILURE_LINE_CHARS)
+            .collect::<String>();
+        bytes = bytes.saturating_add(line.len().saturating_add(1));
+        if bytes > FAILURE_LOG_BYTES {
+            break;
+        }
+        kept.push(line);
+    }
+    kept.reverse();
+    kept
+}
+
+/// The end of a kept failure log that fits in a one-line message.
+#[must_use]
+pub fn failure_log_summary(log: &[String]) -> &[String] {
+    &log[log.len().saturating_sub(FAILURE_SUMMARY_LINES)..]
 }
 
 /// What a host did for one step.

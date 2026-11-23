@@ -251,7 +251,6 @@ pub(crate) async fn log_tail(
             let text = line.split_once(' ').map_or(line, |(_, text)| text);
             text.chars()
                 .filter(|character| !character.is_control())
-                .take(400)
                 .collect()
         })
         .collect())

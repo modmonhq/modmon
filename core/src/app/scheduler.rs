@@ -38,6 +38,8 @@ pub struct JobSchedulerService {
     /// Where a job's container gets its files, environment, and secrets:
     /// from the last deployment, when there is one.
     launch_targets: Option<Arc<dyn JobLaunchTargets>>,
+    background_launches: bool,
+    pull_slots: Option<Arc<JobPullSlots>>,
 }
 
 pub struct JobSchedulerDependencies {
@@ -80,6 +82,8 @@ struct NewRunInput<'a> {
 }
 
 mod launch;
+mod lease;
+pub use lease::JobPullSlots;
 mod manager;
 mod runs;
 

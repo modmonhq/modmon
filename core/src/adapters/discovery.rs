@@ -127,6 +127,8 @@ struct State {
     /// The engine ids of this node's containers past their restart limit.
     held: std::collections::BTreeSet<String>,
     strangers: newcomer::Strangers,
+    /// When the last listing of the engine's containers that succeeded started.
+    listed: Option<Instant>,
 }
 
 impl State {
@@ -194,6 +196,7 @@ pub struct NameResolver {
     /// One listing of the engine's containers at a time, and when the
     /// last one started.
     listing: tokio::sync::Mutex<Option<Instant>>,
+    follow_up: newcomer::FollowUp,
 }
 
 impl std::fmt::Debug for NameResolver {
@@ -258,6 +261,7 @@ impl NameResolver {
             sockets,
             settling: tokio::sync::Mutex::new(()),
             listing: tokio::sync::Mutex::new(None),
+            follow_up: newcomer::FollowUp::default(),
         })
     }
 
@@ -376,14 +380,18 @@ impl NameResolver {
             .map(|network| network.network)
             .collect::<Vec<_>>();
         let mut listing = self.listing.lock().await;
-        *listing = Some(Instant::now());
+        let started = Instant::now();
+        *listing = Some(started);
         let observed = self.runtime.network_containers(&engine_networks).await;
         let mut state = self.write();
         let before = leaving::answers(&state);
         state.note("listen", unbound);
         state.local.node.clone_from(&networks.node);
         match observed {
-            Ok(observed) => state.take_observed(&networks, observed),
+            Ok(observed) => {
+                state.take_observed(&networks, observed);
+                state.listed = Some(started);
+            }
             Err(error) => {
                 // One failed look keeps what was seen last; an engine that
                 // stays away has stopped its containers with it.
@@ -510,7 +518,12 @@ impl NameResolver {
     /// The reply to one lookup, or `None` for a message that gets none: a
     /// lookup that does not come from a container of this node is not
     /// answered at all.
-    async fn reply(&self, message: &[u8], source: IpAddr, limit: usize) -> Option<Vec<u8>> {
+    async fn reply(
+        self: &Arc<Self>,
+        message: &[u8],
+        source: IpAddr,
+        limit: usize,
+    ) -> Option<Vec<u8>> {
         let IpAddr::V4(source) = source else {
             return None;
         };

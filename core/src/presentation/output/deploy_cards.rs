@@ -309,6 +309,11 @@ fn local_notes(plan: &DeploymentPlan) -> Vec<(Tone, String)> {
         };
         (tone, file.line())
     }));
+    notes.extend(
+        plan.healthcheck_arguments
+            .iter()
+            .map(|check| (Tone::Warn, format!("{}; {}", check.line(), check.help()))),
+    );
     notes.extend(masked_notes(plan));
     notes
 }
@@ -401,7 +406,7 @@ pub fn apply_report_card<T: Serialize>(
                 format!(
                     "{}, last log lines of the failed container: {}",
                     node.node,
-                    node.log.join(" ⏎ ")
+                    crate::domain::rollout::failure_log_summary(&node.log).join(" ⏎ ")
                 ),
             ));
         }

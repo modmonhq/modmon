@@ -169,7 +169,12 @@ projects:
   `/var/lib/mm/projects/PROJECT_ID/deploy-key`.
 - **`allow`** lets one service use one Compose feature that reaches the host,
   such as `network-host` for `network_mode: host`, in the environments the
-  host runs. See
+  host runs. For `host-path`, the entry's `paths` lists the host paths the
+  service may bind-mount read-only, such as `[/proc, /sys]` for a metrics
+  exporter. A path that would give root on the host, such as `/` or `/run`,
+  is refused, after `mmd` resolves symlinks. A `/proc` grant exposes every
+  other project's processes on the host; see
+  [what a deploy may run](./remote-access.md#what-a-deploy-may-run). See
   [what a deploy may run](./remote-access.md#what-a-deploy-may-run); `mm config
   validate --for-remote --host-policy FILE` checks a project against a copy of
   this file.
@@ -694,6 +699,27 @@ mm sets it to 0 on each service that has a network namespace of its own
 (not `network_mode: host`, `container:` or `service:`) and does not set it
 under `sysctls`, and the plan lists those services under `ports:`.
 
+Podman before 5.8 splits each argument of an exec-form health check at
+whitespace, so a check such as `["CMD", "node", "-e", "<script with
+spaces>"]` never passes there. The supported hosts are affected: Debian 13 and
+Ubuntu 25.04 ship Podman 5.4. `mm config validate`, `mm doctor` and the
+deployment plan warn about such a check (`MM_HEALTHCHECK_ARGUMENTS`), after
+merging the stack's Compose files and following `extends` within a file (mm
+refuses `extends.file`), and give the same
+check in shell form, which needs `/bin/sh` in the image:
+
+```yaml
+healthcheck:
+  test: ["CMD-SHELL", "node -e 'require(\"http\").get(\"http://127.0.0.1:3000\", (r) => process.exit(r.statusCode < 400 ? 0 : 1)).on(\"error\", () => process.exit(1))'"]
+```
+
+mm does not know the values of `${VAR}` interpolations in a Compose file, so
+`mm config validate` and `mm doctor` also warn about an argument that is a
+whole `${VAR}` or `$VAR`, or whose `${VAR:-default}` default contains
+whitespace; the warning says the value decides. The deployment plan lists
+only arguments that split whatever the values are. `mm doctor` and the plan
+say nothing when the engine's Podman is 5.8 or later.
+
 Requirements on each host:
 
 - Podman 5.0 or later: Debian 13, or Ubuntu 25.04 or later.
@@ -780,7 +806,9 @@ container user's id to `FIRST` for a service that runs as another user.
 `mm doctor` asks each host for its engine and reports a host whose Podman is
 older than 5.0 (`MM_PODMAN_VERSION`), whose `podman compose` does not run
 Docker Compose (`MM_PODMAN_COMPOSE`), or whose engine does not answer
-(`MM_NODE_ENGINE`), each with the command that fixes it. `mm target nodes
+(`MM_NODE_ENGINE`), each with the command that fixes it. It also warns about
+a host whose containers run under Podman's default AppArmor profile
+(`MM_PODMAN_APPARMOR`); see [AppArmor](#apparmor). `mm target nodes
 --output json` shows the engine of each node under `engine`.
 
 A cluster node runs one engine for every environment: it refuses to plan a
@@ -802,6 +830,92 @@ Limits on Podman:
   with its last; `mmd` gives a bridge that came back its settings within a
   few seconds, and until then a container reaches only the members on its
   own node.
+
+### AppArmor
+
+On a host whose kernel runs AppArmor (Debian and Ubuntu do by default),
+Podman confines every container with a profile. Its own profile,
+`containers-default-<version>`, lets a process signal only processes under
+the same profile. With user namespaces, which mm gives every service,
+AppArmor stacks that profile with the OCI runtime's profile (for example
+`containers-default-0.66.0//&crun` on Ubuntu 26.04 with Podman 5.7). The
+same-profile rule then no longer matches, so a process cannot signal
+another one in its container: a supervisor cannot stop the database it
+runs, and `kill` inside the container fails with `Permission denied`.
+
+Setup avoids this. Where the kernel runs AppArmor, it installs
+`/etc/apparmor.d/mm-containers`, loads it, and points Podman at it in
+`/etc/containers/containers.conf.d/50-mm-apparmor.conf`:
+
+```toml
+[containers]
+apparmor_profile = "mm-containers"
+```
+
+The profile is Podman's own with two more rules, `signal (send,receive),`
+and `ptrace (read),`, so the processes of a container can signal each other
+and read each other's `/proc` entries again. The rules name no peer, so
+they reach every process the container sees, and a container that sees only
+its own processes reaches nothing else.
+
+A container can also see processes beyond its own: with `pid: host`, which
+the workload guardrails refuse unless the host admin allows `pid-host` for
+the service (see [what a deploy may run](./remote-access.md#what-a-deploy-may-run)), with
+`pid: "container:NAME"`, or with `pid: "service:NAME"` of such a service.
+For those mm keeps Podman's own rules: setup also installs
+`/etc/apparmor.d/mm-containers-shared-pid`, Podman's profile unchanged
+under mm's name, and the Compose overlay gives each such service
+`security_opt: ["apparmor=mm-containers-shared-pid"]` on a host whose
+kernel holds it, also when the `pid` comes through `extends`. Their
+processes may hit the same stacking problem, as they would without mm. A
+service that sets its own `apparmor=` option keeps it, except
+`apparmor=mm-containers`, which mm refuses on such a service
+(`MM_PODMAN_APPARMOR`). On a host whose containers get `mm-containers` but
+whose kernel has not loaded `mm-containers-shared-pid`, for example one set
+up by an earlier mm, mm refuses to plan such a service and names
+`mm target setup plan` as the fix. Jobs of a service run from the same
+Compose files as the service, so they get the same profile.
+
+Containers that mm creates later from the files of an earlier deployment
+(a job, a rollback, a scale-up) are checked the same way: on a host whose
+containers get `mm-containers`, a pid-sharing service whose files name no
+profile, because they were rendered before setup installed it, is refused
+with `MM_PODMAN_APPARMOR`. Deploy the environment again (`mm deploy plan`)
+to render it with `mm-containers-shared-pid`.
+
+The plan lists both profiles under remote access (`apparmor:` in the text
+and `apparmor-profiles` in `--output json`; the cluster plan shows them as
+`apparmor`). Setup replaces a profile when a newer mm changes it, loads one
+the kernel does not hold, and removes the drop-in from a host whose kernel
+does not run AppArmor, where Podman refuses any profile.
+
+Containers that were running before setup keep Podman's profile until they
+are created again, for example by the next deployment that changes them.
+
+To use a profile of your own, load it and set `apparmor_profile` in a
+drop-in that sorts after `50-mm-apparmor.conf`, such as `60-apparmor.conf`.
+Do not use `unconfined`: the workload guardrails refuse
+`security_opt: [apparmor:unconfined]` for a reason, and a host-wide
+`unconfined` removes the same protection from every container.
+
+`mm doctor` asks each Podman host which profile its containers get and
+reports `MM_PODMAN_APPARMOR`: a warning when it is Podman's default (set
+the host up again with `mm target setup plan` and its apply), and an error
+when Podman is pointed at `mm-containers` and the kernel has not loaded it,
+which stops every container from starting (on the node,
+`apparmor_parser --replace /etc/apparmor.d/mm-containers`). It also warns
+when the kernel has not loaded `mm-containers-shared-pid` on a host whose
+containers get `mm-containers`. It reads the
+profile from `containers.conf` and its drop-ins in the order the host's
+Podman applies them (Podman 5 reads `/usr/share/containers/containers.conf`,
+`/etc/containers/containers.conf` and `/etc/containers/containers.conf.d`;
+Podman 6 also reads the `containers.conf.d` and `containers.rootful.conf.d`
+directories under `/usr/share/containers` and `/etc/containers`). It does
+not see a profile set with `CONTAINERS_CONF`, in the configuration of the
+account `mmd` runs Podman as, or on a single container.
+
+Setup changes nothing for Docker Engine: mm runs its containers in the
+host's user namespace, and the stacking above comes with user namespaces.
 
 ## Apply the users file for the first time
 
@@ -903,10 +1017,14 @@ PLAN=$(mm --output json --environment production deploy plan --receipt build-rec
 mm --environment production deploy apply --plan "$PLAN" --yes
 ```
 
-The host deploys the receipt's digests when production's configuration at
-that commit builds exactly the same units as `ci` did: the same modules,
-platforms, image repositories, variants, and build inputs. Otherwise it
-refuses and names the first module that differs. A module with a build secret
+`ci` needs no service of its own: `mm build --publish` builds every module the
+environments on remote targets run, when they select the same build variant
+of it and it has no build secret outside `credential-only-secrets`. The host
+deploys the receipt's digests when production's configuration at that
+commit builds the same units as `ci` did: the same platforms, image
+repositories, variants, and build inputs for every module production runs.
+Otherwise it refuses and names the first module that differs; a module
+missing from the receipt is refused before mm contacts any host. A module with a build secret
 can only be promoted when every secret is listed under
 `credential-only-secrets`, because other secrets can hold different values
 per environment. The plan's `plan.build_receipt.environment` and the host's
@@ -1300,10 +1418,14 @@ Deployment 8a41… on production [production]
 error[MM_APPLY_STOPPED]: plan 8a41… failed on node 'app-2': service 'web' of stack 'app': its health check fails (MM_RUNTIME_UNHEALTHY). Its last log lines: … Rolled back to what they ran before: app-1, app-2. Not changed: db-1. Fix the cause, then run `mm deploy plan` again
 ```
 
-The report names the node, the service, and the last twenty lines its
-container logged. A node that was not reached keeps its containers as they
-were; the network addresses the plan gave out stay reserved. A deployment also fails at once, without waiting for the
-window, when a container exits or the engine keeps restarting it. The access
+The report names the node, the service, and the last lines its container
+logged: 200 by default, set with `deploy.failure-log-lines`. The error line
+under it repeats the last five. A rollback removes the failed container, but
+`mm deploy status` still shows those lines until the node's next deployment.
+A node that was not reached keeps its containers as they were; the network
+addresses the plan gave out stay reserved. A deployment also fails at once,
+without waiting for the window, when a container exits or the engine keeps
+restarting it. The access
 change of the plan is not rolled back: a key the commit removed stays removed
 on the nodes the deployment reached.
 
@@ -1338,6 +1460,7 @@ modules:
 | --------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `deploy.convergence-timeout`      | `10m`        | How long a stack may take on a node to become healthy: `90s`, `15m`, `1h`. The plan shows it. A stack that is not healthy in time fails the deployment like any other failure.         |
 | `deploy.progress-timeout`         | `2m`         | How long `mm deploy apply` waits without any sign of progress from a host before it stops with `MM_TIMEOUT`, naming the host, the step, and the operation. At least `30s`.            |
+| `deploy.failure-log-lines`        | `200`        | How many last lines of a failed container's log a node keeps for the report and `mm deploy status`: 1 to 1000, and never more than 64 KiB.                                           |
 | `stacks.<stack>.after`            | none         | Stacks that roll out before this one, on every node, so that a database is healthy before the application that needs it starts.                                                      |
 | `update.order`                    | `stop-first` | `start-first` starts the new container next to the old one; see below.                                                                                                               |
 | `update.parallelism`              | `1`          | How many nodes replace the service's stack at the same time. A stack takes the smallest value among its services.                                                                    |
@@ -2037,13 +2160,15 @@ listens on the node's own address on each network (the first address of the
 node's slice, such as `10.64.0.1`), and the containers of the network's
 services get an `/etc/resolv.conf` that names that address. `mmd` knows the
 containers of its own node by watching the engine. A lookup from an address
-where `mmd` knows no container yet waits up to a second for the engine to show
-one there, so a container that resolves its own `tasks.<service>` name as its
-entrypoint's first step finds itself in the first answer. It learns the containers of
-the other nodes by asking each node every two seconds, over the mesh, what it
-runs. Nothing is stored and no deployment pushes anything: what runs decides
-the answers. Because each node answers its own containers, it can prefer the
-containers next to them.
+where `mmd` knows no container yet waits for the engine to show one there: up
+to a second, or on an engine that takes longer to list its containers, until
+one listing started after the lookup has finished, and never more than three
+seconds. So a container that resolves its own `tasks.<service>` name as its
+entrypoint's first step finds itself in the first answer. It learns the
+containers of the other nodes by asking each node every two seconds, over the
+mesh, what it runs. Nothing is stored and no deployment pushes anything: what
+runs decides the answers. Because each node answers its own containers, it can
+prefer the containers next to them.
 
 When a node has not answered the others for ten seconds, they leave its
 containers out of their answers, and `mm service status` says which node is

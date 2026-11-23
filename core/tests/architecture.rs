@@ -1,6 +1,8 @@
 use std::fs;
 use std::path::Path;
 
+mod test_items;
+
 #[test]
 fn architecture_domain_does_not_import_adapters() {
     assert_no_layer_imports(
@@ -319,14 +321,6 @@ fn architecture_domain_crate_is_the_domain_directory_and_nothing_else() {
     }
 }
 
-fn production_source(source: &str) -> String {
-    source
-        .split("#[cfg(test)]")
-        .next()
-        .unwrap_or(source)
-        .to_owned()
-}
-
 fn assert_no_layer_imports(root: &Path, layer: &str, forbidden: &[&str]) {
     for path in rust_files(root) {
         let source = fs::read_to_string(&path).unwrap_or_default();
@@ -361,7 +355,7 @@ fn production_file_source(path: &Path) -> String {
     if is_test_source(path) {
         return String::new();
     }
-    production_source(&fs::read_to_string(path).unwrap_or_default())
+    test_items::without_test_items(&fs::read_to_string(path).unwrap_or_default())
 }
 
 fn is_test_source(path: &Path) -> bool {

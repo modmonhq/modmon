@@ -4,7 +4,10 @@
 use super::*;
 
 impl JobSchedulerService {
-    /// Starts the claimed run's container and records it as running.
+    /// Starts the claimed run's container and records it as running,
+    /// unless the claim lost the run on the way. Any other way the start
+    /// ends that the claim can still record ends the attempt as failed;
+    /// a lost claim or a state store that does not answer records nothing.
     pub(super) async fn start(
         &self,
         document: &ConfigDocument,
@@ -13,28 +16,25 @@ impl JobSchedulerService {
         claim: &ClaimedJobRun,
         output_limit: usize,
     ) -> Result<(), MmError> {
-        match self
+        let (launched, released) = self
             .launch_claim(document, selection, target, claim, output_limit)
-            .await
-        {
-            Ok(runtime_id) => {
-                self.repository
-                    .mark_run_running(claim, &runtime_id, self.clock.now_unix_ms())?;
-                Ok(())
-            }
-            Err(
-                error @ (MmError::Launch { .. }
-                | MmError::ProcessFailed { .. }
-                | MmError::Timeout { .. }),
-            ) => self.not_started(target, claim, error).await,
-            Err(error) => Err(error),
-        }
+            .await;
+        let recorded = match launched {
+            Ok(Some(runtime_id)) => self
+                .repository
+                .mark_run_running(claim, &runtime_id, self.clock.now_unix_ms())
+                .map(drop),
+            Ok(None) => Ok(()),
+            Err(error @ MmError::State { .. }) => Err(error),
+            Err(error) => self.not_started(target, claim, error).await,
+        };
+        recorded.and(released)
     }
 
     /// Ends the attempt of a run whose container the engine could not
     /// start, with the error's code and its message as the output. The
     /// error is the caller's when no retry follows.
-    async fn not_started(
+    pub(super) async fn not_started(
         &self,
         target: &crate::domain::runtime::RuntimeTarget,
         claim: &ClaimedJobRun,
@@ -55,6 +55,8 @@ impl JobSchedulerService {
         }
     }
 
+    /// The started container's ID (`None` when the claim lost the run),
+    /// and whether what was staged for it went.
     async fn launch_claim(
         &self,
         document: &ConfigDocument,
@@ -62,12 +64,16 @@ impl JobSchedulerService {
         target: &crate::domain::runtime::RuntimeTarget,
         claim: &ClaimedJobRun,
         output_limit: usize,
-    ) -> Result<String, MmError> {
+    ) -> (Result<Option<String>, MmError>, Result<(), MmError>) {
         let prepared = match &self.launch_targets {
             Some(targets) => {
-                targets
+                match targets
                     .prepare(selection, &target.stack_name, claim.run.id)
-                    .await?
+                    .await
+                {
+                    Ok(prepared) => prepared,
+                    Err(error) => return (Err(error), Ok(())),
+                }
             }
             None => None,
         };
@@ -75,12 +81,12 @@ impl JobSchedulerService {
             Some(prepared) => (prepared.target, Some(prepared.release)),
             None => (target.clone(), None),
         };
-        let launched = self.launch_on(document, target, claim, output_limit).await;
+        let launched = self
+            .holding(claim, self.launch_on(document, target, claim, output_limit))
+            .await;
         // The container exists or never will: what was staged for it goes.
         let released = release.map_or(Ok(()), |release| release());
-        let runtime_id = launched?;
-        released?;
-        Ok(runtime_id)
+        (launched.and_then(Option::transpose), released)
     }
 
     async fn launch_on(
@@ -103,6 +109,7 @@ impl JobSchedulerService {
             .environments
             .get(&claim.run.environment)
             .and_then(|environment| environment.deploy.as_ref());
+        let slot = self.pull_slot(claim).await?;
         self.runtime
             .pull_image(
                 &target,
@@ -111,6 +118,7 @@ impl JobSchedulerService {
                     .unwrap_or(crate::domain::config::DEFAULT_PULL_TIMEOUT),
             )
             .await?;
+        drop(slot);
         self.runtime
             .launch(JobLaunch {
                 run_id: claim.run.id,

@@ -337,36 +337,33 @@ pub(crate) fn snapshot_build_context(
 
 const SNAPSHOT_DIRECTORY_MODE: u32 = 0o755;
 
-/// The mode a context file has in the snapshot: 0755 when the checkout
-/// marks it executable, otherwise 0644, whatever the umask.
+#[cfg(unix)]
 fn snapshot_file_mode(metadata: &fs::Metadata) -> u32 {
-    #[cfg(unix)]
-    let executable = {
-        use std::os::unix::fs::PermissionsExt;
-        metadata.permissions().mode() & 0o111 != 0
-    };
-    #[cfg(not(unix))]
-    let executable = {
-        let _ = metadata;
-        false
-    };
-    if executable { 0o755 } else { 0o644 }
+    use std::os::unix::fs::PermissionsExt;
+    if metadata.permissions().mode() & 0o100 == 0 {
+        0o644
+    } else {
+        0o755
+    }
 }
 
+#[cfg(not(unix))]
+fn snapshot_file_mode(_metadata: &fs::Metadata) -> u32 {
+    0o644
+}
+
+#[cfg(unix)]
 fn set_snapshot_mode(path: &Path, mode: u32) -> Result<(), MmError> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(mode)).map_err(|source| MmError::Io {
-            context: format!("setting build snapshot permissions on {}", path.display()),
-            source,
-        })
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = (path, mode);
-        Ok(())
-    }
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(mode)).map_err(|source| MmError::Io {
+        context: format!("setting build snapshot permissions on {}", path.display()),
+        source,
+    })
+}
+
+#[cfg(not(unix))]
+fn set_snapshot_mode(_path: &Path, _mode: u32) -> Result<(), MmError> {
+    Ok(())
 }
 
 fn copy_into_snapshot(destination: &Path, relative: &Path, source: &Path) -> Result<(), MmError> {

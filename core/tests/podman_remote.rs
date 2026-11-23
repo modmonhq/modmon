@@ -350,6 +350,8 @@ fn podman(version: &str, compose: Option<(&str, &str)>) -> EngineFacts {
         compose: compose.map(|(name, _)| name.to_owned()),
         compose_version: compose.map(|(_, version)| version.to_owned()),
         problem: None,
+        apparmor: None,
+        recursive_read_only: false,
     }
 }
 
@@ -441,6 +443,8 @@ fn doctor_names_an_old_podman_and_a_compose_provider_mm_cannot_drive() {
         compose: None,
         compose_version: None,
         problem: None,
+        apparmor: None,
+        recursive_read_only: false,
     };
     assert!(engine_diagnostics(&[report("app-1", Some(docker))]).is_empty());
 }

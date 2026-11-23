@@ -175,5 +175,17 @@ environments:
         "{}",
         found[0].1
     );
+
+    let lines = timeout.replace("convergence-timeout: soon", "failure-log-lines: 0");
+    let found = findings(&lines, PLAIN)?;
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].0, "MM_DEPLOY_FAILURE_LOG_LINES");
+    assert!(
+        found[0]
+            .1
+            .contains("deploy.failure-log-lines must be between 1 and 1000"),
+        "{}",
+        found[0].1
+    );
     Ok(())
 }

@@ -35,7 +35,7 @@ mod graph;
 use graph::*;
 mod scope;
 pub use scope::BuildRequest;
-use scope::modules_in_scope;
+use scope::{modules_in_scope, publish_scope};
 mod source;
 #[cfg(test)]
 pub(crate) use source::hash_context;
@@ -90,19 +90,40 @@ impl BuildManager {
         let environment = resolve_environment(&document, selection.environment.as_deref())?;
         Ok(modules_in_scope(&document, &environment)
             .iter()
-            .filter_map(|name| document.config.modules.get(name))
-            .any(|module| {
-                module.build.as_ref().map_or_else(
-                    || {
-                        document
-                            .root
-                            .join(&module.path)
-                            .join("Dockerfile")
-                            .is_file()
-                    },
-                    |build| build.enabled,
-                )
-            }))
+            .any(|name| builds_image(&document, name)))
+    }
+
+    /// The modules `mm build --publish` builds for the selected
+    /// environment, each with the environments it is for.
+    pub fn publish_scope(
+        &self,
+        selection: &WorkspaceSelection,
+    ) -> Result<BTreeMap<String, BTreeSet<String>>, MmError> {
+        let document = self.documents.load_from(&selection.start)?;
+        let environment = resolve_environment(&document, selection.environment.as_deref())?;
+        Ok(publish_scope(&document, &environment)
+            .into_iter()
+            .filter(|(name, _)| builds_image(&document, name))
+            .collect())
+    }
+
+    /// Refuses a receipt built for another environment that has no image
+    /// of a module the selected environment runs. Only a checkout at the
+    /// receipt's commit with the configuration it was built from is checked.
+    pub async fn check_receipt_covers(
+        &self,
+        selection: &WorkspaceSelection,
+        receipt: &BuildReceipt,
+    ) -> Result<(), MmError> {
+        let document = self.documents.load_from(&selection.start)?;
+        let environment = resolve_environment(&document, selection.environment.as_deref())?;
+        if receipt.plan.environment == environment
+            || document.source_hash != receipt.plan.config_hash
+            || self.source.inspect(&document.root).await?.commit != receipt.source_commit()
+        {
+            return Ok(());
+        }
+        refuse_missing_modules(&document, &environment, receipt)
     }
 
     pub async fn plan(
@@ -125,7 +146,12 @@ impl BuildManager {
 
         let source = self.source.inspect(&document.root).await?;
         let engine = self.engine.filter(|_| !request.publish);
-        plan_from_source(document, environment, source, (request, engine), &[])
+        let scope = match (request.all, request.publish) {
+            (true, _) => None,
+            (false, true) => Some(publish_scope(&document, &environment).into_keys().collect()),
+            (false, false) => Some(modules_in_scope(&document, &environment)),
+        };
+        plan_from_source(document, environment, source, (request, engine, scope), &[])
     }
 
     /// Checks a published build receipt against this checkout for the
@@ -179,18 +205,78 @@ impl BuildManager {
         if errors > 0 {
             return Err(MmError::invalid(&validation.diagnostics));
         }
+        refuse_missing_modules(&document, &environment, receipt)?;
+        let scope = Some(modules_in_scope(&document, &environment));
         // Plan from the receipt's source so VERSION and tags match the build.
         let current = plan_from_source(
             document,
             environment,
             receipt.plan.source.clone(),
-            (BuildRequest::from(true), None),
+            (BuildRequest::from(true), None, scope),
             added,
         )?;
         receipt
             .promote(&current)
             .map_err(|message| MmError::Build { message })
     }
+}
+
+/// Whether mm builds an image for `module`: from its `build:` section, or
+/// from a Dockerfile in its directory.
+fn builds_image(document: &ConfigDocument, module: &str) -> bool {
+    document.config.modules.get(module).is_some_and(|module| {
+        module.build.as_ref().map_or_else(
+            || {
+                document
+                    .root
+                    .join(&module.path)
+                    .join("Dockerfile")
+                    .is_file()
+            },
+            |build| build.enabled,
+        )
+    })
+}
+
+/// The first module `environment` runs and builds that `receipt`, built
+/// for another environment, has no image of, and the command that
+/// publishes it.
+fn refuse_missing_modules(
+    document: &ConfigDocument,
+    environment: &str,
+    receipt: &BuildReceipt,
+) -> Result<(), MmError> {
+    let built = receipt.plan.environment.as_str();
+    let Some(module) = modules_in_scope(document, environment)
+        .into_iter()
+        .filter(|name| builds_image(document, name))
+        .find(|name| !receipt.plan.units.iter().any(|unit| &unit.module == name))
+    else {
+        return Ok(());
+    };
+    let fix = if publish_scope(document, built).contains_key(&module) {
+        format!(
+            "publish this commit again with `mm -e {built} build --publish`, which builds it for '{environment}', and write a new receipt with `mm -e {built} build receipt FILE`"
+        )
+    } else {
+        let secrets = document
+            .config
+            .modules
+            .get(&module)
+            .and_then(|module| module.build.as_ref())
+            .is_some_and(|build| reuse_policy_for(build) != BuildReusePolicy::Allowed);
+        let why = if secrets {
+            "it mounts build secrets whose values can differ between environments, so it is built in each environment that runs it".to_owned()
+        } else {
+            format!("a published build of '{built}' does not build it for '{environment}'")
+        };
+        format!("{why}; publish it with `mm -e {environment} build --publish`")
+    };
+    Err(MmError::Build {
+        message: format!(
+            "the build receipt from environment '{built}' has no image of module '{module}', which '{environment}' runs; {fix}"
+        ),
+    })
 }
 
 /// Where a build receipt is checked.
@@ -208,7 +294,11 @@ fn plan_from_source(
     document: ConfigDocument,
     environment: String,
     source: crate::domain::build::BuildSource,
-    (request, engine): (BuildRequest, Option<LocalImageEngine>),
+    (request, engine, scope): (
+        BuildRequest,
+        Option<LocalImageEngine>,
+        Option<BTreeSet<String>>,
+    ),
     excluded: &[PathBuf],
 ) -> Result<ImageBuildPlan, MmError> {
     let publish = request.publish;
@@ -232,7 +322,6 @@ fn plan_from_source(
         .environments
         .get(&environment)
         .and_then(|config| config.build_variant.as_deref());
-    let scope = (!request.all).then(|| modules_in_scope(&document, &environment));
     let mut units = Vec::new();
     for (module_name, module) in &document.config.modules {
         if scope

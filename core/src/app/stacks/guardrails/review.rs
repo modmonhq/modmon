@@ -8,8 +8,6 @@ use crate::domain::diagnostic::Diagnostic;
 use crate::domain::error::MmError;
 use crate::domain::host_policy::{EnrolledProject, HostPolicy};
 
-const LOCAL_TARGET: &str = "local";
-
 /// The findings of `requested`, or without it of every environment a host
 /// policy applies to: the ones `policy` runs for the project, or without a
 /// policy every environment whose target is not `local`. With `policy`,
@@ -47,10 +45,32 @@ pub fn remote_guardrail_diagnostics(
                     )
                     .at_path(*path)
                 }
+                _ if finding.resource_name.is_some() => Diagnostic::warning(
+                    "MM_REMOTE_GUARDRAIL_NAME",
+                    format!(
+                        "a remote host may refuse this in environment '{environment}': {finding}"
+                    ),
+                )
+                .at_path(document.source("stacks"))
+                .with_help(format!(
+                    "a host runs it only when the name is the stack's Compose project name on that host or starts with it and `_`, or when the host admin allows {} for {}. Leaving `name:` out makes Compose create a new, empty one, so keep it until any data is moved",
+                    finding.feature, finding.subject
+                )),
+                _ if finding.feature == super::namespaces::CONTAINER_JOIN => {
+                    refused(document, environment, &finding).with_help(
+                        "no host exception allows this: write the mode itself, and `service:<service>` to join a service of the same stack",
+                    )
+                }
+                _ if !finding.grantable() => refused(document, environment, &finding)
+                    .with_help("no host exception allows this: change the mount as the message says"),
                 Some((path, _)) => refused(document, environment, &finding).with_help(format!(
-                    "drop the feature, or allow it for {} under this project's `allow` in {}",
+                    "drop the feature, or allow it for {} under this project's `allow` in {}{}",
                     finding.subject,
-                    path.display()
+                    path.display(),
+                    finding.host_path.as_ref().map_or(String::new(), |host_path| format!(
+                        ", with `{}` under its `paths`",
+                        host_path.display()
+                    ))
                 )),
                 None => refused(document, environment, &finding).with_help(
                     "drop the feature, or ask the host admin to allow it for this service in host.yaml",
@@ -79,13 +99,7 @@ pub(in crate::app::stacks) fn on_local_target(
     document: &ConfigDocument,
     environment: &str,
 ) -> bool {
-    document
-        .config
-        .environments
-        .get(environment)
-        .and_then(|environment| environment.target.as_deref())
-        .unwrap_or(&document.config.target)
-        == LOCAL_TARGET
+    document.config.on_local_target(environment)
 }
 
 fn refused(

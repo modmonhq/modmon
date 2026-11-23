@@ -112,7 +112,7 @@ impl JobSchedulerService {
         };
         let mut runs = listed(self)?;
         let mut moved = false;
-        for run in runs.iter().filter(|run| run.state.is_active()) {
+        for run in runs.iter().filter(|run| moves_on_read(run)) {
             moved |= self.advance(selection, &document, run.id, approval).await?;
         }
         if moved {
@@ -389,6 +389,14 @@ impl crate::app::ports::DeploymentJobs for JobSchedulerService {
     }
 }
 
+/// Whether a read of the runs moves `run` on: one that runs, or one that
+/// waits for its next attempt. A deployment's own run waits for that
+/// deployment, which starts it with its own files.
+fn moves_on_read(run: &JobRun) -> bool {
+    run.state.is_active()
+        || (run.state == JobRunState::RetryWait && run.trigger != JobTrigger::BeforeDeploy)
+}
+
 /// Who a deployment's job runs as, in the run's record.
 fn deployment_approval(plan_hash: &str) -> ApprovalContext {
     ApprovalContext {
@@ -421,8 +429,9 @@ impl JobSchedulerService {
                     && !schedule.retired
                     && schedule.next_due_at_unix_ms.is_some_and(|due| due <= now)
             });
+        let keeper = self.clone().with_background_launches();
         if schedule_due {
-            return self.cycle(selection, approval).await.map(|_| ());
+            return keeper.cycle(selection, approval).await.map(|_| ());
         }
         let waiting = self
             .repository
@@ -438,7 +447,7 @@ impl JobSchedulerService {
             return Ok(());
         }
         for run in waiting {
-            self.advance(selection, &document, run, approval).await?;
+            keeper.advance(selection, &document, run, approval).await?;
         }
         Ok(())
     }

@@ -8,15 +8,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- A host exception for host paths: `host-path` in an `allow` entry of
+  `/etc/mm/host.yaml`, with the paths in `paths`, lets one service bind-mount
+  exactly those host paths recursively read-only (long syntax with
+  `read_only: true` and `bind.recursive: readonly`), such as `/proc` and
+  `/sys` for a metrics exporter. `mmd` plans one only on Docker Engine 25
+  (API 1.44) or later on Linux 5.12 or later, as its engine reports; a Podman
+  host refuses host paths for now. Allowing a path hands the repo
+  what it holds: `/proc` shows every other project's processes, environment
+  variables and files on the host, and a path with an engine socket or
+  secrets in it, such as `/`, is root on the host. A policy that lists `/`,
+  `/run`, `/var/run`, `/var/lib/docker`, `/var/lib/containers`,
+  `/var/lib/containerd`, `/etc/mm`, `/var/lib/mm`, `/root`, `/home`,
+  `/etc/shadow` or `/etc/ssh`, a path above or inside
+  one, or a path inside `/proc`, is refused; `mmd` checks each path after
+  resolving symlinks. See "Collect host metrics" in the remote access guide.
 - `mm target preference set-address ENVIRONMENT NODE HOST[:PORT]` connects
   this device to a cluster node at an address of its own, such as a VPN
   address, without changing the repo. The node's recorded host key and daemon
   identity are checked as before. `unset-address` goes back to the repo's
   address, `show` lists them, and `mm target nodes`, the terminal UI and
   `MM_UNREACHABLE` say when one is in effect.
+- `mm config validate`, `mm doctor` and the deployment plan warn
+  (`MM_HEALTHCHECK_ARGUMENTS`) about a Compose health check in exec form
+  (`CMD`) with an argument that contains whitespace or is empty, on Podman:
+  Podman before 5.8 splits such an argument, so the check never passes. The
+  warning names the service and file and gives the equivalent `CMD-SHELL`
+  check.
+- `deploy.failure-log-lines` sets how many last lines of a failed container's
+  log a deployment keeps; `mm deploy status` shows them after a rollback
+  removed the container.
 
 ### Changed
 
+- `mm build --publish` also builds the modules that environments on remote
+  targets run with the same build variant, so a receipt from a build-only
+  environment such as `ci` deploys to an environment whose services it does
+  not run. A CI publish can therefore build more images and take longer.
+  Modules with build secrets outside `credential-only-secrets` are still
+  built only where they run. The plan shows the environments each module is
+  for, and `mm deploy plan --receipt` refuses a receipt that lacks a module
+  the environment runs before asking any host. Builds without `--publish`
+  are unchanged.
+- A deployment keeps the last 200 lines of a failed container's log, bounded
+  to 64 KiB with secret values hidden, instead of 20, also on a single host.
 - A first deployment that fails while a stack starts is no longer removed:
   nothing ran before it, so the stacks it started keep running as they are,
   the failed one too, and the error names them with the commands to look at
@@ -26,12 +61,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Security: a remote host or cluster node no longer runs a service that
+  reaches the host or another container without an exception.
+  `container:NAME` in `pid`, `ipc` and `network_mode` is refused
+  (`container-join`, which no exception allows; use `service:<service>`). A
+  `service:` join that reaches a service with a host namespace needs the same
+  exception as that service, such as `pid-host`. A guardrail key whose value
+  comes from a variable, such as `privileged: ${PRIVILEGED:-true}`, a
+  `security_opt` entry, `external` or a secret's `file`, is refused as the
+  feature it could turn on; write the value itself. A quoted
+  `privileged: "true"` and the `external: {name: ...}` form are caught too.
+  `mm config validate --for-remote` reports the same.
+- Security: a remote host checks more Compose keys against the values it
+  runs rather than a list of known-bad ones. A config's or secret's `file`
+  reached through a symlink or a `..` out of the project counts as
+  `file-outside-project`, and `cap_add` entries in lower case, such as
+  `cap_chown`, are no longer refused by mistake. **Breaking for remote
+  targets**; each needs a change or a host exception:
+  - `security_opt` accepts only `no-new-privileges` and `seccomp=builtin`
+    without the `security-opt` exception, so a custom seccomp profile, SELinux
+    label or AppArmor profile is refused.
+  - A namespace mode other than the service's own, a `service:` join or
+    `host` is `container-join`, which no exception allows; Podman's
+    `userns_mode: keep-id` and `nomap` need `userns-host`, and
+    `network_mode: slirp4netns` and `pasta` need `network-host`.
+  - A volume or network `name:` must be the stack's Compose project name on
+    that host or start with it and `_`; any other needs `external-volume` or
+    `external-network`. `mm config validate --for-remote` warns
+    (`MM_REMOTE_GUARDRAIL_NAME`). Do not just remove `name:` from a volume
+    that holds data: Compose would create a new, empty volume. Have the host
+    admin allow `external-volume` for `<stack>/volume:<key>`, or move the data
+    first.
 - A plan whose config-file template reads a release input it was not given
   fails with `MM_RELEASE_INPUT`, as one whose environment file does, instead
   of `MM_ENVIRONMENT`.
 - A container that resolves its own `tasks.<service>` name as soon as it
   starts finds itself: `mmd` reads the engine for a lookup from a container it
-  has not seen yet before answering it, instead of letting the name fall
+  has not seen yet before answering it, for up to three seconds when the
+  engine is slow to list its containers, instead of letting the name fall
   through to the host's resolvers.
 - A build context reaches the engine with directories at 0755 and files at
   0644, or 0755 when executable, whatever the umask `mm build` runs under, so
@@ -58,6 +125,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   can read (`MM_USER_NAMESPACE`), instead of handing over a file the
   container's users cannot read. A service in the host's user namespace
   (`userns_mode: host` or `host-user-namespace`) keeps such files.
+  0644, or 0755 when its owner may execute it (the bit Git records), whatever
+  the umask `mm build` runs under, so a non-root user in the image can read
+  what `COPY` put there. The context hash now records these modes, so every
+  module rebuilds once after the upgrade. A receipt promotes to another
+  environment only when it and the hosts' `mmd` are both on this release or
+  later; otherwise build that environment again.
+- On Podman hosts, a config file or secret file of a service whose Compose
+  file sets its own `userns_mode`, such as `auto`, no longer reaches the
+  container owned by an unknown id: `mm config validate` and the plan refuse
+  an entry whose owner or mode cannot hold there (`MM_USER_NAMESPACE`) and say
+  to remove `userns_mode`, which gives the service ids of its own.
 - An `internal: true` network that spans cluster nodes no longer takes a
   container's default route, which cut a container that is also on an
   ordinary network off from the internet and from the other nodes. Podman
@@ -80,6 +158,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   from variables or inherited through `extends`, and from the health checks
   other services wait for. A cluster rollout waits that long on top of its
   own steps.
+- Processes in a container on a Podman host whose kernel runs AppArmor can
+  signal each other again. `mm target setup` installs and loads the
+  `mm-containers` profile, Podman's own plus signals and `ptrace (read)`
+  between the processes a container sees, and points Podman at it. A
+  service that shares the host's or another container's process namespace
+  gets `mm-containers-shared-pid`, Podman's rules unchanged, and a plan
+  that would run such a service under `mm-containers` is refused. `mm doctor`
+  warns about a host whose containers run under Podman's default profile
+  (`MM_PODMAN_APPARMOR`).
+- A job whose image pull takes longer than 30 seconds keeps its claim on the
+  run while it pulls, so a second worker no longer launches the same run
+  again, and the job keeper of `mmd` looks after the other runs' timeouts and
+  cancels meanwhile. A cancel stops the pull.
+- `pull_policy: daily`, `weekly` and `every_<duration>` images are pulled on
+  every deployment, like `always`, instead of only when missing; the time a
+  host spends finding which images it lacks counts against
+  `deploy.pull-timeout`.
+- A job stopped at its timeout keeps the output it wrote, and `mm deploy logs`
+  and `mm job history` show it.
+- `mm job run` of a job with `retry` no longer waits forever after a failed
+  attempt: reading the runs starts the next attempt once it is due.
 
 ## [0.1.1] - 2026-11-19
 

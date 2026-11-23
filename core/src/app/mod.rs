@@ -50,7 +50,9 @@ mod shared_storage;
 pub use shared_storage::{SharedStorageNode, StorageScope};
 mod stacks;
 pub use stacks::guardrails::{
-    GuardrailFinding, check_project as workload_guardrails, remote_guardrail_diagnostics,
+    GuardrailFinding, check_host_paths_unsupported as unsupported_host_path_guardrails,
+    check_named_resources as named_resource_guardrails, check_project as workload_guardrails,
+    remote_guardrail_diagnostics,
 };
 mod target_ingress;
 mod targets;
@@ -90,7 +92,9 @@ pub use observability::{
 };
 pub use onboarding::{OnboardingService, transition as transition_onboarding};
 pub(crate) use scheduler::desired_definitions;
-pub use scheduler::{JobSchedulerDependencies, JobSchedulerService, SchedulerCycleReport};
+pub use scheduler::{
+    JobPullSlots, JobSchedulerDependencies, JobSchedulerService, SchedulerCycleReport,
+};
 #[cfg(test)]
 pub(crate) use secret_backends::plan_remote_secret_backend_setup;
 pub use secret_backends::{ProviderDriverRegistration, SecretBackendManager};

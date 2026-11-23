@@ -5,7 +5,7 @@ use std::sync::Arc;
 use crate::app::WorkspaceSelection;
 use crate::app::config_middleware::{LoadedProjectMiddleware, load_active_middlewares};
 use crate::app::config_validation::{
-    compose_project_directory, compose_project_name, ingress_route_name,
+    compose_project_directory, compose_project_name, ingress_route_name, podman_checks,
     target_scoped_compose_project_name, validate,
 };
 use crate::app::ports::{
@@ -15,7 +15,6 @@ use crate::domain::build::{ImageBuildPlan, ImageBuildResult};
 use crate::domain::config::{ConfigDocument, resolve_environment};
 use crate::domain::config::{ServiceConfig, StackConfig};
 use crate::domain::config_resolve::{effective_domains, route_is_active, route_priority};
-use crate::domain::diagnostic::Severity;
 use crate::domain::error::MmError;
 use crate::domain::ingress::{
     CanonicalMiddleware, HttpEvidenceSource, HttpPortCandidate, IngressCertificateReference,
@@ -121,6 +120,7 @@ pub(crate) use compose_environment::compose_environment_refusals;
 mod config_files;
 pub(crate) use config_files::{config_file_entries, resolve_config_file};
 mod low_ports;
+mod shared_pid;
 mod user_namespace;
 
 mod network_intent;
@@ -164,6 +164,7 @@ pub(crate) struct DeploymentStackCompilation {
     /// Keys the configuration and its middleware files set that this
     /// release ignores.
     pub unknown_keys: Vec<crate::domain::config::UnknownConfigKey>,
+    pub healthcheck_arguments: Vec<crate::domain::compose_healthcheck::HealthcheckArgumentNote>,
 }
 
 struct StackPreparation<'a> {
@@ -295,12 +296,7 @@ impl StackManager {
             self.targets.as_ref(),
         )?;
         let validation = validate(&document, &environment);
-        let errors = validation
-            .diagnostics
-            .iter()
-            .filter(|diagnostic| diagnostic.severity == Severity::Error)
-            .count();
-        if errors > 0 {
+        if !validation.is_valid() {
             return Err(MmError::invalid(&validation.diagnostics));
         }
         let images = match (images, state) {
@@ -355,6 +351,7 @@ impl StackManager {
             })
             .collect();
         Ok(DeploymentStackCompilation {
+            healthcheck_arguments: podman_checks(&document, &environment, &resolved),
             unknown_keys: [document.unknown_keys.clone(), middlewares.unknown_keys].concat(),
             release: document.config.release.clone(),
             excluded_services: environment_excluded_services(&document, &environment),

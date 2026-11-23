@@ -43,7 +43,7 @@ impl RemoteDaemon {
                 .and_then(|()| check_receipt_scope(receipt, scope.project_id, commit))
                 .map_err(|message| MmError::Security { message })?;
         }
-        let CheckedOutAccess { root, access, document, bundle_hash, .. } = self
+        let CheckedOutAccess { root, access, document, bundle_hash, allow, .. } = self
             .checkout_commit(scope.project_id, &scope.environment, &context.principal, commit, timeout)
             .await?;
         let mut planned = context.clone();
@@ -68,6 +68,7 @@ impl RemoteDaemon {
             ),
             RemotePlanKind::TeamSync => None,
         };
+        self.refuse_after_plan(&document, scope, deployment.as_ref(), &allow).await?;
         let access_hash = access.canonical_hash().map_err(|message| MmError::State { message })?;
         let deployment_hash = match (kind, &deployment) {
             (RemotePlanKind::TeamSync, _) => access_hash.clone(),
@@ -109,6 +110,41 @@ impl RemoteDaemon {
         self.journal.save_plan(&stored)?;
         self.audit_planned(context, &stored, details)?;
         send_result(writer, context, result).await
+    }
+
+    /// Refuses a deployment whose volume or network `name:` is outside its
+    /// stack's Compose project name here, or that mounts a host path on an
+    /// engine that may not mount it recursively read-only.
+    async fn refuse_after_plan(
+        &self,
+        document: &crate::domain::config::ConfigDocument,
+        scope: &crate::domain::remote::RemoteScope,
+        deployment: Option<&crate::domain::deployment::DeploymentPlan>,
+        allow: &[crate::domain::host_policy::GuardrailException],
+    ) -> Result<(), MmError> {
+        let Some(plan) = deployment else {
+            return Ok(());
+        };
+        let environment = &scope.environment;
+        let names = plan
+            .stacks
+            .iter()
+            .map(|stack| (stack.stack.clone(), stack.compose_project_name.clone()))
+            .collect();
+        let mut findings = crate::app::named_resource_guardrails(document, environment, &names, allow)?;
+        let why = match scope.runtime {
+            crate::domain::runtime::RuntimeKind::PodmanCompose => Some(PODMAN_HOST_PATHS),
+            crate::domain::runtime::RuntimeKind::DockerCompose => None,
+        };
+        let mut host_paths = crate::app::unsupported_host_path_guardrails(document, environment, why.unwrap_or(DOCKER_HOST_PATHS))?;
+        if why.is_none()
+            && (host_paths.is_empty()
+                || self.use_cases.engine(scope.runtime).await.is_some_and(|engine| engine.recursive_read_only))
+        {
+            host_paths.clear();
+        }
+        findings.extend(host_paths);
+        refuse_findings(environment, &findings)
     }
 
     /// Binds a plan to this daemon, the request's scope, principal, and
@@ -269,15 +305,9 @@ impl RemoteDaemon {
         // Compose feature that reaches the host runs unless host.yaml allows
         // it for that service.
         let findings = crate::app::workload_guardrails(&document, environment, &enrolled.allow)?;
-        if !findings.is_empty() {
-            return Err(MmError::Security {
-                message: format!(
-                    "this host refuses Compose features that reach the host in environment '{environment}': {}. A host admin can allow a feature for one service under `allow` in /etc/mm/host.yaml",
-                    findings.iter().map(ToString::to_string).collect::<Vec<_>>().join("; ")
-                ),
-            });
-        }
-        Ok(CheckedOutAccess { root, current, access, document, bundle_hash })
+        refuse_findings(environment, &findings)?;
+        let allow = enrolled.allow.clone();
+        Ok(CheckedOutAccess { root, current, access, document, bundle_hash, allow })
     }
 
     /// Applies a reviewed plan: access first, so revocations hold even if the
@@ -370,29 +400,7 @@ impl RemoteDaemon {
                 %error,
                 "remote deployment failed"
             );
-            if let MmError::OperationFailure { operation_id, recovery, primary, .. } = &error
-                && error.kept()
-            {
-                return MmError::operation_failure(
-                    operation_id.clone(),
-                    crate::domain::error::MutationStatus::Kept,
-                    MmError::Remote {
-                        code: error.code(),
-                        message: format!("the deployment failed on the host: {}", bounded_message(&primary.to_string())),
-                    },
-                    Vec::new(),
-                    recovery.clone(),
-                );
-            }
-            // Its own code, not a security refusal: the deploy was allowed
-            // and something on the host failed.
-            MmError::Remote {
-                code: error.code(),
-                message: format!(
-                    "the deployment failed on the host: {}. The host returned to what it ran before where it could, and nothing is retried automatically; `mm deploy status` shows what it runs and `mm deploy plan` plans from there",
-                    bounded_message(&error.to_string())
-                ),
-            }
+            failed_on_host(&error)
         })?;
         // A node still runs containers of the environment while a service
         // that moved away waits to be stopped.
@@ -459,12 +467,19 @@ impl RemoteDaemon {
         hash: &str,
         (failed, cancelled): (Option<&MmError>, bool),
     ) -> Result<(), MmError> {
-        let failure = failed.map(|error| StepFailure {
-            stack: String::new(),
-            service: None,
-            reason: bounded_message(&redacted_error_message(error)),
-            log: Vec::new(),
-            code: Some(error.code().to_owned()),
+        let failure = failed.map(|error| match error.step_failure() {
+            Some(step) => StepFailure {
+                reason: bounded_message(&step.reason),
+                code: Some(error.code().to_owned()),
+                ..step.clone()
+            },
+            None => StepFailure {
+                stack: String::new(),
+                service: None,
+                reason: bounded_message(&redacted_error_message(error)),
+                log: Vec::new(),
+                code: Some(error.code().to_owned()),
+            },
         });
         let unfinished = failed.is_some_and(|error| {
             matches!(error, MmError::Security { .. } | MmError::Cancelled { .. } | MmError::Timeout { .. })
@@ -629,6 +644,28 @@ impl RemoteDaemon {
 
 /// A commit checked out for one environment: where, the access record it
 /// replaces, and the reconciled change.
+const PODMAN_HOST_PATHS: &str =
+    "this host runs Podman, which mm cannot yet have mount a host path recursively read-only";
+const DOCKER_HOST_PATHS: &str = "this host's Docker Engine cannot be relied on to mount a host path recursively read-only: that needs Docker Engine 25 (API 1.44) or later on Linux 5.12 or later";
+
+/// Refuses a plan with guardrail findings, naming each one.
+fn refuse_findings(environment: &str, findings: &[crate::app::GuardrailFinding]) -> Result<(), MmError> {
+    if findings.is_empty() {
+        return Ok(());
+    }
+    let next = if findings.iter().any(crate::app::GuardrailFinding::grantable) {
+        ". A host admin can allow a feature for one service under `allow` in /etc/mm/host.yaml"
+    } else {
+        ""
+    };
+    Err(MmError::Security {
+        message: format!(
+            "this host refuses Compose features that reach the host in environment '{environment}': {}{next}",
+            findings.iter().map(ToString::to_string).collect::<Vec<_>>().join("; ")
+        ),
+    })
+}
+
 struct CheckedOutAccess {
     root: std::path::PathBuf,
     current: Option<crate::domain::host_policy::EnvironmentAccessRecord>,
@@ -638,6 +675,8 @@ struct CheckedOutAccess {
     /// The bundle the checkout was made from, on a host the project is
     /// pushed to.
     bundle_hash: Option<String>,
+    /// The host's guardrail exceptions for the project.
+    allow: Vec<crate::domain::host_policy::GuardrailException>,
 }
 
 /// What a plan's audit record says it plans: the commit, the bundle its
@@ -717,6 +756,46 @@ fn reconcile_from_checkout(
 
 /// A host error for the client: at most 4000 characters, without control
 /// characters other than newlines.
+/// What the client is told of a deployment that failed on this host: its
+/// own code, the cause bounded, and a failed stack's last log lines after
+/// it. A kept first deployment stays an operation failure that says so.
+fn failed_on_host(error: &MmError) -> MmError {
+    let cause = |error: &MmError| match error.step_failure() {
+        Some(failure) => format!(
+            "the deployment did not become healthy: {}{}",
+            bounded_message(&failure.to_string()),
+            failure.log_suffix()
+        ),
+        None => bounded_message(&error.to_string()),
+    };
+    let on_host = |message: String| match error.step_failure() {
+        Some(failure) => MmError::Unhealthy {
+            code: error.code(),
+            message,
+            failure: Box::new(failure.clone()),
+        },
+        None => MmError::Remote {
+            code: error.code(),
+            message,
+        },
+    };
+    if let MmError::OperationFailure { operation_id, recovery, primary, .. } = error
+        && error.kept()
+    {
+        return MmError::operation_failure(
+            operation_id.clone(),
+            crate::domain::error::MutationStatus::Kept,
+            on_host(format!("the deployment failed on the host: {}", cause(primary))),
+            Vec::new(),
+            recovery.clone(),
+        );
+    }
+    on_host(format!(
+        "the deployment failed on the host: {}. The host returned to what it ran before where it could, and nothing is retried automatically; `mm deploy status` shows what it runs and `mm deploy plan` plans from there",
+        cause(error)
+    ))
+}
+
 fn bounded_message(message: &str) -> String {
     let mut bounded = message
         .chars()

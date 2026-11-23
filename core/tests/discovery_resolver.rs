@@ -153,6 +153,9 @@ struct Engine {
     changed: Notify,
     /// How many times the resolver looked at the engine.
     looks: std::sync::atomic::AtomicUsize,
+    /// How long each listing of the containers takes, in milliseconds.
+    slowness: std::sync::atomic::AtomicU64,
+    failing: std::sync::atomic::AtomicBool,
 }
 
 impl Engine {
@@ -161,6 +164,8 @@ impl Engine {
             containers: Mutex::new(containers),
             changed: Notify::new(),
             looks: std::sync::atomic::AtomicUsize::new(0),
+            slowness: std::sync::atomic::AtomicU64::new(0),
+            failing: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
@@ -201,6 +206,11 @@ impl RuntimeDriver for Engine {
         _networks: &[String],
     ) -> Result<Vec<ObservedContainer>, MmError> {
         self.looks.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let slowness = self.slowness.load(std::sync::atomic::Ordering::SeqCst);
+        tokio::time::sleep(Duration::from_millis(slowness)).await;
+        if self.failing.load(std::sync::atomic::Ordering::SeqCst) {
+            return unsupported();
+        }
         self.containers
             .lock()
             .map(|containers| containers.clone())
@@ -835,6 +845,164 @@ async fn a_new_container_finds_itself_at_its_first_lookup() -> TestResult {
     });
     let first = ask(worker, server, "tasks.worker", Duration::from_secs(2)).await?;
     assert_eq!(first, Some((0, vec![worker])));
+    Ok(())
+}
+
+/// On an engine that takes longer than a second to list its containers, a
+/// new container's first lookup still finds it, and so do its next ones.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_new_container_finds_itself_on_a_slow_engine() -> TestResult {
+    let directory = temp_dirs::tempdir()?;
+    let resolv_conf = directory.path().join("resolv.conf");
+    std::fs::write(&resolv_conf, format!("search .\nnameserver {UPSTREAM}\n"))?;
+    let options = ResolverOptions {
+        lookup_port: free_port(GATEWAY_A).await?,
+        exchange_port: free_port(MESH_A).await?,
+        upstream_port: free_port(UPSTREAM).await?,
+        resolv_conf,
+        address_patience: Duration::from_secs(30),
+    };
+    let engine = Engine::new(vec![container("api-1", "api", API_A, Health::Healthy)]);
+    let node = NameResolver::with_options(
+        Arc::new(Networks(networks("a")?)),
+        Arc::new(Mesh(mesh(MESH_A, "b", MESH_B))),
+        Arc::clone(&engine) as Arc<dyn RuntimeDriver>,
+        options.clone(),
+    );
+    tokio::spawn(Arc::clone(&node).run());
+    let server = SocketAddrV4::new(GATEWAY_A, options.lookup_port);
+    becomes(API_A, server, "api", &[API_A]).await?;
+
+    engine
+        .slowness
+        .store(1500, std::sync::atomic::Ordering::SeqCst);
+    let web = Ipv4Addr::new(127, 77, 0, 7);
+    engine
+        .containers
+        .lock()
+        .map_err(|_| "poisoned")?
+        .push(container("web-1", "web", web, Health::Starting));
+    let first = ask(web, server, "tasks.web", Duration::from_secs(6)).await?;
+    assert_eq!(first, Some((0, vec![web])));
+    let again = ask(web, server, "tasks.web", Duration::from_secs(1)).await?;
+    assert_eq!(again, Some((0, vec![web])));
+    Ok(())
+}
+
+/// A node `a` whose engine shows `api-1`, answering lookups once it looked.
+async fn node_a(
+    engine: &Arc<Engine>,
+) -> Result<(SocketAddrV4, tempfile::TempDir), Box<dyn std::error::Error>> {
+    let directory = temp_dirs::tempdir()?;
+    let resolv_conf = directory.path().join("resolv.conf");
+    std::fs::write(&resolv_conf, format!("search .\nnameserver {UPSTREAM}\n"))?;
+    let options = ResolverOptions {
+        lookup_port: free_port(GATEWAY_A).await?,
+        exchange_port: free_port(MESH_A).await?,
+        upstream_port: free_port(UPSTREAM).await?,
+        resolv_conf,
+        address_patience: Duration::from_secs(30),
+    };
+    let node = NameResolver::with_options(
+        Arc::new(Networks(networks("a")?)),
+        Arc::new(Mesh(mesh(MESH_A, "b", MESH_B))),
+        Arc::clone(engine) as Arc<dyn RuntimeDriver>,
+        options.clone(),
+    );
+    tokio::spawn(Arc::clone(&node).run());
+    let server = SocketAddrV4::new(GATEWAY_A, options.lookup_port);
+    becomes(API_A, server, "api", &[API_A]).await?;
+    Ok((server, directory))
+}
+
+/// How long a lookup of `api` from `from` takes to be answered, within
+/// `patience`.
+async fn answered_in(
+    from: Ipv4Addr,
+    server: SocketAddrV4,
+    patience: Duration,
+) -> Result<Duration, String> {
+    let started = std::time::Instant::now();
+    let answer = ask(from, server, "api", patience)
+        .await
+        .map_err(|error| error.to_string())?;
+    if answer.is_none() {
+        return Err(format!("{from} got no answer"));
+    }
+    Ok(started.elapsed())
+}
+
+/// How many times the engine was asked for its containers.
+fn listings(engine: &Engine) -> usize {
+    engine.looks.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// On an engine slower than a lookup's cap, the lookup is answered at the
+/// cap, and the listing it started goes on: the container it shows is
+/// found by the next lookup.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_lookup_waits_for_a_slow_engine_no_longer_than_its_cap() -> TestResult {
+    let engine = Engine::new(vec![container("api-1", "api", API_A, Health::Healthy)]);
+    let (server, _directory) = node_a(&engine).await?;
+    let web = Ipv4Addr::new(127, 77, 0, 7);
+    engine
+        .containers
+        .lock()
+        .map_err(|_| "poisoned")?
+        .push(container("web-1", "web", web, Health::Starting));
+    engine
+        .slowness
+        .store(8000, std::sync::atomic::Ordering::SeqCst);
+    answered_in(web, server, Duration::from_secs(5)).await?;
+    becomes(web, server, "tasks.web", &[web]).await?;
+    Ok(())
+}
+
+/// On an engine slower than a lookup's cap, an address no container has is
+/// remembered once the listing its lookup started finishes without it,
+/// though the lookup was answered before: its next lookup does not read the
+/// engine again and again for a second, as an unknown asker's does. The
+/// engine is fast again before the background look's next listing, which
+/// would otherwise hold the engine through the next lookup.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_stray_asker_is_remembered_after_a_slow_listing() -> TestResult {
+    let engine = Engine::new(vec![container("api-1", "api", API_A, Health::Healthy)]);
+    let (server, _directory) = node_a(&engine).await?;
+    engine
+        .slowness
+        .store(4000, std::sync::atomic::Ordering::SeqCst);
+    let stray = Ipv4Addr::new(127, 77, 0, 9);
+    answered_in(stray, server, Duration::from_secs(5)).await?;
+    engine
+        .slowness
+        .store(0, std::sync::atomic::Ordering::SeqCst);
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    let before = listings(&engine);
+    answered_in(stray, server, Duration::from_secs(5)).await?;
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    let during = listings(&engine) - before;
+    assert!(
+        during < 4,
+        "a stray asker was not remembered: its lookup listed the engine {during} times"
+    );
+    Ok(())
+}
+
+/// An engine that cannot list its containers makes no stranger of an asker.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_failing_engine_makes_no_stranger() -> TestResult {
+    let engine = Engine::new(vec![container("api-1", "api", API_A, Health::Healthy)]);
+    let (server, _directory) = node_a(&engine).await?;
+    engine
+        .failing
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let stranger = Ipv4Addr::new(127, 77, 0, 9);
+    for _ in 0..2 {
+        assert!(
+            answered_in(stranger, server, Duration::from_secs(8)).await?
+                >= Duration::from_millis(900)
+        );
+    }
     Ok(())
 }
 
