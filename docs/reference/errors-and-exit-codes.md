@@ -161,7 +161,8 @@ container read it. See [file delivery](../secret-delivery.md#file-delivery).
 whitespace or is empty, or that comes from a `${VAR}` whose value could, in an
 environment that runs on Podman: Podman before 5.8 splits such an argument at
 whitespace, so the check never passes. `mm config validate` and `mm doctor`
-report it, and the deployment plan lists it. The help gives the same command
+report it, and the deployment plan lists it unless it depends on a `${VAR}`
+or the engine is Podman 5.8 or later. The help gives the same command
 as a `CMD-SHELL` check, quoted for the shell. See [run Podman on the
 hosts](../remote-daemon.md#run-podman-on-the-hosts).
 `MM_UPDATE_ORDER` is the finding for a service's `update:` that cannot work:
