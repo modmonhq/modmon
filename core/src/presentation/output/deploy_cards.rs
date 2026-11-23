@@ -154,7 +154,7 @@ fn remote_changes(card: &mut Card, plan: &ClusterDeploymentPlan, cluster: bool) 
         notes.push((
             Tone::Warn,
             format!(
-                "{} holds a rollout of commit {} that {} started and nobody finished; this plan undoes it first",
+                "{} holds a rollout of commit {} that {} started and nobody finished; this plan undoes it first, or applies over it where the node never finished a deployment",
                 unfinished.node,
                 short(&unfinished.commit),
                 unfinished.started_by

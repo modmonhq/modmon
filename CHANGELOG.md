@@ -15,6 +15,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   warning names the service and file and gives the equivalent `CMD-SHELL`
   check.
 
+### Changed
+
+- A first deployment that fails while a stack starts is no longer removed:
+  nothing ran before it, so the stacks it started keep running as they are,
+  the failed one too, and the error names them with the commands to look at
+  them and deploy again. The next deployment applies over them, so healthy
+  stacks such as a database are not started again from scratch. A
+  deployment that replaces one that ran still rolls back as before.
+
 ### Fixed
 
 - A container that resolves its own `tasks.<service>` name as soon as it
