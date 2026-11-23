@@ -29,12 +29,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `userns_mode: auto` gets mm's own user ids, as a service without
   `userns_mode` does, so a secret file or config file with `uid: "1000"` and
   `mode: 0o400` reaches it owned by its uid 1000. A stack with several Compose
-  files takes the `userns_mode` of the last file that sets one, and
-  `userns_mode: ~` or `""` counts as not set.
-- On Docker Engine with `userns-remap`, the plan refuses a secret file that
-  names an owner other than root or a mode not every user can read
-  (`MM_USER_NAMESPACE`), instead of handing over a file the container's
-  users cannot read.
+  files takes the `userns_mode` of the last file that sets one, a service
+  takes the one of the service it `extends`, a tag such as `!override` stands
+  for its value, and `userns_mode: ~` or `""` counts as not set.
+- On Docker Engine with `userns-remap`, the plan refuses a secret file or
+  config file that names an owner other than root or a mode not every user
+  can read (`MM_USER_NAMESPACE`), instead of handing over a file the
+  container's users cannot read. A service in the host's user namespace
+  (`userns_mode: host` or `host-user-namespace`) keeps such files.
 - An `internal: true` network that spans cluster nodes no longer takes a
   container's default route, which cut a container that is also on an
   ordinary network off from the internet and from the other nodes. Podman

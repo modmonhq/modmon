@@ -150,8 +150,9 @@ user can read, of a service whose Compose file sets a `userns_mode` other than
 has no `mm-services` range in `/etc/subuid` (run `mm target setup`), when the
 range is full, and when a service on a shared volume cannot have the ids
 every other node gives it. On Docker Engine with `userns-remap` the plan
-fails with it for a secret file that names an owner other than root or a mode
-not every user can read; the runtime's status notes the remap as
+fails with it for a secret file or config file that names an owner other than
+root or a mode not every user can read, of a service that does not run in the
+host's user namespace; the runtime's status notes the remap as
 `MM_DOCKER_USERNS_REMAP`.
 `MM_SECRET_FILE_OWNER` is the warning for a `secret-files` entry in an
 environment that runs on Docker on this machine, where mm runs as you and the

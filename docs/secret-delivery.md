@@ -128,9 +128,12 @@ as, without `user: "0:0"` or extra capabilities. On a remote host, where `mmd`
 runs as root, the copy also belongs to the entry's `uid` and `gid`, which are
 the container's ids on Docker Engine. A Docker daemon with `userns-remap`
 (`docker info` lists `name=userns` under Security Options) gives containers
-other ids than the host's: there the plan refuses an entry with an owner
-other than root or a mode not every user can read (`MM_USER_NAMESPACE`). Use
-`uid` 0, `gid` 0 and a mode such as the default `0444`, or turn off
+other ids than the host's: there the plan refuses a secret file or config
+file with an owner other than root or a mode not every user can read
+(`MM_USER_NAMESPACE`), unless its service runs in the host's user namespace
+(`userns_mode: host` in its Compose file, or
+[`host-user-namespace`](./reference/configuration.md#modules-services-and-builds)).
+Use `uid` 0, `gid` 0 and a mode such as the default `0444`, or turn off
 `userns-remap` in `/etc/docker/daemon.json`. On your own machine mm runs as
 you, and only root can give a file to other ids: the file is yours, with the
 entry's `mode`. When an entry names other ids and that can matter, such as

@@ -44,7 +44,10 @@ config-files:
 ```
 
 `uid` and `gid` need mm to run as root on the host, which `mmd` does. On your
-own machine, leave them out.
+own machine, leave them out. On Docker Engine with `userns-remap`, containers
+do not have the host's ids, and the plan refuses an owner other than root or
+a mode not every user can read, as for [secret
+files](./secret-delivery.md#file-delivery).
 
 On hosts that run [Podman](./remote-daemon.md#run-podman-on-the-hosts), each
 service has user ids of its own: `uid` and `gid` are the container's, and mm
