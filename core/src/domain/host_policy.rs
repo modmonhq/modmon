@@ -295,6 +295,7 @@ impl HostPolicy {
             }
         }
         self.validate_runtimes()?;
+        self.validate_host_paths()?;
         for (id, project) in &self.projects {
             if project.name.is_empty()
                 || (project.delivery.is_fetch() && project.origin.trim().is_empty())
@@ -785,6 +786,8 @@ pub fn valid_user_name(name: &str) -> bool {
 
 #[path = "host_policy/enrollment.rs"]
 mod enrollment;
+#[path = "host_policy/host_paths.rs"]
+mod host_paths;
 #[path = "host_policy/runtimes.rs"]
 mod runtimes;
 pub use enrollment::validate_environment_name;

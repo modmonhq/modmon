@@ -21,10 +21,10 @@ const EXPORTER: &str = "services:
         target: /host/sys
         read_only: true
       - type: bind
-        source: /
-        target: /host/root
+        source: /mnt/data
+        target: /host/data
         read_only: true
-        bind: {propagation: rslave}
+        bind: {propagation: rslave, recursive: readonly}
       - data:/data
 volumes:
   data: {}
@@ -32,7 +32,7 @@ volumes:
 
 const LISTED: &str = "      - service: app/alloy
         features: [host-path, network-host]
-        paths: [/proc, /sys/, /]
+        paths: [/proc, /sys/, /mnt/data]
 ";
 
 /// Runs `services` only in `staging`: on this machine mm refuses host
@@ -78,7 +78,7 @@ fn a_listed_host_path_runs_read_only() -> TestResult {
     assert_eq!(
         allowed,
         [
-            "app/alloy uses host-path (volumes: /:/host/root in compose.yaml mounts the host's / read-only)",
+            "app/alloy uses host-path (volumes: /mnt/data:/host/data in compose.yaml mounts the host's /mnt/data read-only)",
             "app/alloy uses host-path (volumes: /proc:/host/proc:ro in compose.yaml mounts the host's /proc read-only)",
             "app/alloy uses host-path (volumes: /sys:/host/sys in compose.yaml mounts the host's /sys read-only)",
             "app/alloy uses network-host (network_mode: host)",
@@ -89,32 +89,78 @@ fn a_listed_host_path_runs_read_only() -> TestResult {
 }
 
 #[test]
-fn a_writable_shared_relabelled_or_unlisted_host_path_is_refused() -> TestResult {
+fn a_writable_shared_relabelled_ambiguous_or_unlisted_host_path_is_refused() -> TestResult {
     let temporary = project(
         &["probe"],
         &[(
             "compose.yaml",
-            "services:\n  probe:\n    image: example/probe\n    volumes:\n      - /etc:/host/etc\n      - {type: bind, source: /var/lib, target: /data}\n      - /:/rootfs:ro,rshared\n      - /srv:/srv:ro,Z\n      - /opt:/opt:ro\n",
+            "services:\n  probe:\n    image: example/probe\n    volumes:\n      - /srv/data:/data\n      - {type: bind, source: /opt/metrics, target: /metrics}\n      - /sys:/host/sys:ro,rshared\n      - /srv/logs:/logs:ro,Z\n      - /proc:/host/proc:ro,rw\n      - /mnt/a:/a:ro,rslave,rshared\n      - {type: bind, source: /mnt/b, target: /b, read_only: true, bind: {recursive: writable}}\n      - /opt:/opt:ro\n",
         )],
     )?;
     let policy = host_policy(
         temporary.path(),
-        "      - service: app/probe\n        features: [host-path]\n        paths: [/etc, /var/lib, /, /srv]\n",
+        "      - service: app/probe\n        features: [host-path]\n        paths: [/srv/data, /opt/metrics, /sys, /srv/logs, /proc, /mnt/a, /mnt/b]\n",
     )?;
     let (status, findings) = validate(temporary.path(), &["--host-policy", &policy])?;
     assert_eq!(status, 2, "{findings:?}");
     let outright = "no host exception allows this: change the mount as the message says";
-    assert_eq!(
-        lines(&findings, REFUSED),
-        [
-            format!("app/probe uses host-path (volumes: /:/rootfs:ro,rshared in compose.yaml mounts the host's / with shared propagation; use `rslave`, or leave propagation out) | {outright}"),
-            format!("app/probe uses host-path (volumes: /etc:/host/etc in compose.yaml mounts the host's /etc writable; add `:ro`, or `read_only: true` in the long syntax) | {outright}"),
-            "app/probe uses host-path (volumes: /opt:/opt:ro in compose.yaml mounts the host's /opt read-only) | drop the feature, or allow it for app/probe under this project's `allow` in POLICY, with `/opt` under its `paths`".replace("POLICY", &policy),
-            format!("app/probe uses host-path (volumes: /srv:/srv:ro,Z in compose.yaml mounts the host's /srv with an SELinux relabel; remove `z` or `Z`) | {outright}"),
-            format!("app/probe uses host-path (volumes: /var/lib:/data in compose.yaml mounts the host's /var/lib writable; add `:ro`, or `read_only: true` in the long syntax) | {outright}"),
-        ],
-        "{findings:?}"
-    );
+    let twice =
+        "with more than one access or propagation option, where the last wins; write each once";
+    let writable = "writable; add `:ro`, or `read_only: true` in the long syntax";
+    let mut expected = vec![
+        format!("app/probe uses host-path (volumes: /srv/data:/data in compose.yaml mounts the host's /srv/data {writable}) | {outright}"),
+        format!("app/probe uses host-path (volumes: /opt/metrics:/metrics in compose.yaml mounts the host's /opt/metrics {writable}) | {outright}"),
+        format!("app/probe uses host-path (volumes: /sys:/host/sys:ro,rshared in compose.yaml mounts the host's /sys with shared propagation; use `rslave`, or leave propagation out) | {outright}"),
+        format!("app/probe uses host-path (volumes: /srv/logs:/logs:ro,Z in compose.yaml mounts the host's /srv/logs with an SELinux relabel; remove `z` or `Z`) | {outright}"),
+        format!("app/probe uses host-path (volumes: /proc:/host/proc:ro,rw in compose.yaml mounts the host's /proc {twice}) | {outright}"),
+        format!("app/probe uses host-path (volumes: /mnt/a:/a:ro,rslave,rshared in compose.yaml mounts the host's /mnt/a {twice}) | {outright}"),
+        format!("app/probe uses host-path (volumes: /mnt/b:/b in compose.yaml mounts the host's /mnt/b with `bind.recursive: writable`; leave it out, or write `readonly`) | {outright}"),
+        "app/probe uses host-path (volumes: /opt:/opt:ro in compose.yaml mounts the host's /opt read-only) | drop the feature, or allow it for app/probe under this project's `allow` in POLICY, with `/opt` under its `paths`".replace("POLICY", &policy),
+    ];
+    expected.sort();
+    assert_eq!(lines(&findings, REFUSED), expected, "{findings:?}");
+    Ok(())
+}
+
+#[test]
+fn a_host_policy_refuses_a_path_that_would_give_root() -> TestResult {
+    let temporary = project(&["alloy"], &[("compose.yaml", EXPORTER)])?;
+    for (path, protected) in [
+        ("/", "/run"),
+        ("/var/run/docker.sock", "/var/run"),
+        ("/etc", "/etc/mm"),
+        ("/home/ops", "/home"),
+    ] {
+        let policy = host_policy(
+            temporary.path(),
+            &format!(
+                "      - service: app/alloy\n        features: [host-path]\n        paths: [{path}]\n"
+            ),
+        )?;
+        let output = temp_dirs::mm()
+            .arg("--root")
+            .arg(temporary.path().join("project"))
+            .arg("--mm-home")
+            .arg(temporary.path().join("home"))
+            .args([
+                "-e",
+                "staging",
+                "config",
+                "validate",
+                "--for-remote",
+                "--host-policy",
+                &policy,
+            ])
+            .output()?;
+        assert_eq!(output.status.code(), Some(2));
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains(&format!(
+                "project 'example' allow entry for app/alloy: host path '{path}' holds or is inside {protected}, which would give the service root on the host"
+            )),
+            "{stderr}"
+        );
+    }
     Ok(())
 }
 
@@ -133,7 +179,7 @@ fn a_later_file_or_extends_cannot_make_a_listed_path_writable() -> TestResult {
     let policy = host_policy(
         temporary.path(),
         &format!(
-            "{LISTED}      - service: app/debug\n        features: [host-path, network-host]\n        paths: [/proc, /sys, /]\n"
+            "{LISTED}      - service: app/debug\n        features: [host-path, network-host]\n        paths: [/proc, /sys, /mnt/data]\n"
         ),
     )?;
     let (status, findings) = validate(temporary.path(), &["--host-policy", &policy])?;

@@ -13,22 +13,38 @@ pub(super) const HOST_PATH: &str = "host-path";
 
 /// A bind mount whose source is a path of the host outside the project.
 pub(in crate::app::stacks) struct HostBind {
-    written: String,
     path: PathBuf,
+    mount: Mount,
+}
+
+/// What a bind mount's entry says, as Compose applies it.
+struct Mount {
+    source: String,
+    written: String,
     read_only: bool,
     propagation: Option<String>,
     relabels: bool,
+    /// What makes the entry's effect unclear or unsafe, as the change to
+    /// make.
+    problem: Option<String>,
 }
+
+const PROPAGATIONS: [&str; 6] = [
+    "shared", "rshared", "slave", "rslave", "private", "rprivate",
+];
 
 impl HostBind {
     /// Why no host exception can allow the mount, as the change to make.
-    fn refusal(&self) -> Option<&'static str> {
-        if !self.read_only {
-            Some("writable; add `:ro`, or `read_only: true` in the long syntax")
-        } else if matches!(self.propagation.as_deref(), Some("shared" | "rshared")) {
-            Some("with shared propagation; use `rslave`, or leave propagation out")
-        } else if self.relabels {
-            Some("with an SELinux relabel; remove `z` or `Z`")
+    fn refusal(&self) -> Option<String> {
+        let mount = &self.mount;
+        if let Some(problem) = &mount.problem {
+            Some(problem.clone())
+        } else if !mount.read_only {
+            Some("writable; add `:ro`, or `read_only: true` in the long syntax".to_owned())
+        } else if matches!(mount.propagation.as_deref(), Some("shared" | "rshared")) {
+            Some("with shared propagation; use `rslave`, or leave propagation out".to_owned())
+        } else if mount.relabels {
+            Some("with an SELinux relabel; remove `z` or `Z`".to_owned())
         } else {
             None
         }
@@ -47,58 +63,57 @@ pub(in crate::app::stacks) fn host_bind(
     volume: &Value,
     (project_root, compose_directory): (&Path, &Path),
 ) -> Option<HostBind> {
-    let (source, written, read_only, propagation, relabels) = match volume {
-        Value::String(text) => {
-            let mut parts = text.splitn(3, ':');
-            let source = parts.next()?;
-            parts.next()?;
-            let options = parts
-                .next()
-                .unwrap_or_default()
-                .split(',')
-                .collect::<Vec<_>>();
-            (
-                source.to_owned(),
-                text.clone(),
-                options.contains(&"ro"),
-                options
-                    .iter()
-                    .find(|option| {
-                        option.ends_with("shared")
-                            || option.ends_with("slave")
-                            || option.ends_with("private")
-                    })
-                    .map(|option| (*option).to_owned()),
-                options.iter().any(|option| matches!(*option, "z" | "Z")),
-            )
-        }
+    let mount = match volume {
+        Value::String(text) => short_bind(text)?,
         Value::Mapping(long) => long_bind(long)?,
         _ => return None,
     };
-    if !is_bind_source(&source) || source.starts_with('~') || interpolates(&source) {
+    let source = &mount.source;
+    if !is_bind_source(source) || source.starts_with('~') || interpolates(source) {
         return None;
     }
-    let absolute = if Path::new(&source).is_absolute() {
-        PathBuf::from(&source)
+    let absolute = if Path::new(source).is_absolute() {
+        PathBuf::from(source)
     } else {
-        compose_directory.join(&source)
+        compose_directory.join(source)
     };
     let path = normalize_absolute_path(&absolute)?;
     if path.starts_with(project_root) {
         return None;
     }
-    Some(HostBind {
-        written,
-        path,
-        read_only,
-        propagation,
-        relabels,
+    Some(HostBind { path, mount })
+}
+
+fn short_bind(text: &str) -> Option<Mount> {
+    let mut parts = text.splitn(3, ':');
+    let source = parts.next()?;
+    parts.next()?;
+    let options = parts
+        .next()
+        .unwrap_or_default()
+        .split(',')
+        .collect::<Vec<_>>();
+    let access = options
+        .iter()
+        .filter(|option| matches!(**option, "ro" | "rw"))
+        .count();
+    let propagations = options
+        .iter()
+        .filter(|option| PROPAGATIONS.contains(option))
+        .collect::<Vec<_>>();
+    Some(Mount {
+        source: source.to_owned(),
+        written: text.to_owned(),
+        read_only: options.contains(&"ro"),
+        propagation: propagations.first().map(|option| (**option).to_owned()),
+        relabels: options.iter().any(|option| matches!(*option, "z" | "Z")),
+        problem: (access > 1 || propagations.len() > 1).then(|| {
+            "with more than one access or propagation option, where the last wins; write each once".to_owned()
+        }),
     })
 }
 
-type Parsed = (String, String, bool, Option<String>, bool);
-
-fn long_bind(long: &Mapping) -> Option<Parsed> {
+fn long_bind(long: &Mapping) -> Option<Mount> {
     let text = |value: Option<&Value>| value.and_then(Value::as_str).map(str::to_owned);
     if !text(long.get("type")).is_some_and(|kind| kind.eq_ignore_ascii_case("bind")) {
         return None;
@@ -111,16 +126,22 @@ fn long_bind(long: &Mapping) -> Option<Parsed> {
         _ => false,
     };
     let bind = long.get("bind");
-    let propagation = text(bind.and_then(|bind| bind.get("propagation")));
-    let relabels = text(bind.and_then(|bind| bind.get("selinux")))
-        .is_some_and(|label| matches!(label.as_str(), "z" | "Z"));
-    Some((
-        source.clone(),
-        format!("{source}:{target}"),
+    let recursive = bind
+        .and_then(|bind| bind.get("recursive"))
+        .map(super::value_text);
+    Some(Mount {
+        written: format!("{source}:{target}"),
+        source,
         read_only,
-        propagation,
-        relabels,
-    ))
+        propagation: text(bind.and_then(|bind| bind.get("propagation"))),
+        relabels: text(bind.and_then(|bind| bind.get("selinux")))
+            .is_some_and(|label| matches!(label.as_str(), "z" | "Z")),
+        problem: recursive
+            .filter(|recursive| recursive != "readonly")
+            .map(|recursive| {
+                format!("with `bind.recursive: {recursive}`; leave it out, or write `readonly`")
+            }),
+    })
 }
 
 /// Whether `listed` names `path`, written with or without a trailing `/`.
@@ -146,11 +167,11 @@ pub(super) fn check_service(
         let detail = match bind.refusal() {
             Some(change) => format!(
                 "volumes: {} in {file} mounts the host's {path} {change}",
-                bind.written
+                bind.mount.written
             ),
             None => format!(
                 "volumes: {} in {file} mounts the host's {path} read-only",
-                bind.written
+                bind.mount.written
             ),
         };
         findings.push(GuardrailFinding {
@@ -158,6 +179,7 @@ pub(super) fn check_service(
             feature: HOST_PATH.to_owned(),
             detail,
             outright: !bind.runs_when_listed(),
+            resource_name: None,
             host_path: Some(bind.path),
         });
     }
