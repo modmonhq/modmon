@@ -117,6 +117,92 @@ async fn the_next_plan_removes_a_kept_stack_the_configuration_no_longer_has() ->
     Ok(())
 }
 
+fn rename_projects(fixture: &Fixture, from: &str, to: &str) -> TestResult {
+    let config_path = fixture.project.join(".config/mm.yaml");
+    let config = fs::read_to_string(&config_path)?.replace(from, to);
+    fs::write(config_path, config)?;
+    Ok(())
+}
+
+async fn fail_first(fixture: &Fixture) -> TestResult {
+    let plan = fixture.service.plan(&fixture.selection).await?;
+    fixture
+        .runtime
+        .fail_convergence
+        .store(true, Ordering::SeqCst);
+    let error = fixture
+        .service
+        .apply_reviewed(&fixture.selection, &plan.plan_hash)
+        .await
+        .err()
+        .ok_or("an unhealthy first deployment succeeded")?;
+    assert!(error.kept(), "{error}");
+    Ok(())
+}
+
+#[tokio::test]
+async fn every_project_a_renamed_stack_kept_is_removed_once() -> TestResult {
+    let fixture = Fixture::new(false)?;
+    fail_first(&fixture).await?;
+    rename_projects(
+        &fixture,
+        "deployment-test-{environment}-{stack}",
+        "second-{environment}-{stack}",
+    )?;
+    fail_first(&fixture).await?;
+    rename_projects(
+        &fixture,
+        "second-{environment}-{stack}",
+        "third-{environment}-{stack}",
+    )?;
+    fixture.runtime.clear()?;
+    let next = fixture.service.plan(&fixture.selection).await?;
+    let mut removed = next
+        .removed_stacks
+        .iter()
+        .map(|stack| (stack.stack.as_str(), stack.compose_project_name.as_str()))
+        .collect::<Vec<_>>();
+    removed.sort_unstable();
+    assert_eq!(removed.len(), 2, "{removed:?}");
+    assert!(
+        removed.iter().all(|(stack, _)| *stack == "app"),
+        "{removed:?}"
+    );
+    assert_ne!(removed[0].1, removed[1].1);
+    fixture
+        .service
+        .apply_reviewed(&fixture.selection, &next.plan_hash)
+        .await?;
+    let calls = fixture.runtime.calls()?;
+    assert_eq!(
+        calls.iter().filter(|call| *call == "remove:app").count(),
+        2,
+        "{calls:?}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_failed_first_deployment_that_was_removed_is_not_removed_again() -> TestResult {
+    let fixture = Fixture::new(true)?;
+    let plan = fixture.service.plan(&fixture.selection).await?;
+    let error = fixture
+        .service
+        .apply_reviewed(&fixture.selection, &plan.plan_hash)
+        .await
+        .err()
+        .ok_or("a deployment whose routes failed succeeded")?;
+    assert!(!error.kept(), "{error}");
+    rename_projects(
+        &fixture,
+        "deployment-test-{environment}-{stack}",
+        "replacement-{environment}-{stack}",
+    )?;
+    let next = fixture.service.plan(&fixture.selection).await?;
+    assert!(next.removed_stacks.is_empty(), "{:?}", next.removed_stacks);
+    Ok(())
+}
+
 #[tokio::test]
 async fn recovering_an_interrupted_first_deployment_keeps_only_what_the_next_plan_has() -> TestResult
 {

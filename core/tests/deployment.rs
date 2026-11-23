@@ -5848,6 +5848,10 @@ impl LocalDeploymentRuntime for FakeRuntime {
                 std::future::pending::<()>().await;
             }
         }
+        self.running()?
+            .entry(target.project_name.clone())
+            .or_default()
+            .insert(target.stack_name.clone());
         Ok(())
     }
 
