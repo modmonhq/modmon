@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Processes in a container on a Podman host whose kernel runs AppArmor can
+  signal each other again. `mm target setup` installs and loads the
+  `mm-containers` profile, Podman's own plus signals and `ptrace (read)`
+  between peers, and points Podman at it; `mm doctor` warns about a host
+  whose containers run under Podman's default profile
+  (`MM_PODMAN_APPARMOR`).
+
 ## [0.1.1] - 2026-11-19
 
 Remote protocol: 1. This release is the baseline: from it on, `mm` and the

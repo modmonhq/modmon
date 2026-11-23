@@ -235,8 +235,12 @@ ones anyway; fix the service or its `healthcheck:`), `MM_SERVICE_RESTART_LIMIT`
 `mm service logs` shows why, and a deployment or `mm service restart` starts
 it again), what each node says about its container engine: `MM_NODE_ENGINE` (the engine
 does not answer), `MM_PODMAN_VERSION` (Podman older than 5.0), and
-`MM_PODMAN_COMPOSE` (`podman compose` does not run Docker Compose); a
-target that names one host is asked for these three and for how its `mmd`
+`MM_PODMAN_COMPOSE` (`podman compose` does not run Docker Compose), and
+`MM_PODMAN_APPARMOR` (a warning that Podman's containers run under its
+default AppArmor profile, under which processes in a container may not be
+able to signal each other; an error when Podman is pointed at mm's profile
+and the kernel has not loaded it); a
+target that names one host is asked for these four and for how its `mmd`
 fares (below), not for the rest. For every remote environment, cluster or single host, it reports how each host's
 `mmd` fares: `MM_DAEMON_NOT_ANSWERING` (a part of the daemon does not
 answer), the note `MM_DAEMON_RESTARTED` (it started in the last 15 minutes),

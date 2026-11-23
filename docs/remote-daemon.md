@@ -767,7 +767,9 @@ container user's id to `FIRST` for a service that runs as another user.
 `mm doctor` asks each host for its engine and reports a host whose Podman is
 older than 5.0 (`MM_PODMAN_VERSION`), whose `podman compose` does not run
 Docker Compose (`MM_PODMAN_COMPOSE`), or whose engine does not answer
-(`MM_NODE_ENGINE`), each with the command that fixes it. `mm target nodes
+(`MM_NODE_ENGINE`), each with the command that fixes it. It also warns about
+a host whose containers run under Podman's default AppArmor profile
+(`MM_PODMAN_APPARMOR`); see [AppArmor](#apparmor). `mm target nodes
 --output json` shows the engine of each node under `engine`.
 
 A cluster node runs one engine for every environment: it refuses to plan a
@@ -789,6 +791,57 @@ Limits on Podman:
   with its last; `mmd` gives a bridge that came back its settings within a
   few seconds, and until then a container reaches only the members on its
   own node.
+
+### AppArmor
+
+On a host whose kernel runs AppArmor (Debian and Ubuntu do by default),
+Podman confines every container with a profile. Its own profile,
+`containers-default-<version>`, lets a process signal only processes under
+the same profile. With user namespaces, which mm gives every service,
+AppArmor stacks that profile with the OCI runtime's profile (for example
+`containers-default-0.66.0//&crun` on Ubuntu 26.04 with Podman 5.7). The
+same-profile rule then no longer matches, so a process cannot signal
+another one in its container: a supervisor cannot stop the database it
+runs, and `kill` inside the container fails with `Permission denied`.
+
+Setup avoids this. Where the kernel runs AppArmor, it installs
+`/etc/apparmor.d/mm-containers`, loads it, and points Podman at it in
+`/etc/containers/containers.conf.d/50-mm-apparmor.conf`:
+
+```toml
+[containers]
+apparmor_profile = "mm-containers"
+```
+
+The profile is Podman's own with two more rules, `signal (send,receive),`
+and `ptrace (read),`, so the processes of a container can signal each other
+and read each other's `/proc` entries again. A container has a PID namespace
+of its own (mm's guardrails refuse `pid: host`), so it reaches no process
+outside itself. The plan shows the step as `apparmor:` under remote access.
+Setup replaces the profile when a newer mm changes it, and removes the
+drop-in from a host whose kernel does not run AppArmor, where Podman refuses
+any profile.
+
+Containers that were running before setup keep Podman's profile until they
+are created again, for example by the next deployment that changes them.
+
+To use a profile of your own, load it and set `apparmor_profile` in a
+drop-in that sorts after `50-mm-apparmor.conf`, such as `60-apparmor.conf`.
+Do not use `unconfined`: the workload guardrails refuse
+`security_opt: [apparmor:unconfined]` for a reason, and a host-wide
+`unconfined` removes the same protection from every container.
+
+`mm doctor` asks each Podman host which profile its containers get and
+reports `MM_PODMAN_APPARMOR`: a warning when it is Podman's default (set
+the host up again with `mm target setup plan` and its apply), and an error
+when Podman is pointed at `mm-containers` and the kernel has not loaded it,
+which stops every container from starting (on the node,
+`apparmor_parser --replace /etc/apparmor.d/mm-containers`). It reads the
+profile from `containers.conf` and its drop-ins, so it does not see a
+profile set with `CONTAINERS_CONF` or on a single container.
+
+Setup changes nothing for Docker Engine: mm runs its containers in the
+host's user namespace, and the stacking above comes with user namespaces.
 
 ## Apply the users file for the first time
 
