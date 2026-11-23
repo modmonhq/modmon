@@ -58,4 +58,20 @@ environment: an overlapping one stops the plan.
 
 Deployment attempts to restore the last successful deployment when one is
 available. Rollback can also fail, so read the error and check service status
-before trying again. See [recovery steps](../help/troubleshooting.md#interrupted-deployment-or-service-operation).
+before trying again.
+
+An environment's first deployment has nothing to restore. When one of its
+stacks fails, mm leaves what the deployment started as it is, the failed
+stack too, so you can read its logs. The error lists those stacks and the
+commands to run:
+
+```sh
+mm service status --environment production
+mm service logs api --environment production
+mm deploy plan --environment production
+```
+
+The next deployment applies over what is running: a stack that was already
+healthy and did not change is not started again. If the first deployment fails
+before any stack starts, or after every stack is healthy (while it publishes
+routes), mm removes what it created instead. See [recovery steps](../help/troubleshooting.md#interrupted-deployment-or-service-operation).
