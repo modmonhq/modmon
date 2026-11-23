@@ -23,6 +23,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- `mm build --publish` also builds the modules that environments on remote
+  targets run with the same build variant, so a receipt from a build-only
+  environment such as `ci` deploys to an environment whose services it does
+  not run. A CI publish can therefore build more images and take longer.
+  Modules with build secrets outside `credential-only-secrets` are still
+  built only where they run. The plan shows the environments each module is
+  for, and `mm deploy plan --receipt` refuses a receipt that lacks a module
+  the environment runs before asking any host. Builds without `--publish`
+  are unchanged.
 - A first deployment that fails while a stack starts is no longer removed:
   nothing ran before it, so the stacks it started keep running as they are,
   the failed one too, and the error names them with the commands to look at

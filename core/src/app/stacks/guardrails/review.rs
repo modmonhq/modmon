@@ -8,8 +8,6 @@ use crate::domain::diagnostic::Diagnostic;
 use crate::domain::error::MmError;
 use crate::domain::host_policy::{EnrolledProject, HostPolicy};
 
-const LOCAL_TARGET: &str = "local";
-
 /// The findings of `requested`, or without it of every environment a host
 /// policy applies to: the ones `policy` runs for the project, or without a
 /// policy every environment whose target is not `local`. With `policy`,
@@ -83,13 +81,7 @@ pub(in crate::app::stacks) fn on_local_target(
     document: &ConfigDocument,
     environment: &str,
 ) -> bool {
-    document
-        .config
-        .environments
-        .get(environment)
-        .and_then(|environment| environment.target.as_deref())
-        .unwrap_or(&document.config.target)
-        == LOCAL_TARGET
+    document.config.on_local_target(environment)
 }
 
 fn refused(
