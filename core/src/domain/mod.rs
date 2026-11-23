@@ -8,6 +8,7 @@ pub mod cluster_ingress;
 pub mod cluster_network;
 pub mod cluster_setup;
 pub mod command_log;
+pub mod compose_extends;
 pub mod compose_timing;
 pub mod config;
 pub mod config_file;

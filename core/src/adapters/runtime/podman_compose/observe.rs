@@ -22,7 +22,7 @@ use crate::app::ports::{
     CommandOutput, CommandSpec, LocalDeploymentRuntime, OwnedVolumeFile, ProcessRunner,
     RuntimeDriver, VolumeOwnership,
 };
-use crate::domain::compose_timing::COMPOSE_FLOOR;
+use crate::domain::compose_timing::{COMPOSE_FLOOR, ComposeOrder};
 use crate::domain::diagnostic::Diagnostic;
 use crate::domain::error::MmError;
 use crate::domain::ownership::{ResourceKind, ResourceOwnership};

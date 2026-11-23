@@ -2,7 +2,9 @@
 
 use std::time::Duration;
 
-use mm::domain::compose_timing::{COMPOSE_FLOOR, compose_duration, compose_limit, compose_wait};
+use mm::domain::compose_timing::{
+    COMPOSE_FLOOR, ComposeOrder, compose_duration, compose_limit, interpolate,
+};
 use serde_yaml_ng::Value;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -12,6 +14,10 @@ fn models(files: &[&str]) -> Result<Vec<Value>, serde_yaml_ng::Error> {
         .iter()
         .map(|file| serde_yaml_ng::from_str(file))
         .collect()
+}
+
+fn compose_wait(models: &[Value]) -> Duration {
+    mm::domain::compose_timing::compose_wait(models, &|_| None, ComposeOrder::Dependencies)
 }
 
 fn seconds(value: u64) -> Duration {
@@ -95,6 +101,77 @@ fn a_small_project_keeps_the_floor_and_a_cycle_ends() -> TestResult {
     assert_eq!(
         compose_limit(compose_wait(&cycle), COMPOSE_FLOOR),
         COMPOSE_FLOOR
+    );
+    Ok(())
+}
+
+#[test]
+fn variables_take_their_value_or_their_default() {
+    let variables = |name: &str| match name {
+        "GRACE" => Some("90s".to_owned()),
+        "EMPTY" => Some(String::new()),
+        _ => None,
+    };
+    let read = |text: &str| interpolate(text, &variables);
+    assert_eq!(read("${GRACE}").as_deref(), Some("90s"));
+    assert_eq!(read("$GRACE").as_deref(), Some("90s"));
+    assert_eq!(read("${MISSING:-5m}").as_deref(), Some("5m"));
+    assert_eq!(read("${EMPTY:-5m}").as_deref(), Some("5m"));
+    assert_eq!(read("${EMPTY-5m}").as_deref(), Some(""));
+    assert_eq!(read("${MISSING-${GRACE}}").as_deref(), Some("90s"));
+    assert_eq!(read("${MISSING:-${ALSO:-2m}}").as_deref(), Some("2m"));
+    assert_eq!(read("${GRACE:+1h}").as_deref(), Some("1h"));
+    assert_eq!(read("${MISSING:+1h}").as_deref(), Some(""));
+    assert_eq!(read("${MISSING:?set it}"), None);
+    assert_eq!(read("$$GRACE").as_deref(), Some("$GRACE"));
+    assert_eq!(read("${GRACE").as_deref(), None);
+}
+
+#[test]
+fn a_grace_and_a_health_check_set_from_variables_count() -> TestResult {
+    let files = models(&[
+        "services:\n  api:\n    image: api\n    depends_on:\n      db:\n        condition: service_healthy\n  db:\n    image: db\n    stop_grace_period: ${DB_GRACE:-5m}\n    healthcheck:\n      test: [CMD, ready]\n      interval: ${INTERVAL:-5s}\n      timeout: 5s\n      retries: ${RETRIES:-2}\n      start_period: ${START}\n",
+    ])?;
+    assert_eq!(compose_wait(&files), seconds(10 + 300 + 2 * 10));
+    let set = |name: &str| (name == "START").then(|| "1m".to_owned());
+    assert_eq!(
+        mm::domain::compose_timing::compose_wait(&files, &set, ComposeOrder::Dependencies),
+        seconds(10 + 300 + 60 + 2 * 10)
+    );
+    Ok(())
+}
+
+#[test]
+fn a_service_that_extends_another_of_its_file_inherits_its_grace_and_check() -> TestResult {
+    let files = models(&[
+        "x-base: &base\n  stop_grace_period: 1m\nservices:\n  base:\n    image: db\n    stop_grace_period: 4m\n    healthcheck:\n      test: [CMD, ready]\n      interval: 1s\n      timeout: 1s\n      retries: 1\n  db:\n    extends: {service: base}\n  api:\n    image: api\n    depends_on:\n      db:\n        condition: service_healthy\n  worker:\n    <<: *base\n    image: worker\n",
+    ])?;
+    assert_eq!(compose_wait(&files), seconds(10 + 240 + 2));
+    Ok(())
+}
+
+#[test]
+fn a_provider_that_takes_one_service_after_the_other_adds_them_all_up() -> TestResult {
+    let files = models(&[
+        "services:\n  web:\n    image: web\n  db:\n    image: db\n    stop_grace_period: 3m\n  worker:\n    image: worker\n    stop_grace_period: 1m\n",
+    ])?;
+    assert_eq!(
+        mm::domain::compose_timing::compose_wait(&files, &|_| None, ComposeOrder::OneByOne),
+        seconds(10 + 180 + 60)
+    );
+    Ok(())
+}
+
+#[test]
+fn a_grace_too_large_to_add_saturates() -> TestResult {
+    let files = models(&[
+        "services:\n  db:\n    image: db\n    stop_grace_period: 18446744073709551615\n  api:\n    image: api\n    depends_on: [db]\n",
+    ])?;
+    let wait = compose_wait(&files);
+    assert_eq!(compose_limit(wait, COMPOSE_FLOOR), Duration::MAX);
+    assert_eq!(
+        mm::domain::compose_timing::compose_wait(&files, &|_| None, ComposeOrder::OneByOne),
+        Duration::MAX
     );
     Ok(())
 }

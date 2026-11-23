@@ -482,7 +482,7 @@ impl LocalDeploymentRuntime for PodmanComposeRuntime {
             &target.project_name,
             services,
             whole_project,
-            project_limit(target, STOP_FLOOR),
+            project_limit(target, ComposeOrder::OneByOne, STOP_FLOOR),
         )
         .await
     }
@@ -521,7 +521,7 @@ impl LocalDeploymentRuntime for PodmanComposeRuntime {
         crate::adapters::runtime::project_services::remove_containers(
             self,
             containers,
-            project_limit(target, STOP_FLOOR),
+            project_limit(target, ComposeOrder::OneByOne, STOP_FLOOR),
         )
         .await
     }
@@ -537,7 +537,7 @@ impl LocalDeploymentRuntime for PodmanComposeRuntime {
             .run(
                 self.command_spec(args)
                     .current_dir(&target.root)
-                    .timeout(project_limit(target, COMPOSE_FLOOR)),
+                    .timeout(project_limit(target, ComposeOrder::OneByOne, COMPOSE_FLOOR)),
             )
             .await?;
         self.ensure_success(output)?;
@@ -589,7 +589,7 @@ impl PodmanComposeRuntime {
                 auth.podman(self.command_spec(args))
                     .interpolation_environment(&target.interpolation_environment)
                     .current_dir(&target.root)
-                    .timeout(project_limit(target, COMPOSE_FLOOR)),
+                    .timeout(project_limit(target, ComposeOrder::OneByOne, COMPOSE_FLOOR)),
             )
             .await?;
         self.ensure_started(output, target, only)

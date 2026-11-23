@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use super::*;
-use crate::domain::compose_timing::COMPOSE_FLOOR;
+use crate::domain::compose_timing::{COMPOSE_FLOOR, ComposeOrder};
 use crate::domain::runtime::RuntimeEnvironment;
 use crate::domain::workspace::ProjectId;
 
@@ -38,16 +38,16 @@ fn the_files_of_the_project_set_its_limit_and_a_later_file_wins() -> TestResult 
     )?;
     let both = target(temp.path(), &["compose.yaml", "override.yaml"]);
     assert_eq!(
-        project_limit(&both, COMPOSE_FLOOR),
+        project_limit(&both, ComposeOrder::Dependencies, COMPOSE_FLOOR),
         Duration::from_secs(300)
     );
     let first = target(temp.path(), &["compose.yaml"]);
     assert_eq!(
-        project_limit(&first, COMPOSE_FLOOR),
+        project_limit(&first, ComposeOrder::Dependencies, COMPOSE_FLOOR),
         Duration::from_secs(180)
     );
     assert_eq!(
-        project_limit(&first, Duration::from_secs(300)),
+        project_limit(&first, ComposeOrder::Dependencies, Duration::from_secs(300)),
         Duration::from_secs(300)
     );
     Ok(())
@@ -58,6 +58,35 @@ fn a_file_that_cannot_be_read_leaves_the_floor() -> TestResult {
     let temp = crate::test_support::tempdir()?;
     std::fs::write(temp.path().join("broken.yaml"), "services: [")?;
     let target = target(temp.path(), &["missing.yaml", "broken.yaml"]);
-    assert_eq!(project_limit(&target, COMPOSE_FLOOR), COMPOSE_FLOOR);
+    assert_eq!(
+        project_limit(&target, ComposeOrder::Dependencies, COMPOSE_FLOOR),
+        COMPOSE_FLOOR
+    );
+    Ok(())
+}
+
+#[test]
+fn a_grace_from_a_variable_reads_the_targets_interpolation_environment() -> TestResult {
+    let temp = crate::test_support::tempdir()?;
+    std::fs::write(
+        temp.path().join("compose.yaml"),
+        "services:\n  db:\n    image: db\n    stop_grace_period: ${DB_GRACE:-2m}\n  web:\n    image: web\n",
+    )?;
+    let mut target = target(temp.path(), &["compose.yaml"]);
+    assert_eq!(
+        project_limit(&target, ComposeOrder::Dependencies, COMPOSE_FLOOR),
+        Duration::from_secs(180)
+    );
+    assert_eq!(
+        project_limit(&target, ComposeOrder::OneByOne, COMPOSE_FLOOR),
+        Duration::from_secs(190)
+    );
+    target
+        .interpolation_environment
+        .insert("DB_GRACE".to_owned(), "5m".to_owned());
+    assert_eq!(
+        project_limit(&target, ComposeOrder::Dependencies, COMPOSE_FLOOR),
+        Duration::from_secs(360)
+    );
     Ok(())
 }

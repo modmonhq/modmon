@@ -152,7 +152,8 @@ pub(crate) fn remote_environment_as(
 }
 
 /// The longest `domain::compose_timing::compose_wait` of the
-/// configuration's stacks; a file that cannot be read counts for nothing.
+/// configuration's stacks, for any provider and with each variable at its
+/// default; a file that cannot be read counts for nothing.
 fn compose_wait(document: &crate::domain::config::ConfigDocument) -> std::time::Duration {
     document
         .config
@@ -165,7 +166,11 @@ fn compose_wait(document: &crate::domain::config::ConfigDocument) -> std::time::
                 .filter_map(|file| std::fs::read_to_string(document.root.join(file)).ok())
                 .filter_map(|text| serde_yaml_ng::from_str(&text).ok())
                 .collect::<Vec<serde_yaml_ng::Value>>();
-            crate::domain::compose_timing::compose_wait(&models)
+            crate::domain::compose_timing::compose_wait(
+                &models,
+                &|_| None,
+                crate::domain::compose_timing::ComposeOrder::OneByOne,
+            )
         })
         .max()
         .unwrap_or_default()

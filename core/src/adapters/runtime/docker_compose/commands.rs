@@ -6,6 +6,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 
 use crate::adapters::runtime::compose_limit::project_limit;
+use crate::domain::compose_timing::ComposeOrder;
 use crate::adapters::runtime::inspect::{
     ownership_label_args, parse_inspected_resource, parse_resource_ids,
     require_inspected_project_ownership,

@@ -10,16 +10,16 @@ impl Walk<'_> {
     /// containers stop and dependencies become healthy.
     pub(super) fn stack_patience(&self) -> Duration {
         Duration::from_secs(self.rollout.convergence_timeout_seconds)
-            + self.rollout.pull_timeout()
-            + STACK_OVERHEAD
-            + self.environment.compose_wait
+            .saturating_add(self.rollout.pull_timeout())
+            .saturating_add(STACK_OVERHEAD)
+            .saturating_add(self.environment.compose_wait)
     }
 
     /// How long a node may take to finish or roll back, which may start or
     /// stop every stack again.
     pub(super) fn undo_patience(&self) -> Duration {
         let stacks = u32::try_from(self.rollout.stages.len()).unwrap_or(u32::MAX);
-        SETUP_PATIENCE + self.environment.compose_wait.saturating_mul(stacks)
+        SETUP_PATIENCE.saturating_add(self.environment.compose_wait.saturating_mul(stacks))
     }
 
     /// The jobs of a stage, one after the other on their nodes, before any
