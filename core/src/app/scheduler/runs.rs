@@ -429,8 +429,9 @@ impl JobSchedulerService {
                     && !schedule.retired
                     && schedule.next_due_at_unix_ms.is_some_and(|due| due <= now)
             });
+        let keeper = self.clone().with_background_launches();
         if schedule_due {
-            return self.cycle(selection, approval).await.map(|_| ());
+            return keeper.cycle(selection, approval).await.map(|_| ());
         }
         let waiting = self
             .repository
@@ -446,7 +447,7 @@ impl JobSchedulerService {
             return Ok(());
         }
         for run in waiting {
-            self.advance(selection, &document, run, approval).await?;
+            keeper.advance(selection, &document, run, approval).await?;
         }
         Ok(())
     }

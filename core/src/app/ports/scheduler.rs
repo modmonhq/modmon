@@ -89,6 +89,16 @@ pub trait SchedulerRepository: Send + Sync {
         lease: Duration,
     ) -> Result<Option<ClaimedJobRun>, MmError>;
 
+    /// Extends the lease of `claim` to `lease` from `now_unix_ms`. False
+    /// when the claim no longer holds the run: another worker took it, or
+    /// a cancel did.
+    fn renew_lease(
+        &self,
+        claim: &ClaimedJobRun,
+        now_unix_ms: i64,
+        lease: Duration,
+    ) -> Result<bool, MmError>;
+
     fn mark_run_running(
         &self,
         claim: &ClaimedJobRun,

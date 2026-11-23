@@ -186,6 +186,7 @@ pub struct DaemonUseCaseAdapter {
     host_policy: Option<PathBuf>,
     engine: super::engine_facts::HostEngine,
     node_host: Option<daemon_host::NodeHost>,
+    job_pulls: Arc<crate::app::JobPullSlots>,
 }
 
 #[path = "remote_clients.rs"]

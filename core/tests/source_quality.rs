@@ -1,6 +1,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+mod test_items;
+
 #[test]
 fn production_source_has_no_silent_failure_or_panic_shortcuts() -> Result<(), std::io::Error> {
     let mut violations = Vec::new();
@@ -9,8 +11,7 @@ fn production_source_has_no_silent_failure_or_panic_shortcuts() -> Result<(), st
             continue;
         }
         let source = fs::read_to_string(&path)?;
-        let production = source.split("#[cfg(test)]").next().unwrap_or(&source);
-        let code = code_without_comments_or_literals(production);
+        let code = production_code(&source);
         for (index, line) in code.lines().enumerate() {
             for forbidden in [
                 ".unwrap(",
@@ -58,8 +59,7 @@ fn inner_layers_do_not_import_concrete_boundary_implementations() -> Result<(), 
                 continue;
             }
             let source = fs::read_to_string(&path)?;
-            let production = source.split("#[cfg(test)]").next().unwrap_or(&source);
-            let code = code_without_comments_or_literals(production);
+            let code = production_code(&source);
             for forbidden in [
                 "crate::adapters",
                 "CommandSpec::new(docker",
@@ -101,8 +101,7 @@ fn file_locks_are_waited_for_in_one_place_with_a_deadline() -> Result<(), std::i
             continue;
         }
         let source = fs::read_to_string(&path)?;
-        let production = source.split("#[cfg(test)]").next().unwrap_or(&source);
-        let code = code_without_comments_or_literals(production);
+        let code = production_code(&source);
         for (index, line) in code.lines().enumerate() {
             for forbidden in BLOCKING {
                 if line.contains(forbidden) {
@@ -222,8 +221,7 @@ fn child_processes_are_started_in_one_place() -> Result<(), std::io::Error> {
             continue;
         }
         let source = fs::read_to_string(&path)?;
-        let production = source.split("#[cfg(test)]").next().unwrap_or(&source);
-        let code = code_without_comments_or_literals(production);
+        let code = production_code(&source);
         for (index, line) in code.lines().enumerate() {
             let starts = line.match_indices("Command::new(").any(|(at, _)| {
                 let before = &line[..at];
@@ -269,6 +267,27 @@ fn source_scanner_preserves_code_after_lifetimes() {
         !code_without_comments_or_literals("let text = \"let _ = hidden\";")
             .contains("let _ = hidden")
     );
+}
+
+#[test]
+fn source_scanner_skips_only_the_test_items() {
+    let source = "#[cfg(test)]\nfn helper() -> Result<[u8; 2], ()> { Ok([0; 2]) }\n\nfn shipped() { let _ = 1; }\n\n#[cfg(test)]\nmod tests;\n";
+    let code = production_code(source);
+    assert!(!code.contains("helper") && !code.contains("Ok("));
+    assert!(!code.contains("mod tests"));
+    assert_eq!(
+        code.lines().position(|line| line.contains("let _ = 1")),
+        Some(3)
+    );
+    let fields = "struct Kept {\n    #[cfg(test)]\n    status: Option<u8>\n}\nenum Platform {\n    #[cfg(test)]\n    Test,\n    Linux,\n}\nfn pick(platform: Platform) -> u8 {\n    match platform {\n        #[cfg(test)]\n        Platform::Test => 0,\n        Platform::Linux => 1,\n    };\n    let _ = 2;\n}\n";
+    let code = production_code(fields);
+    assert!(!code.contains("status") && !code.contains("Test"));
+    assert!(code.contains("Linux,") && code.contains("Platform::Linux => 1"));
+    assert!(code.contains("let _ = 2"));
+}
+
+fn production_code(source: &str) -> String {
+    code_without_comments_or_literals(&test_items::without_test_items(source))
 }
 
 fn result_sensitive_path(path: &Path) -> bool {

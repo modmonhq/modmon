@@ -245,6 +245,15 @@ async fn a_build_context_snapshot_has_the_same_modes_under_any_umask()
     );
     fs::set_permissions(
         project.path().join("web/bin/start"),
+        fs::Permissions::from_mode(0o654),
+    )?;
+    let executable_by_others_only = builds.plan(&selection, false).await?;
+    assert_eq!(
+        executable_by_others_only.units[0].context_hash,
+        without_executable.units[0].context_hash
+    );
+    fs::set_permissions(
+        project.path().join("web/bin/start"),
         fs::Permissions::from_mode(0o755),
     )?;
     fs::set_permissions(

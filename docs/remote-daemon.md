@@ -1012,10 +1012,14 @@ PLAN=$(mm --output json --environment production deploy plan --receipt build-rec
 mm --environment production deploy apply --plan "$PLAN" --yes
 ```
 
-The host deploys the receipt's digests when production's configuration at
-that commit builds exactly the same units as `ci` did: the same modules,
-platforms, image repositories, variants, and build inputs. Otherwise it
-refuses and names the first module that differs. A module with a build secret
+`ci` needs no service of its own: `mm build --publish` builds every module the
+environments on remote targets run, when they select the same build variant
+of it and it has no build secret outside `credential-only-secrets`. The host
+deploys the receipt's digests when production's configuration at that
+commit builds the same units as `ci` did: the same platforms, image
+repositories, variants, and build inputs for every module production runs.
+Otherwise it refuses and names the first module that differs; a module
+missing from the receipt is refused before mm contacts any host. A module with a build secret
 can only be promoted when every secret is listed under
 `credential-only-secrets`, because other secrets can hold different values
 per environment. The plan's `plan.build_receipt.environment` and the host's
@@ -2151,13 +2155,15 @@ listens on the node's own address on each network (the first address of the
 node's slice, such as `10.64.0.1`), and the containers of the network's
 services get an `/etc/resolv.conf` that names that address. `mmd` knows the
 containers of its own node by watching the engine. A lookup from an address
-where `mmd` knows no container yet waits up to a second for the engine to show
-one there, so a container that resolves its own `tasks.<service>` name as its
-entrypoint's first step finds itself in the first answer. It learns the containers of
-the other nodes by asking each node every two seconds, over the mesh, what it
-runs. Nothing is stored and no deployment pushes anything: what runs decides
-the answers. Because each node answers its own containers, it can prefer the
-containers next to them.
+where `mmd` knows no container yet waits for the engine to show one there: up
+to a second, or on an engine that takes longer to list its containers, until
+one listing started after the lookup has finished, and never more than three
+seconds. So a container that resolves its own `tasks.<service>` name as its
+entrypoint's first step finds itself in the first answer. It learns the
+containers of the other nodes by asking each node every two seconds, over the
+mesh, what it runs. Nothing is stored and no deployment pushes anything: what
+runs decides the answers. Because each node answers its own containers, it can
+prefer the containers next to them.
 
 When a node has not answered the others for ten seconds, they leave its
 containers out of their answers, and `mm service status` says which node is

@@ -26,6 +26,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- `mm build --publish` also builds the modules that environments on remote
+  targets run with the same build variant, so a receipt from a build-only
+  environment such as `ci` deploys to an environment whose services it does
+  not run. A CI publish can therefore build more images and take longer.
+  Modules with build secrets outside `credential-only-secrets` are still
+  built only where they run. The plan shows the environments each module is
+  for, and `mm deploy plan --receipt` refuses a receipt that lacks a module
+  the environment runs before asking any host. Builds without `--publish`
+  are unchanged.
 - A deployment keeps the last 200 lines of a failed container's log, bounded
   to 64 KiB with secret values hidden, instead of 20, also on a single host.
 - A first deployment that fails while a stack starts is no longer removed:
@@ -50,7 +59,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `mm config validate --for-remote` reports the same.
 - A container that resolves its own `tasks.<service>` name as soon as it
   starts finds itself: `mmd` reads the engine for a lookup from a container it
-  has not seen yet before answering it, instead of letting the name fall
+  has not seen yet before answering it, for up to three seconds when the
+  engine is slow to list its containers, instead of letting the name fall
   through to the host's resolvers.
 - A build context reaches the engine with directories at 0755 and files at
   0644, or 0755 when executable, whatever the umask `mm build` runs under, so
@@ -77,6 +87,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   can read (`MM_USER_NAMESPACE`), instead of handing over a file the
   container's users cannot read. A service in the host's user namespace
   (`userns_mode: host` or `host-user-namespace`) keeps such files.
+  0644, or 0755 when its owner may execute it (the bit Git records), whatever
+  the umask `mm build` runs under, so a non-root user in the image can read
+  what `COPY` put there. The context hash now records these modes, so every
+  module rebuilds once after the upgrade. A receipt promotes to another
+  environment only when it and the hosts' `mmd` are both on this release or
+  later; otherwise build that environment again.
+- On Podman hosts, a config file or secret file of a service whose Compose
+  file sets its own `userns_mode`, such as `auto`, no longer reaches the
+  container owned by an unknown id: `mm config validate` and the plan refuse
+  an entry whose owner or mode cannot hold there (`MM_USER_NAMESPACE`) and say
+  to remove `userns_mode`, which gives the service ids of its own.
 - An `internal: true` network that spans cluster nodes no longer takes a
   container's default route, which cut a container that is also on an
   ordinary network off from the internet and from the other nodes. Podman
@@ -108,6 +129,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   that would run such a service under `mm-containers` is refused. `mm doctor`
   warns about a host whose containers run under Podman's default profile
   (`MM_PODMAN_APPARMOR`).
+- A job whose image pull takes longer than 30 seconds keeps its claim on the
+  run while it pulls, so a second worker no longer launches the same run
+  again, and the job keeper of `mmd` looks after the other runs' timeouts and
+  cancels meanwhile. A cancel stops the pull.
+- `pull_policy: daily`, `weekly` and `every_<duration>` images are pulled on
+  every deployment, like `always`, instead of only when missing; the time a
+  host spends finding which images it lacks counts against
+  `deploy.pull-timeout`.
 - A job stopped at its timeout keeps the output it wrote, and `mm deploy logs`
   and `mm job history` show it.
 - `mm job run` of a job with `retry` no longer waits forever after a failed

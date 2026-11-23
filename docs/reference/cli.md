@@ -4049,7 +4049,9 @@ Commands:
 
 Options:
       --publish
-          Push a multi-platform image index and reviewed tags to the registry
+          Push a multi-platform image index and reviewed tags to the registry.
+
+          Also builds the modules that environments on remote targets run with the same build variant, so its receipt can be promoted to them.
 
       --all
           Build every module that has a build, not only the ones the selected environment runs and the bases they build FROM
@@ -4058,7 +4060,7 @@ Options:
           Skip the build confirmation prompt
 
   -h, --help
-          Print help
+          Print help (see a summary with '-h')
 
 Examples:
   mm build plan

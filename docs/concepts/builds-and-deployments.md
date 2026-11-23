@@ -20,9 +20,12 @@ Where a build puts its images depends on where the environment runs:
 `mm build` builds the modules the selected environment runs: every module
 with a service in that environment, and the modules whose images those build
 `FROM`, through `build.depends-on` or a `FROM` line that names another
-module's `build.image`. So `mm --environment production build --publish`
-never builds a module that only runs in development. A module the
-environment does not run cannot stop its build either.
+module's `build.image`. A published build also covers the modules that
+environments on remote targets run, so its receipt can be promoted to them;
+see [promote a build to another
+environment](#promote-a-build-to-another-environment). Without `--all`, a
+build never includes a module that only runs in another environment whose
+target is `local`, or only in the development environment.
 
 To build every module that has a build, whatever the environment runs, add
 `--all`:
@@ -180,12 +183,12 @@ excludes it at any depth. `*` matches within one directory, and a later
 `!pattern` sends again what an earlier pattern excluded. `.git` at the top of
 the context is never sent.
 
-The context keeps only one mode bit from your checkout: whether a file is
-executable. Directories reach the engine as 0755, executable files as 0755,
-and other files as 0644, whatever your umask, so a non-root user in the image
-can read what `COPY` put there. Set other modes in the Dockerfile with
-`COPY --chmod`. Making a file executable, or no longer executable, rebuilds
-the image.
+The context keeps only one mode bit from your checkout: whether a file's owner
+may execute it, which is the bit Git records. Directories reach the engine as
+0755, files executable by their owner as 0755, and other files as 0644,
+whatever your umask, so a non-root user in the image can read what `COPY` put
+there. Set other modes in the Dockerfile with `COPY --chmod`. Making a file
+executable, or no longer executable, rebuilds the image.
 
 The plan refuses a file that would be sent when it is a symlink, a socket or
 other special file, or looks like a secret (`.env`, `.env.*`, SSH private
@@ -261,6 +264,22 @@ mm --environment production deploy plan --receipt build-receipt.json
 mm --environment production deploy apply --plan PLAN_HASH --yes
 ```
 
+`mm build --publish` builds every module that the build environment runs, and
+every module an environment on a remote target runs when that environment
+selects the same [build variant](#build-dependencies-and-variants) of it, so a
+service limited to `environments: [uat, production]` is in a receipt built for
+`ci`. Environments whose target is `local`, and the development environment,
+are left out, and so is a module with a build secret that is not listed under
+`credential-only-secrets`: it cannot be promoted, so each environment that
+runs it builds it. A build without `--publish`, and `mm dev`, still build only
+what the environment runs. A publish can therefore take longer than before.
+`mm build --publish plan` shows the environments each module is built for:
+
+```text
+  module: backup -> registry.example.com/acme/backup (...)
+    for: production, uat
+```
+
 mm plans the target environment's build of the receipt's commit and accepts
 the receipt only when it holds every module that environment builds, each
 built exactly the same way: the same platforms, image repositories, selected
@@ -268,8 +287,12 @@ variants, build paths, arguments, extra inputs, dependencies, and file
 contents. Modules in the receipt that the target environment does not run are
 left out of the promoted build. Otherwise it refuses and names
 the first module that differs and what differs, such as `build argument
-FEATURE`, with the command that builds for the target environment. A module
-with build secrets is promoted only when every secret is listed under
+FEATURE`, with the command that builds for the target environment. From a
+checkout of the receipt's commit with the configuration it was built from,
+`mm deploy plan --receipt` refuses a receipt
+that lacks a module the target environment runs before it asks any host, and
+names the module and the command that publishes it. A module with build
+secrets is promoted only when every secret is listed under
 [`credential-only-secrets`](../secret-delivery.md#build-secrets): other
 secrets can hold a different value in each environment. The deployment plan's
 `build_receipt` field records the receipt hash, commit, and the environment it
@@ -277,7 +300,9 @@ was built for.
 
 The build context is hashed from the files in the checkout, so files that are
 not committed but are not excluded by the context's ignore file also make the
-units differ.
+units differ. A receipt written by an older mm release can differ in its build
+context alone, because the way mm hashes file modes changed; build the target
+environment again with `mm -e production build --publish`.
 
 ### Import a build
 

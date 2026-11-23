@@ -95,6 +95,10 @@ pub enum Command {
     )]
     Build {
         /// Push a multi-platform image index and reviewed tags to the registry.
+        ///
+        /// Also builds the modules that environments on remote targets run
+        /// with the same build variant, so its receipt can be promoted to
+        /// them.
         #[arg(long, global = true)]
         publish: bool,
         /// Build every module that has a build, not only the ones the

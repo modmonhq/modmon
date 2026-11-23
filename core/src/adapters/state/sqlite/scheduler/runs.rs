@@ -111,6 +111,31 @@ macro_rules! scheduler_runs { () => {
         }))
     }
 
+    fn renew_lease(
+        &self,
+        claim: &ClaimedJobRun,
+        now_unix_ms: i64,
+        lease: Duration,
+    ) -> Result<bool, MmError> {
+        let expires = lease_expiry(now_unix_ms, lease)?;
+        let changed = self
+            .connection()?
+            .execute(
+                "UPDATE job_runs SET lease_expires_at_ms=?4
+                 WHERE id=?1 AND lease_owner=?2 AND fence_token=?3
+                   AND state IN ('launching','running','unknown')
+                   AND cancellation_requested=0",
+                params![
+                    claim.run.id.to_string(),
+                    claim.lease_owner.to_string(),
+                    i64::try_from(claim.run.fence_token).unwrap_or(i64::MAX),
+                    expires,
+                ],
+            )
+            .map_err(state_error)?;
+        Ok(changed == 1)
+    }
+
     fn mark_run_running(
         &self,
         claim: &ClaimedJobRun,

@@ -38,7 +38,7 @@ impl Drop for Doing {
 }
 
 fn tell(what: Option<String>) {
-    match SINK.try_with(|sink| sink(what)) {
-        Ok(()) | Err(_) => {}
+    if let Ok(sink) = SINK.try_get() {
+        sink(what);
     }
 }
