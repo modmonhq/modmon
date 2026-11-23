@@ -217,7 +217,9 @@ environment that `environments:` does not declare.
 a Compose feature that [a remote host refuses](../remote-access.md#what-a-deploy-may-run)
 in a service the named environment runs. With `--host-policy`, a feature the
 policy's `allow` list grants is the information `MM_REMOTE_GUARDRAIL_ALLOWED`
-instead, which does not fail the command.
+instead, which does not fail the command. A `container:` join
+(`container-join`) is always an error: no `allow` entry covers it, and the
+help says to join a service with `service:` instead.
 A deployment that does not become healthy says why inside its message:
 `MM_RUNTIME_UNHEALTHY` (the health check fails), `MM_RUNTIME_EXITED` (the
 container exited), `MM_RUNTIME_RESTARTING` (the engine keeps restarting it),

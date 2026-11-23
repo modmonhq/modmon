@@ -26,6 +26,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Security: a remote host or cluster node no longer runs a service that
+  reaches the host or another container without an exception.
+  `container:NAME` in `pid`, `ipc` and `network_mode` is refused
+  (`container-join`, which no exception allows; use `service:<service>`). A
+  `service:` join that reaches a service with a host namespace needs the same
+  exception as that service, such as `pid-host`. A guardrail key whose value
+  comes from a variable, such as `privileged: ${PRIVILEGED:-true}`, a
+  `security_opt` entry, `external` or a secret's `file`, is refused as the
+  feature it could turn on; write the value itself. A quoted
+  `privileged: "true"` and the `external: {name: ...}` form are caught too.
+  `mm config validate --for-remote` reports the same.
 - A container that resolves its own `tasks.<service>` name as soon as it
   starts finds itself: `mmd` reads the engine for a lookup from a container it
   has not seen yet before answering it, instead of letting the name fall
