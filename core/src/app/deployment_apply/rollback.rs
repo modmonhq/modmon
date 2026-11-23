@@ -18,7 +18,7 @@ impl DeploymentService {
             self.rollback_to_previous(plan, target, (previous, changes), environment_bundle)
                 .await?;
         } else {
-            self.rollback_initial_deployment(plan, target).await?;
+            self.rollback_initial_deployment(plan, target, None).await?;
         }
         Ok(())
     }
@@ -207,13 +207,28 @@ impl DeploymentService {
         }
     }
 
-    async fn rollback_initial_deployment(
+    /// Removes what `plan`, a first deployment, started. Before `next`
+    /// is applied, what it runs too stays: its stacks, networks and
+    /// ingress.
+    pub(super) async fn rollback_initial_deployment(
         &self,
         plan: &DeploymentPlan,
         target: &NamedTarget,
+        next: Option<&DeploymentPlan>,
     ) -> Result<(), MmError> {
         let mut failures = Vec::new();
-        for stack in plan.stacks.iter().rev() {
+        let runs_next = |project: &str| {
+            next.is_some_and(|next| {
+                (next.stacks.iter()).any(|stack| stack.compose_project_name == project)
+            })
+        };
+        let keeps = plan
+            .stacks
+            .iter()
+            .any(|stack| runs_next(&stack.compose_project_name));
+        for stack in
+            (plan.stacks.iter().rev()).filter(|stack| !runs_next(&stack.compose_project_name))
+        {
             if let Err(error) = self
                 .ports
                 .runtime
@@ -226,7 +241,7 @@ impl DeploymentService {
         for network in plan
             .networks
             .iter()
-            .filter(|network| !network.members.is_empty())
+            .filter(|network| !network.members.is_empty() && !keeps)
         {
             if let Err(error) = self
                 .ports
@@ -242,58 +257,70 @@ impl DeploymentService {
             }
         }
         if let Some(ingress) = &plan.static_ingress
+            && !keeps
             && !self.planner.installation_owns_ingress(plan.target_id)?
         {
-            if let Err(error) = self.ports.privileged.uninstall(ingress).await {
-                failures.push(error);
-            }
-            if let Err(error) = self.ports.rootless.uninstall(ingress).await {
-                failures.push(error);
-            }
-            let exclusively_owned = plan.complete_route_claims.iter().all(|claim| {
-                claim.project_id == plan.project_id && claim.environment == plan.environment
-            });
-            if exclusively_owned {
-                if let Err(error) = self
-                    .ports
-                    .runtime
-                    .remove(&ingress_runtime_target(plan, target, ingress))
-                    .await
-                {
-                    failures.push(error);
-                }
-                let manifest = &ingress.artifact.manifest;
-                if let Err(error) = self
-                    .ports
-                    .runtime
-                    .remove_volume(
-                        target,
-                        &manifest.dynamic_config_volume_name,
-                        INGRESS_CONFIG_RESOURCE,
-                    )
-                    .await
-                {
-                    failures.push(error);
-                }
-                if let Err(error) = self
-                    .ports
-                    .runtime
-                    .remove_volume(target, &manifest.acme_volume_name, INGRESS_ACME_RESOURCE)
-                    .await
-                {
-                    failures.push(error);
-                }
-                if let Err(error) = self
-                    .ports
-                    .runtime
-                    .remove_network(target, &manifest.network_name, INGRESS_NETWORK_RESOURCE)
-                    .await
-                {
-                    failures.push(error);
-                }
-            }
+            self.remove_initial_ingress(plan, target, ingress, &mut failures)
+                .await;
         }
         rollback_result(failures)
+    }
+
+    async fn remove_initial_ingress(
+        &self,
+        plan: &DeploymentPlan,
+        target: &NamedTarget,
+        ingress: &TargetIngressPlan,
+        failures: &mut Vec<MmError>,
+    ) {
+        if let Err(error) = self.ports.privileged.uninstall(ingress).await {
+            failures.push(error);
+        }
+        if let Err(error) = self.ports.rootless.uninstall(ingress).await {
+            failures.push(error);
+        }
+        let exclusively_owned = plan.complete_route_claims.iter().all(|claim| {
+            claim.project_id == plan.project_id && claim.environment == plan.environment
+        });
+        if exclusively_owned {
+            if let Err(error) = self
+                .ports
+                .runtime
+                .remove(&ingress_runtime_target(plan, target, ingress))
+                .await
+            {
+                failures.push(error);
+            }
+            let manifest = &ingress.artifact.manifest;
+            if let Err(error) = self
+                .ports
+                .runtime
+                .remove_volume(
+                    target,
+                    &manifest.dynamic_config_volume_name,
+                    INGRESS_CONFIG_RESOURCE,
+                )
+                .await
+            {
+                failures.push(error);
+            }
+            if let Err(error) = self
+                .ports
+                .runtime
+                .remove_volume(target, &manifest.acme_volume_name, INGRESS_ACME_RESOURCE)
+                .await
+            {
+                failures.push(error);
+            }
+            if let Err(error) = self
+                .ports
+                .runtime
+                .remove_network(target, &manifest.network_name, INGRESS_NETWORK_RESOURCE)
+                .await
+            {
+                failures.push(error);
+            }
+        }
     }
 }
 

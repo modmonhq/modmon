@@ -2,16 +2,17 @@ use super::*;
 use crate::domain::rollout::StepFailure;
 
 impl DeploymentService {
-    /// Applies `plan` stack by stack; `changes` notes each stack before
-    /// it changes, so a failure undoes only what changed.
-    pub(super) async fn apply_locked(
+    /// Applies `plan` stack by stack, up to the routes (`settle`);
+    /// `changes` notes each stack before it changes, so a failure undoes
+    /// only what changed.
+    pub(super) async fn apply_stacks(
         &self,
         selection: &WorkspaceSelection,
         plan: &DeploymentPlan,
         target: &NamedTarget,
         environments: Option<&crate::domain::environment::PreparedEnvironmentBundle>,
         changes: &mut crate::domain::rollout::RolloutChanges,
-    ) -> Result<DeploymentResult, MmError> {
+    ) -> Result<(), MmError> {
         self.prepare_workloads(plan, target).await?;
         self.sweep_jobs(selection, plan, target).await?;
         for stack in plan
@@ -48,7 +49,7 @@ impl DeploymentService {
                 });
             }
         }
-        self.settle(plan, target).await
+        Ok(())
     }
 
     /// What follows the last healthy stack: the routes, then everything the
