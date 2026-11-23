@@ -191,11 +191,17 @@ impl StepFailure {
     /// message, which has no room for a list.
     #[must_use]
     pub fn with_log(&self) -> String {
+        format!("{self}{}", self.log_suffix())
+    }
+
+    /// What [`Self::with_log`] adds to the failure: the end of its log.
+    #[must_use]
+    pub fn log_suffix(&self) -> String {
         if self.log.is_empty() {
-            return self.to_string();
+            return String::new();
         }
         format!(
-            "{self}. Its last log lines: {}",
+            ". Its last log lines: {}",
             failure_log_summary(&self.log).join(" | ")
         )
     }
@@ -215,19 +221,27 @@ pub const FAILURE_LOG_BYTES: usize = 64 * 1024;
 /// How many of the kept lines a one-line message shows.
 pub const FAILURE_SUMMARY_LINES: usize = 20;
 
-/// The last `lines` of `log`, and of those no more than
-/// [`FAILURE_LOG_BYTES`].
+/// The most characters of one kept line.
+pub const FAILURE_LINE_CHARS: usize = 400;
+
+/// The last `lines` of `log`, each cut to [`FAILURE_LINE_CHARS`] without
+/// control characters, and of those no more than [`FAILURE_LOG_BYTES`].
 #[must_use]
 pub fn kept_failure_log<S: AsRef<str>>(log: &[S], lines: usize) -> Vec<String> {
     let mut kept = Vec::new();
     let mut bytes = 0_usize;
     for line in log.iter().rev().take(lines) {
-        let line = line.as_ref();
+        let line = line
+            .as_ref()
+            .chars()
+            .filter(|character| !character.is_control())
+            .take(FAILURE_LINE_CHARS)
+            .collect::<String>();
         bytes = bytes.saturating_add(line.len().saturating_add(1));
         if bytes > FAILURE_LOG_BYTES {
             break;
         }
-        kept.push(line.to_owned());
+        kept.push(line);
     }
     kept.reverse();
     kept

@@ -5,9 +5,9 @@ use std::collections::BTreeMap;
 
 use mm::domain::config::{MmConfig, UpdateFailure, UpdateOrder};
 use mm::domain::rollout::{
-    ClusterRollout, DeploymentRecord, DeploymentStatus, FAILURE_LOG_BYTES, NodeDeploymentStatus,
-    NodeRollout, NodeRolloutInput, NodeStatusRow, RolloutPolicy, RolloutState, StepFailure,
-    kept_failure_log, rollback_target, stack_order,
+    ClusterRollout, DeploymentRecord, DeploymentStatus, FAILURE_LINE_CHARS, FAILURE_LOG_BYTES,
+    NodeDeploymentStatus, NodeRollout, NodeRolloutInput, NodeStatusRow, RolloutPolicy,
+    RolloutState, StepFailure, kept_failure_log, rollback_target, stack_order,
 };
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -596,10 +596,19 @@ fn a_failed_container_keeps_200_lines_by_default_and_never_more_than_its_byte_bo
     assert_eq!(kept.first().map(String::as_str), Some("line 101"));
     assert_eq!(kept.last().map(String::as_str), Some("line 300"));
 
-    let wide = vec!["x".repeat(399); 1000];
+    let wide = vec!["é".repeat(399); 1000];
     let kept = kept_failure_log(&wide, 1000);
     assert!(kept.iter().map(|line| line.len() + 1).sum::<usize>() <= FAILURE_LOG_BYTES);
     assert!(kept.len() < 1000);
+
+    let huge = [
+        "start".to_owned(),
+        format!("{}\u{7}end", "y".repeat(100_000)),
+    ];
+    let kept = kept_failure_log(&huge, 200);
+    assert_eq!(kept.len(), 2, "one huge line does not empty the log");
+    assert_eq!(kept[1].chars().count(), FAILURE_LINE_CHARS);
+    assert!(kept[1].chars().all(|character| character == 'y'));
 
     let failure = StepFailure {
         stack: "app".to_owned(),

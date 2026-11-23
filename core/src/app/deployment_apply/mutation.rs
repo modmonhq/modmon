@@ -38,13 +38,13 @@ impl DeploymentService {
             // With the runtime's own code: a convergence failure is a
             // runtime failure, with the service and what it logged.
             if let Some(failure) = failure {
-                let message = format!(
-                    "the deployment did not become healthy: {}",
-                    failure.with_log()
-                );
-                return Err(match crate::domain::rollout::unhealthy_code(&failure) {
-                    "MM_RUNTIME_RESPONSE" => MmError::RuntimeResponse { message },
-                    code => MmError::Remote { code, message },
+                return Err(MmError::Unhealthy {
+                    code: crate::domain::rollout::unhealthy_code(&failure),
+                    message: format!(
+                        "the deployment did not become healthy: {}",
+                        failure.with_log()
+                    ),
+                    failure: Box::new(failure),
                 });
             }
         }

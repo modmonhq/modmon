@@ -2857,13 +2857,53 @@ async fn failure_injection_preflight_first_mutation_mid_apply_and_verification_i
             .service
             .apply_reviewed(&verification.selection, &plan.plan_hash)
             .await,
-        Err(MmError::RuntimeResponse { .. })
+        Err(error) if error.code() == "MM_RUNTIME_RESPONSE" && error.step_failure().is_some()
     ));
     assert!(
         verification
             .runtime
             .calls()?
             .contains(&"remove:app".to_owned())
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_failed_container_keeps_the_configured_lines_with_secrets_hidden()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = Fixture::new(false)?;
+    fixture.configure_runtime_secret().await?;
+    let config_path = fixture.project.join(".config/mm.yaml");
+    let config = fs::read_to_string(&config_path)?.replace(
+        "    bindings: {}\n",
+        "    bindings: {}\n    deploy:\n      failure-log-lines: 3\n",
+    );
+    fs::write(&config_path, config)?;
+    let plan = fixture.service.plan(&fixture.selection).await?;
+    fixture
+        .runtime
+        .fail_convergence
+        .store(true, Ordering::SeqCst);
+    fixture.runtime.fail_with_log.store(true, Ordering::SeqCst);
+    let error = fixture
+        .service
+        .apply_reviewed(&fixture.selection, &plan.plan_hash)
+        .await
+        .err()
+        .ok_or("an unhealthy deployment succeeded")?;
+    assert_eq!(fixture.runtime.log_lines_asked.load(Ordering::SeqCst), 3);
+    let failure = error.step_failure().ok_or("the error lost its failure")?;
+    assert_eq!(failure.service.as_deref(), Some("web"));
+    assert_eq!(failure.log.len(), 3, "{:?}", failure.log);
+    assert_eq!(failure.log[..2], ["line 298", "line 299"]);
+    assert!(
+        !failure.log[2].contains("runtime-secret-material"),
+        "{:?}",
+        failure.log
+    );
+    assert!(
+        !error.to_string().contains("runtime-secret-material"),
+        "{error}"
     );
     Ok(())
 }
@@ -5468,6 +5508,10 @@ struct FakeRuntime {
     fail_remove: AtomicBool,
     fail_preflight: AtomicBool,
     fail_convergence: AtomicBool,
+    /// A failed convergence names service `web`, whose container logged
+    /// 300 lines; how many the deployment asked for.
+    fail_with_log: AtomicBool,
+    log_lines_asked: AtomicUsize,
     fail_rollback_mutations: AtomicBool,
     rollback_mutations_active: AtomicBool,
     fail_dynamic_restore: AtomicBool,
@@ -5704,6 +5748,7 @@ impl RuntimeDriver for FakeRuntime {
         if failed && self.fail_rollback_mutations.load(Ordering::SeqCst) {
             self.rollback_mutations_active.store(true, Ordering::SeqCst);
         }
+        let logged = failed && self.fail_with_log.load(Ordering::SeqCst);
         Ok(ConvergenceOutcome {
             state: if failed {
                 ConvergenceState::Failed
@@ -5714,9 +5759,9 @@ impl RuntimeDriver for FakeRuntime {
             observation: ObservedProject {
                 stack: target.stack_name.clone(),
                 services: Vec::new(),
-                containers: Vec::new(),
+                containers: logged.then(exited_web_container).into_iter().collect(),
             },
-            service: None,
+            service: logged.then(|| "web".to_owned()),
             diagnostic_code: failed.then(|| "MM_INJECTED_VERIFY_FAILURE".to_owned()),
             message: failed.then(|| "injected convergence failure".to_owned()),
         })
@@ -5724,6 +5769,44 @@ impl RuntimeDriver for FakeRuntime {
 
     async fn project_services(&self, project: &str) -> Result<BTreeSet<String>, MmError> {
         Ok(self.running()?.get(project).cloned().unwrap_or_default())
+    }
+
+    async fn container_log_tail(
+        &self,
+        container: &str,
+        lines: usize,
+    ) -> Result<Vec<String>, MmError> {
+        assert_eq!(container, "web-id");
+        self.log_lines_asked.store(lines, Ordering::SeqCst);
+        let mut log = (1..300)
+            .map(|line| format!("line {line}"))
+            .collect::<Vec<_>>();
+        log.push("password=runtime-secret-material".to_owned());
+        Ok(log[log.len().saturating_sub(lines)..].to_vec())
+    }
+}
+
+fn exited_web_container() -> mm::domain::runtime::ContainerObservation {
+    mm::domain::runtime::ContainerObservation {
+        id: "web-id".to_owned(),
+        name: "deployment-test-local-app-web-1".to_owned(),
+        service: "web".to_owned(),
+        image: "example/web".to_owned(),
+        state: "exited".to_owned(),
+        status: "Exited (1)".to_owned(),
+        health: None,
+        restart_count: None,
+        exit_code: Some(1),
+        created_at: None,
+        started_at: None,
+        finished_at: None,
+        revision: None,
+        digest: None,
+        diagnostic_code: None,
+        error: None,
+        labels: BTreeMap::new(),
+        node: None,
+        history: false,
     }
 }
 

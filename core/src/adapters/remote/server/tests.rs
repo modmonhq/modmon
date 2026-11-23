@@ -228,6 +228,20 @@
             deployment_plan_hash: &str,
             receipt: Option<&BuildReceipt>,
         ) -> Result<DeploymentResult, MmError> {
+            if receipt.is_some_and(|receipt| BuildReceipt::origin(receipt).environment == "unhealthy") {
+                let failure = crate::domain::rollout::StepFailure {
+                    stack: "app".to_owned(),
+                    service: Some("web".to_owned()),
+                    reason: format!("it exited {}", "while shutting down ".repeat(300)),
+                    log: (1..=200).map(|line| format!("pool error, line {line}")).collect(),
+                    code: Some("MM_RUNTIME_EXITED".to_owned()),
+                };
+                return Err(MmError::Unhealthy {
+                    code: "MM_RUNTIME_EXITED",
+                    message: format!("the deployment did not become healthy: {}", failure.with_log()),
+                    failure: Box::new(failure),
+                });
+            }
             // Reports the receipt it was handed in place of a stack name.
             let stack = receipt.map_or_else(
                 || "app".to_owned(),
@@ -386,6 +400,62 @@
             plan.build_receipt = None;
         }
         assert!(tampered.validate().is_err());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn a_single_host_keeps_the_whole_failed_log_for_deploy_status()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temporary = crate::test_support::tempdir()?;
+        let root = temporary.path().join("project");
+        std::fs::create_dir(&root)?;
+        let uid = rustix::process::getuid().as_raw();
+        let gid = rustix::process::getgid().as_raw();
+        let handler: Arc<dyn RemoteUseCases> = Arc::new(FakeUseCases {
+            cancelled: Arc::new(AtomicBool::new(false)),
+        });
+        let daemon = Arc::new(RemoteDaemon::new(config(temporary.path(), &root, uid, gid)?, handler)?);
+        let commit = origin(temporary.path())?.1;
+        let receipt = crate::test_support::build_receipt(ProjectId(uuid::Uuid::from_u128(4)), "unhealthy", &commit)?;
+        let ServerFrame::Result { result, .. } = call(&daemon, 440, RemoteMethod::PlanDeployment {
+            commit,
+            receipt: Some(Box::new(receipt)),
+            release: Default::default(),
+        })
+        .await?
+        else {
+            return Err("plan failed".into());
+        };
+        let RemoteResult::DeploymentPlan(reviewed) = *result else {
+            return Err("plan returned another result".into());
+        };
+        let frame = call(&daemon, 450, RemoteMethod::ApplyDeployment {
+            remote_plan_hash: reviewed.binding.plan_hash.clone(),
+        })
+        .await?;
+        let ServerFrame::Error { error, .. } = &frame else {
+            return Err(format!("the apply did not fail: {frame:?}").into());
+        };
+        assert_eq!(error.code, "MM_RUNTIME_EXITED");
+        assert!(error.message.contains("pool error, line 181 | "), "{}", error.message);
+        assert!(error.message.contains("pool error, line 200"), "{}", error.message);
+        assert!(!error.message.contains("pool error, line 180 "), "{}", error.message);
+
+        let ServerFrame::Result { result, .. } = call(&daemon, 460, RemoteMethod::DeploymentStatus).await? else {
+            return Err("status failed".into());
+        };
+        let RemoteResult::DeploymentStatus(status) = *result else {
+            return Err("status returned another result".into());
+        };
+        let failure = status
+            .rollout
+            .and_then(|rollout| rollout.failure)
+            .ok_or("the failed apply left no failure on record")?;
+        assert_eq!(failure.service.as_deref(), Some("web"));
+        assert_eq!(failure.code.as_deref(), Some("MM_RUNTIME_EXITED"));
+        assert_eq!(failure.log.len(), 200);
+        assert_eq!(failure.log.last().map(String::as_str), Some("pool error, line 200"));
+        assert!(failure.reason.chars().count() <= 4001, "{}", failure.reason.len());
         Ok(())
     }
 

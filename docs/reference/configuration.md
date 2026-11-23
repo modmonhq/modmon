@@ -754,12 +754,19 @@ for is pulled each time; one with a `build` section, one mm built, or one with
 
 `deploy.failure-log-lines` is how many last lines of a failed container's log
 a host keeps when a stack does not become healthy: 1 to 1000, and the default
-is `200`. The deployment's report and `mm deploy status` show them, also after
-a rollback removed the container, until the host's next deployment. A host
-keeps at most 64 KiB of them, so very long lines leave fewer. A `before-deploy`
-job that fails keeps the same number of its last output lines in the report;
+is `200`. `mm deploy status` shows them, also after a rollback removed the
+container, until the host's next deployment; on a cluster the deployment's
+report lists them too. The error message itself shows the last twenty, or the
+last five on a cluster. Each line keeps at most 400 characters, secret values
+are hidden, and a host keeps at most 64 KiB, so very long lines leave fewer. A
+`before-deploy` job that fails keeps the same number of its last output lines;
 `mm deploy logs` shows its whole output. Outside 1 to 1000 it fails validation
 with `MM_DEPLOY_FAILURE_LOG_LINES`.
+
+Set `failure-log-lines` only once every host of the environment runs this
+release of `mmd` or later: a plan that sets it is refused by an older `mmd`.
+Run `mm target setup plan --upgrade` first. Left unset, nothing changes for
+older hosts.
 
 `deploy.mm-version` pins the release of mm that may plan deployments to the
 environment and of `mmd` on its hosts. It is written as Cargo writes a

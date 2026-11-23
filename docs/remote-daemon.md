@@ -1293,11 +1293,13 @@ error[MM_APPLY_STOPPED]: plan 8a41… failed on node 'app-2': service 'web' of s
 ```
 
 The report names the node, the service, and the last lines its container
-logged: 200 by default, set with `deploy.failure-log-lines`. A rollback
-removes the failed container, but `mm deploy status` still shows those lines
-until the node's next deployment. The one-line error shows the last twenty. A node that was not reached keeps its containers as they
-were; the network addresses the plan gave out stay reserved. A deployment also fails at once, without waiting for the
-window, when a container exits or the engine keeps restarting it. The access
+logged: 200 by default, set with `deploy.failure-log-lines`. The error line
+under it repeats the last five. A rollback removes the failed container, but
+`mm deploy status` still shows those lines until the node's next deployment.
+A node that was not reached keeps its containers as they were; the network
+addresses the plan gave out stay reserved. A deployment also fails at once,
+without waiting for the window, when a container exits or the engine keeps
+restarting it. The access
 change of the plan is not rolled back: a key the commit removed stays removed
 on the nodes the deployment reached.
 

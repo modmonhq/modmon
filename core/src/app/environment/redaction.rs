@@ -12,7 +12,29 @@ pub(crate) async fn environment_redactions(
     environment: &str,
 ) -> Result<Vec<Zeroizing<String>>, MmError> {
     let index = application.environment_index(document, environment);
-    let delivered = delivered_secret_references(document, environment, &index)?;
+    redactions_in(&index, secrets, document, environment).await
+}
+
+impl EnvironmentManager {
+    /// The secret values hidden from what the environment's containers
+    /// print, as [`environment_redactions`] finds them.
+    pub(crate) async fn redactions(
+        &self,
+        document: &ConfigDocument,
+        environment: &str,
+    ) -> Result<Vec<Zeroizing<String>>, MmError> {
+        let index = self.sources.index(document, environment);
+        redactions_in(&index, self.resolver.as_ref(), document, environment).await
+    }
+}
+
+async fn redactions_in(
+    index: &crate::domain::environment::EnvironmentIndex,
+    secrets: &dyn SecretMaterialResolver,
+    document: &ConfigDocument,
+    environment: &str,
+) -> Result<Vec<Zeroizing<String>>, MmError> {
+    let delivered = delivered_secret_references(document, environment, index)?;
     let scope = SecretScope::new(environment);
     let mut values = Vec::new();
     for (canonical, reference) in &delivered {

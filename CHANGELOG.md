@@ -15,7 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - A deployment keeps the last 200 lines of a failed container's log, bounded
-  to 64 KiB, instead of 20.
+  to 64 KiB with secret values hidden, instead of 20, also on a single host.
 
 ### Fixed
 

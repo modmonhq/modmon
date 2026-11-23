@@ -38,9 +38,9 @@ pub use operations::{
 #[path = "rollout/steps.rs"]
 mod steps;
 pub use steps::{
-    DEFAULT_FAILURE_LOG_LINES, FAILURE_LOG_BYTES, FAILURE_SUMMARY_LINES, LOCK_LEASE_MS,
-    LOCK_RENEW_MS, MAX_FAILURE_LOG_LINES, RolloutAnswer, RolloutChanges, RolloutStep, StepFailure,
-    failure_log_summary, kept_failure_log, unhealthy_code,
+    DEFAULT_FAILURE_LOG_LINES, FAILURE_LINE_CHARS, FAILURE_LOG_BYTES, FAILURE_SUMMARY_LINES,
+    LOCK_LEASE_MS, LOCK_RENEW_MS, MAX_FAILURE_LOG_LINES, RolloutAnswer, RolloutChanges,
+    RolloutStep, StepFailure, failure_log_summary, kept_failure_log, unhealthy_code,
 };
 
 /// What a job that did not succeed in a rollout tells the client: the
