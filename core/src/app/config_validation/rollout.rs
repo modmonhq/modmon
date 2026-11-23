@@ -137,6 +137,7 @@ fn side_by_side_problems(
         return Vec::new();
     };
     let mut problems = Vec::new();
+    let mut models = Vec::new();
     for file in &stack_config.files {
         // Missing and malformed files are reported by the stack checks.
         let path = document.root.join(file);
@@ -149,8 +150,10 @@ fn side_by_side_problems(
         if model.apply_merge().is_err() {
             continue;
         }
-        let Some(config) = model
-            .get("services")
+        models.push(model);
+        let Some(config) = models
+            .last()
+            .and_then(|model| model.get("services"))
             .and_then(|services| services.get(service))
         else {
             continue;
@@ -158,15 +161,6 @@ fn side_by_side_problems(
         if let Some(name) = config.get("container_name").and_then(Value::as_str) {
             problems.push(format!(
                 "service '{service}' sets `container_name: {name}`, and two containers cannot share a name"
-            ));
-        }
-        if let Some(mode) = config
-            .get("userns_mode")
-            .and_then(Value::as_str)
-            .filter(|mode| podman && *mode != "host")
-        {
-            problems.push(format!(
-                "service '{service}' sets `userns_mode: {mode}`, which on Podman gives the new container other user ids than the old one, so it could not change what the old one wrote (without it mm gives the service fixed ids of its own)"
             ));
         }
         if config.get("network_mode").and_then(Value::as_str) == Some("host") {
@@ -192,6 +186,15 @@ fn side_by_side_problems(
                 "service '{service}' runs {scale} containers (`scale` or `deploy.replicas`), and start-first replaces exactly one"
             ));
         }
+    }
+    if let Some(crate::app::stacks::ChosenUserns { mode, .. }) =
+        crate::app::stacks::chosen_user_namespaces(&models)
+            .get(service)
+            .filter(|_| podman)
+    {
+        problems.push(format!(
+            "service '{service}' sets `userns_mode: {mode}`, which on Podman gives the new container other user ids than the old one, so it could not change what the old one wrote (without it mm gives the service fixed ids of its own)"
+        ));
     }
     problems
 }

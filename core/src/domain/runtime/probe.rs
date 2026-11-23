@@ -19,6 +19,18 @@ pub fn probe_failure_code(error: &MmError, otherwise: &'static str) -> &'static 
 }
 
 impl RuntimeProbe {
+    /// Whether the engine maps its containers' user ids to others of the
+    /// host (Docker's `userns-remap`): `None` when the probe did not read
+    /// the engine's security options, which `rootless` comes from.
+    #[must_use]
+    pub fn remaps_user_ids(&self) -> Option<bool> {
+        (self.available && self.rootless.is_some()).then(|| {
+            self.diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == DOCKER_USERNS_REMAP)
+        })
+    }
+
     /// The code of the note that stands in for a probe when the engine
     /// runs on a remote target's hosts.
     pub const NOT_INSPECTED_HERE: &'static str = "MM_REMOTE_RUNTIME_NOT_INSPECTED";
@@ -102,3 +114,7 @@ impl RuntimeProbe {
         })
     }
 }
+
+/// The note a Docker probe carries when the daemon runs with
+/// `userns-remap`, whose containers do not have the host's user ids.
+pub const DOCKER_USERNS_REMAP: &str = "MM_DOCKER_USERNS_REMAP";

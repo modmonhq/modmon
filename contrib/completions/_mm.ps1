@@ -5522,6 +5522,8 @@ Register-ArgumentCompleter -Native -CommandName 'mm' -ScriptBlock {
             [CompletionResult]::new('unset-runtime', 'unset-runtime', [CompletionResultType]::ParameterValue, 'Remove a private runtime preference')
             [CompletionResult]::new('set-target', 'set-target', [CompletionResultType]::ParameterValue, 'Persist a private target preference')
             [CompletionResult]::new('unset-target', 'unset-target', [CompletionResultType]::ParameterValue, 'Remove a private target preference')
+            [CompletionResult]::new('set-address', 'set-address', [CompletionResultType]::ParameterValue, 'Connect this device to a cluster node at an address of its own, such as a VPN address, instead of the node''s host in targets.yaml. The node''s pinned host key and daemon identity must still match')
+            [CompletionResult]::new('unset-address', 'unset-address', [CompletionResultType]::ParameterValue, 'Connect to a cluster node at its host in targets.yaml again')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
         }
@@ -5590,12 +5592,42 @@ Register-ArgumentCompleter -Native -CommandName 'mm' -ScriptBlock {
             [CompletionResult]::new('--version', '--version', [CompletionResultType]::ParameterName, 'Print version')
             break
         }
+        'mm;target;preference;set-address' {
+            [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root or a path inside the project')
+            [CompletionResult]::new('-e', '-e', [CompletionResultType]::ParameterName, 'Environment to operate on (overrides MM_ENVIRONMENT and default-environment)')
+            [CompletionResult]::new('--environment', '--environment', [CompletionResultType]::ParameterName, 'Environment to operate on (overrides MM_ENVIRONMENT and default-environment)')
+            [CompletionResult]::new('--runtime', '--runtime', [CompletionResultType]::ParameterName, 'Ephemeral runtime adapter for this invocation only')
+            [CompletionResult]::new('--target', '--target', [CompletionResultType]::ParameterName, 'Ephemeral target name for this invocation only')
+            [CompletionResult]::new('--mm-home', '--mm-home', [CompletionResultType]::ParameterName, 'Directory containing mm''s local state and target catalog')
+            [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Human text or machine-readable JSON. JSON errors stay JSON')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('-V', '-V ', [CompletionResultType]::ParameterName, 'Print version')
+            [CompletionResult]::new('--version', '--version', [CompletionResultType]::ParameterName, 'Print version')
+            break
+        }
+        'mm;target;preference;unset-address' {
+            [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Project root or a path inside the project')
+            [CompletionResult]::new('-e', '-e', [CompletionResultType]::ParameterName, 'Environment to operate on (overrides MM_ENVIRONMENT and default-environment)')
+            [CompletionResult]::new('--environment', '--environment', [CompletionResultType]::ParameterName, 'Environment to operate on (overrides MM_ENVIRONMENT and default-environment)')
+            [CompletionResult]::new('--runtime', '--runtime', [CompletionResultType]::ParameterName, 'Ephemeral runtime adapter for this invocation only')
+            [CompletionResult]::new('--target', '--target', [CompletionResultType]::ParameterName, 'Ephemeral target name for this invocation only')
+            [CompletionResult]::new('--mm-home', '--mm-home', [CompletionResultType]::ParameterName, 'Directory containing mm''s local state and target catalog')
+            [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Human text or machine-readable JSON. JSON errors stay JSON')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('-V', '-V ', [CompletionResultType]::ParameterName, 'Print version')
+            [CompletionResult]::new('--version', '--version', [CompletionResultType]::ParameterName, 'Print version')
+            break
+        }
         'mm;target;preference;help' {
             [CompletionResult]::new('show', 'show', [CompletionResultType]::ParameterValue, 'Show resolved private runtime and target preferences')
             [CompletionResult]::new('set-runtime', 'set-runtime', [CompletionResultType]::ParameterValue, 'Persist a private runtime preference')
             [CompletionResult]::new('unset-runtime', 'unset-runtime', [CompletionResultType]::ParameterValue, 'Remove a private runtime preference')
             [CompletionResult]::new('set-target', 'set-target', [CompletionResultType]::ParameterValue, 'Persist a private target preference')
             [CompletionResult]::new('unset-target', 'unset-target', [CompletionResultType]::ParameterValue, 'Remove a private target preference')
+            [CompletionResult]::new('set-address', 'set-address', [CompletionResultType]::ParameterValue, 'Connect this device to a cluster node at an address of its own, such as a VPN address, instead of the node''s host in targets.yaml. The node''s pinned host key and daemon identity must still match')
+            [CompletionResult]::new('unset-address', 'unset-address', [CompletionResultType]::ParameterValue, 'Connect to a cluster node at its host in targets.yaml again')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
         }
@@ -5612,6 +5644,12 @@ Register-ArgumentCompleter -Native -CommandName 'mm' -ScriptBlock {
             break
         }
         'mm;target;preference;help;unset-target' {
+            break
+        }
+        'mm;target;preference;help;set-address' {
+            break
+        }
+        'mm;target;preference;help;unset-address' {
             break
         }
         'mm;target;preference;help;help' {
@@ -5919,6 +5957,8 @@ Register-ArgumentCompleter -Native -CommandName 'mm' -ScriptBlock {
             [CompletionResult]::new('unset-runtime', 'unset-runtime', [CompletionResultType]::ParameterValue, 'Remove a private runtime preference')
             [CompletionResult]::new('set-target', 'set-target', [CompletionResultType]::ParameterValue, 'Persist a private target preference')
             [CompletionResult]::new('unset-target', 'unset-target', [CompletionResultType]::ParameterValue, 'Remove a private target preference')
+            [CompletionResult]::new('set-address', 'set-address', [CompletionResultType]::ParameterValue, 'Connect this device to a cluster node at an address of its own, such as a VPN address, instead of the node''s host in targets.yaml. The node''s pinned host key and daemon identity must still match')
+            [CompletionResult]::new('unset-address', 'unset-address', [CompletionResultType]::ParameterValue, 'Connect to a cluster node at its host in targets.yaml again')
             break
         }
         'mm;target;help;preference;show' {
@@ -5934,6 +5974,12 @@ Register-ArgumentCompleter -Native -CommandName 'mm' -ScriptBlock {
             break
         }
         'mm;target;help;preference;unset-target' {
+            break
+        }
+        'mm;target;help;preference;set-address' {
+            break
+        }
+        'mm;target;help;preference;unset-address' {
             break
         }
         'mm;target;help;setup' {
@@ -7173,6 +7219,8 @@ Register-ArgumentCompleter -Native -CommandName 'mm' -ScriptBlock {
             [CompletionResult]::new('unset-runtime', 'unset-runtime', [CompletionResultType]::ParameterValue, 'Remove a private runtime preference')
             [CompletionResult]::new('set-target', 'set-target', [CompletionResultType]::ParameterValue, 'Persist a private target preference')
             [CompletionResult]::new('unset-target', 'unset-target', [CompletionResultType]::ParameterValue, 'Remove a private target preference')
+            [CompletionResult]::new('set-address', 'set-address', [CompletionResultType]::ParameterValue, 'Connect this device to a cluster node at an address of its own, such as a VPN address, instead of the node''s host in targets.yaml. The node''s pinned host key and daemon identity must still match')
+            [CompletionResult]::new('unset-address', 'unset-address', [CompletionResultType]::ParameterValue, 'Connect to a cluster node at its host in targets.yaml again')
             break
         }
         'mm;help;target;preference;show' {
@@ -7188,6 +7236,12 @@ Register-ArgumentCompleter -Native -CommandName 'mm' -ScriptBlock {
             break
         }
         'mm;help;target;preference;unset-target' {
+            break
+        }
+        'mm;help;target;preference;set-address' {
+            break
+        }
+        'mm;help;target;preference;unset-address' {
             break
         }
         'mm;help;target;setup' {

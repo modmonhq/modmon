@@ -461,7 +461,7 @@ pub(crate) fn write_node_reports(
             writer,
             "  {:<16} {:<24} {:<15} {:<12} {:<10} {}",
             terminal_safe(&node.name),
-            terminal_safe(&format!("{}:{}", node.host, node.port)),
+            terminal_safe(&crate::domain::target::host_and_port(&node.host, node.port)),
             node.mesh_address
                 .map_or_else(|| "-".to_owned(), |address| address.to_string()),
             match node.state {
@@ -479,6 +479,14 @@ pub(crate) fn write_node_reports(
             })
         )
         .map_err(output_error)?;
+        if let Some(repo) = &node.repo_address {
+            writeln!(
+                writer,
+                "      this device's address; targets.yaml says {}",
+                terminal_safe(repo)
+            )
+            .map_err(output_error)?;
+        }
         if let Some(problem) = &node.problem {
             writeln!(writer, "      {}", terminal_safe(problem)).map_err(output_error)?;
         }

@@ -64,7 +64,7 @@ Human output prints the corresponding quoted command. Other errors may have
 | `MM_STATE`                        |                       1 | Private state-store failure, or state that a newer release wrote: the message names the file and says to run `mm update`, or on a host `mm target setup plan --upgrade`. See [stored state](./compatibility.md#stored-state). |
 | `MM_PLACEMENT`                    |                       2 | A service cannot be placed on the environment's cluster target: a `placement` name is not a node or group, a Compose service has no entry under `modules`, two services that share an engine are on different nodes, `--nodes` leaves out a node a service moves to, or a job's `placement` names a node where its service does not run. |
 | `MM_RELEASE_INPUT`                |                       2 | A deployment plan's release does not fit the commit: a `release-inputs:` value that a template of the environment reads is missing, one is given that is not declared, a value does not match its `pattern`, the `--release` name is not one word, or a template reads a release fact the deployment does not have, such as `MM.IMAGE.<module>` without a build. Also a `release-inputs:` entry with a bad name or pattern in `mm config validate`. |
-| `MM_UNREACHABLE`                  |                       3 | A remote host or cluster node, or its `mmd`, did not answer. The message says what happened and what to run.  |
+| `MM_UNREACHABLE`                  |                       3 | A remote host or cluster node, or its `mmd`, did not answer. The message names the address tried, says what happened and what to run, and says when the address is this device's own (`mm target preference set-address`). |
 | `MM_NODE_MISMATCH`                |                       3 | A request for one cluster node reached a host with another node name. Nothing was applied there.              |
 | `MM_NOT_DEPLOYED`                 |                       3 | A remote host never began a deployment of the environment, so it has nothing to show or run. The message names the command that plans one. |
 | `MM_APPLY_STOPPED`                |                       3 | A cluster deployment failed on a node. The message names the node, the service, and its last log lines, and says which nodes were rolled back, left changed, or never reached. |
@@ -152,10 +152,15 @@ of their own that mount one volume and for a `uid` or `gid` of a config
 file or secret file outside the service's ids 0 to 65535, and for a config
 file or secret file that names an owner other than root or a mode not every
 user can read, of a service whose Compose file sets a `userns_mode` other than
-`host`. A plan on such a
-host fails with it when the host has no `mm-services` range in `/etc/subuid`
-(run `mm target setup`), when the range is full, and when a service on a
-shared volume cannot have the ids every other node gives it.
+`host` or a plain `auto`. A plan on such a host fails with it when the host
+has no `mm-services` range in `/etc/subuid` (run `mm target setup`), when the
+range is full, and when a service on a shared volume cannot have the ids
+every other node gives it. On Docker Engine with `userns-remap` the plan
+fails with it for a secret file or config file that names an owner other than
+root or a mode not every user can read, of a service that does not run in the
+host's user namespace, and when `docker info` does not say whether the remap
+is on; the runtime's status notes the remap as
+`MM_DOCKER_USERNS_REMAP`.
 `MM_SECRET_FILE_OWNER` is the warning for a `secret-files` entry in an
 environment that runs on Docker on this machine, where mm runs as you and the
 file belongs to you: the entry names other ids than yours, and they can
@@ -165,7 +170,7 @@ container read it. See [file delivery](../secret-delivery.md#file-delivery).
 `MM_UPDATE_ORDER` is the finding for a service's `update:` that cannot work:
 `order: start-first` on a service that publishes a fixed host port, sets
 `container_name`, runs more than one container, or on Podman sets its own
-`userns_mode` other than `host`, or a `parallelism` of 0. `MM_STACK_ORDER` is the finding for a stack's
+`userns_mode` other than `host` or a plain `auto`, or a `parallelism` of 0. `MM_STACK_ORDER` is the finding for a stack's
 `after:` that names no stack, the stack itself, or a loop,
 `MM_DEPLOY_TIMEOUT` for a `deploy.convergence-timeout` or
 `deploy.progress-timeout` that is not a time, `MM_DEPLOY_MM_VERSION` for a
