@@ -446,8 +446,12 @@ unconfined `security_opt`, non-`net.*` sysctls, bind or device `driver_opts`
 volumes, external volumes and networks, `configs`/`secrets` files outside the
 project, and `build:` (remote hosts never build).
 
-A namespace mode written with a variable, such as `pid: ${PID_MODE:-host}`,
-counts as the host's: write the mode itself.
+A key on this list whose value comes from a variable, such as
+`privileged: ${PRIVILEGED:-false}` or `external: ${EXTERNAL}`, is refused as
+the feature it could turn on, whatever the default: write the value itself.
+`$$` is a literal `$`, and variables in other keys, such as `image` or
+`environment`, are fine. A variable in `pid`, `ipc` or `network_mode` could
+name a container, so no exception allows it.
 
 Services share a namespace with `service:`, which names a service of the
 same stack:
