@@ -866,6 +866,19 @@ fn forbid_concurrency_serializes_already_queued_schedule_runs()
         "forbid must not launch another queued run while one is active"
     );
 
+    let waiting = Uuid::from_u128(2 << 120);
+    assert!(
+        store
+            .claim_run(
+                waiting,
+                Uuid::from_u128(15),
+                now + 10,
+                Duration::from_secs(30)
+            )?
+            .is_none(),
+        "a read must not launch another run of a forbid schedule while one is active"
+    );
+
     let completion_claim = store
         .claim_runnable_run(
             project_id,
@@ -899,6 +912,43 @@ fn forbid_concurrency_serializes_already_queued_schedule_runs()
             .is_some(),
         "the next queued run becomes claimable after completion"
     );
+
+    Ok(())
+}
+
+#[test]
+fn a_forbid_schedule_run_is_claimed_by_id_once_no_other_runs()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temporary = temp_dirs::tempdir()?;
+    let store = SqliteStateStore::open(&temporary.path().join("state.sqlite3"))?;
+    let project_id = ProjectId(Uuid::from_u128(0x9abd));
+    let now = 2_000_000;
+    let id = Uuid::from_u128(3 << 120);
+    store.insert_run(
+        &NewJobRun {
+            id,
+            project_id,
+            environment: "local".to_owned(),
+            job: "schedule-run".to_owned(),
+            schedule: Some("framework".to_owned()),
+            trigger: JobTrigger::Schedule,
+            idempotency_key: "schedule:framework:alone".to_owned(),
+            job_definition: job(),
+            schedule_definition: Some(schedule()),
+            config_hash: "d".repeat(64),
+            requested_at_unix_ms: now,
+            scheduled_for_unix_ms: Some(now),
+            principal: "controller".to_owned(),
+            source: "test".to_owned(),
+            retry_of_run_id: None,
+        },
+        &approval(project_id, now, "enqueue", &id.to_string()),
+    )?;
+    let claimed = store
+        .claim_run(id, Uuid::from_u128(20), now + 10, Duration::from_secs(30))?
+        .ok_or("a forbid run with no other run was not claimable by id")?;
+    assert_eq!(claimed.run.id, id);
+    assert_eq!(claimed.run.state, JobRunState::Launching);
     Ok(())
 }
 
