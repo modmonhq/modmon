@@ -10,15 +10,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - A host exception for host paths: `host-path` in an `allow` entry of
   `/etc/mm/host.yaml`, with the paths in `paths`, lets one service bind-mount
-  exactly those host paths read-only, such as `/proc` and `/sys` for a
-  metrics exporter. Allowing a path hands the repo what it holds: a path with
-  an engine socket or secrets in it, such as `/`, is root on the host, so a
-  policy that lists `/`, `/run`, `/var/run`, `/var/lib/docker`,
-  `/var/lib/containers`, `/etc/mm`, `/var/lib/mm`, `/root`, `/home` or
-  `/etc/shadow`, or a path above or inside one, is refused. A writable mount,
-  `shared` propagation, an SELinux relabel, a repeated access or propagation
-  option, or `bind.recursive` other than `readonly` is still refused. See
-  "Collect host metrics" in the remote access guide.
+  exactly those host paths recursively read-only (long syntax with
+  `read_only: true` and `bind.recursive: readonly`; Docker Engine 25 or later
+  on Linux 5.12 or later), such as `/proc` and `/sys` for a metrics exporter.
+  A Podman host refuses host paths for now. Allowing a path hands the repo
+  what it holds: `/proc` shows every other project's processes, environment
+  variables and files on the host, and a path with an engine socket or
+  secrets in it, such as `/`, is root on the host. A policy that lists `/`,
+  `/run`, `/var/run`, `/var/lib/docker`, `/var/lib/containers`, `/etc/mm`,
+  `/var/lib/mm`, `/root`, `/home` or `/etc/shadow`, a path above or inside
+  one, or a path inside `/proc`, is refused; `mmd` checks each path after
+  resolving symlinks. See "Collect host metrics" in the remote access guide.
 - `mm target preference set-address ENVIRONMENT NODE HOST[:PORT]` connects
   this device to a cluster node at an address of its own, such as a VPN
   address, without changing the repo. The node's recorded host key and daemon

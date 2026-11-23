@@ -542,9 +542,18 @@ projects:
 
 A `host-path` exception also lists the host paths the service may mount, in
 `paths`. Each must match a mount's source exactly, and the mount must be
-read-only (`:ro`, or `read_only: true` in the long syntax), without `z`/`Z`
-relabelling and without `shared` or `rshared` propagation; `rslave` is fine.
-Without `paths`, `host-path` allows nothing.
+recursively read-only, so that the mounts under the path are read-only too.
+Write it in the long syntax with `read_only: true` and
+`bind.recursive: readonly`, without `propagation` (other than `private` or
+`rprivate`) and without an SELinux relabel. The short syntax cannot say
+recursive, so a host refuses a host path written that way. Without `paths`,
+`host-path` allows nothing.
+
+Recursive read-only mounts need Docker Engine 25 or later on Linux 5.12 or
+later, where the engine refuses the mount rather than mounting it
+non-recursively. mm cannot yet have Podman mount a host path recursively
+read-only, so a Podman host refuses every host path, with or without an
+exception.
 
 Allowing a host path hands the repo whatever that path holds, read-only or
 not: a container can connect to a Unix socket on a read-only mount, and a
@@ -553,8 +562,18 @@ engine socket or secrets in it, gives the repo root on the host. A host
 policy that lists `/`, a path that holds or is inside `/run`, `/var/run`,
 `/var/lib/docker`, `/var/lib/containers`, `/etc/mm`, `/var/lib/mm`,
 `/root`, `/home` or `/etc/shadow` is refused when `mmd` or `mm config
-validate --host-policy` reads it. Keep the list to paths without sockets or
-secrets, such as `/proc` and `/sys`.
+validate --host-policy` reads it. So is a path inside `/proc` other than
+`/proc` itself, such as `/proc/1/root`. `mmd` also resolves each listed path
+through symlinks when it reads the policy, refuses a path it cannot resolve,
+and checks where it leads; `--host-policy` on your machine checks the text
+only. Keep the list to paths without sockets or secrets.
+
+Even `/proc` is a broad grant. The host's `/proc` shows every process on the
+host, so the service can read other projects' processes, including their
+environment variables (where secrets often are) and, through
+`/proc/<pid>/root`, their files. Granting `host-path` for `/proc` is close
+to granting `pid-host` and read access to every container on that host:
+grant it only on hosts where every project is trusted with that.
 
 To check a project against the policy its hosts have, for example in CI,
 keep a copy of their `host.yaml` and pass it:
@@ -586,15 +605,23 @@ services:
     image: grafana/alloy:v1.5.0
     network_mode: host
     volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
+      - type: bind
+        source: /proc
+        target: /host/proc
+        read_only: true
+        bind: { recursive: readonly }
+      - type: bind
+        source: /sys
+        target: /host/sys
+        read_only: true
+        bind: { recursive: readonly }
 ```
 
 On your machine mm refuses host paths, so run the exporter only where a
 host decides, for example with `environments: [production]` on the service
 in `mm.yaml`. Point the exporter at the mounts (`procfs_path: /host/proc`,
 `sysfs_path: /host/sys`). A host admin allows it on every host that runs the
-service:
+service, after reading what a `/proc` grant exposes (above):
 
 ```yaml
 projects:
@@ -608,9 +635,9 @@ projects:
 With `network-host`, network metrics show the host's interfaces instead of
 the container's `eth0`. CPU, memory, load and disk I/O come from `/proc`.
 Do not mount `/` for filesystem usage: mm refuses it, as above. To report a
-data disk's usage, mount its mount point read-only, such as
-`/mnt/data:/host/mnt/data:ro`, list it under `paths`, and check first that
-it holds no sockets or secrets. The exporter sees only the host it runs on:
+data disk's usage, mount its mount point the same way, such as `/mnt/data`
+at `/host/mnt/data`, list it under `paths`, and check first that it holds no
+sockets or secrets. The exporter sees only the host it runs on:
 run one per host to cover a cluster.
 
 ### Run a service on the host's network

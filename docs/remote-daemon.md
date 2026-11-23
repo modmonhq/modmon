@@ -172,7 +172,9 @@ projects:
   host runs. For `host-path`, the entry's `paths` lists the host paths the
   service may bind-mount read-only, such as `[/proc, /sys]` for a metrics
   exporter. A path that would give root on the host, such as `/` or `/run`,
-  is refused. See
+  is refused, after `mmd` resolves symlinks. A `/proc` grant exposes every
+  other project's processes on the host; see
+  [what a deploy may run](./remote-access.md#what-a-deploy-may-run). See
   [what a deploy may run](./remote-access.md#what-a-deploy-may-run); `mm config
   validate --for-remote --host-policy FILE` checks a project against a copy of
   this file.
