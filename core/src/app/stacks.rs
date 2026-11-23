@@ -120,6 +120,7 @@ pub(crate) use compose_environment::compose_environment_refusals;
 mod config_files;
 pub(crate) use config_files::{config_file_entries, resolve_config_file};
 mod low_ports;
+mod shared_pid;
 mod user_namespace;
 
 mod network_intent;

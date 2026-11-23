@@ -139,6 +139,14 @@ file that `mm deploy` or `mm dev up` would refuse in the environments it
 names, such as `network_mode: host` on a service of this machine without
 [`host-network`](./configuration.md#modules-services-and-builds); the
 message names the file, the service, and what to change.
+`MM_PODMAN_APPARMOR` refuses a plan on a Podman host for a service that
+sees processes beyond its own containers (`pid: host`, `container:` or
+`service:` of such a service) when it sets `apparmor=mm-containers`, or
+when the host gives containers `mm-containers` without having loaded
+`mm-containers-shared-pid`. A job, a rollback, or a scale-up that would
+create such a service's containers from files rendered before setup
+installed the profile fails with it too; deploy again. See
+[AppArmor](../remote-daemon.md#apparmor).
 `MM_USER_NAMESPACE` is the finding for `host-user-namespace` without a
 reason, and, on Podman hosts, where each service has [user ids of its
 own](../remote-daemon.md#run-podman-on-the-hosts), for two services with ids
@@ -254,8 +262,13 @@ ones anyway; fix the service or its `healthcheck:`), `MM_SERVICE_RESTART_LIMIT`
 `mm service logs` shows why, and a deployment or `mm service restart` starts
 it again), what each node says about its container engine: `MM_NODE_ENGINE` (the engine
 does not answer), `MM_PODMAN_VERSION` (Podman older than 5.0), and
-`MM_PODMAN_COMPOSE` (`podman compose` does not run Docker Compose); a
-target that names one host is asked for these three and for how its `mmd`
+`MM_PODMAN_COMPOSE` (`podman compose` does not run Docker Compose), and
+`MM_PODMAN_APPARMOR` (a warning that Podman's containers run under its
+default AppArmor profile, under which processes in a container may not be
+able to signal each other, or that `mm-containers-shared-pid` is not loaded;
+an error when Podman is pointed at mm's profile and the kernel has not
+loaded it); a
+target that names one host is asked for these four and for how its `mmd`
 fares (below), not for the rest. For every remote environment, cluster or single host, it reports how each host's
 `mmd` fares: `MM_DAEMON_NOT_ANSWERING` (a part of the daemon does not
 answer), the note `MM_DAEMON_RESTARTED` (it started in the last 15 minutes),

@@ -39,6 +39,7 @@ pub fn setup_plan_card(plan: &ClusterSetupPlan) -> Card {
         ));
     }
     card.fields("secrets", secrets);
+    apparmor_field(&mut card, plan);
     if let Some(store) = &plan.secret_store {
         card.fields("secret store", store_values(store));
     }
@@ -292,4 +293,16 @@ pub(crate) fn write_store_restore_plan(
         writeln!(writer, "{}", super::terminal_safe(&line)).map_err(super::output_error)?;
     }
     Ok(())
+}
+
+fn apparmor_field(card: &mut Card, plan: &ClusterSetupPlan) {
+    if plan.runtime == crate::domain::runtime::RuntimeKind::PodmanCompose {
+        card.field(
+            "apparmor",
+            format!(
+                "{} in /etc/apparmor.d, where the kernel runs AppArmor",
+                crate::domain::remote::CONTAINER_PROFILES.join(" and ")
+            ),
+        );
+    }
 }
