@@ -2902,11 +2902,7 @@ async fn a_failed_container_keeps_the_configured_lines_with_secrets_hidden()
     assert_eq!(failure.service.as_deref(), Some("web"));
     assert_eq!(failure.log.len(), 3, "{:?}", failure.log);
     assert_eq!(failure.log[..2], ["line 298", "line 299"]);
-    assert!(
-        !failure.log[2].contains("runtime-secret-material"),
-        "{:?}",
-        failure.log
-    );
+    assert!(!failure.log[2].contains("runtime"), "{:?}", failure.log);
     assert!(
         !error.to_string().contains("runtime-secret-material"),
         "{error}"
@@ -5775,7 +5771,10 @@ impl RuntimeDriver for FakeRuntime {
         let mut log = (1..300)
             .map(|line| format!("line {line}"))
             .collect::<Vec<_>>();
-        log.push("password=runtime-secret-material".to_owned());
+        log.push(format!(
+            "{}password=runtime-secret-material",
+            "x".repeat(390)
+        ));
         Ok(log[log.len().saturating_sub(lines)..].to_vec())
     }
 }

@@ -487,6 +487,18 @@ impl MmError {
         })
     }
 
+    /// The message for a record another principal may read: a secret
+    /// error says only where to look.
+    #[must_use]
+    pub fn recordable_message(&self) -> String {
+        match self {
+            Self::Secret { .. } | Self::SecretCompatibility { .. } => {
+                "secret operation failed; inspect target-side audit diagnostics".to_owned()
+            }
+            _ => self.to_string(),
+        }
+    }
+
     /// The failed stack or job behind this error, with its kept log.
     #[must_use]
     pub fn step_failure(&self) -> Option<&crate::domain::rollout::StepFailure> {

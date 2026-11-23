@@ -244,15 +244,19 @@ impl DeploymentService {
                 .environments
                 .redactions(&document, &plan.environment)
                 .await?;
-            Ok::<_, MmError>(
-                log.iter()
-                    .map(|line| crate::domain::observability::redact_output(line, &redactions))
-                    .collect::<Vec<_>>(),
-            )
+            Ok::<_, MmError>(crate::domain::observability::redact_output(
+                &log.join("\n"),
+                &redactions,
+            ))
         };
         match read.await {
-            Ok(log) => crate::domain::rollout::kept_failure_log(&log, lines),
-            Err(error) => vec![format!("(the container's log could not be read: {error})")],
+            Ok(log) => {
+                crate::domain::rollout::kept_failure_log(&log.lines().collect::<Vec<_>>(), lines)
+            }
+            Err(error) => vec![format!(
+                "(the container's log could not be read: {})",
+                error.recordable_message()
+            )],
         }
     }
 

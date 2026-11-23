@@ -450,12 +450,7 @@ fn remote_error(
 }
 
 fn redacted_error_message(error: &MmError) -> String {
-    match error {
-        MmError::Secret { .. } | MmError::SecretCompatibility { .. } => {
-            "secret operation failed; inspect target-side audit diagnostics".to_owned()
-        }
-        _ => error.to_string(),
-    }
+    error.recordable_message()
 }
 
 fn now_unix_ms() -> Result<i64, MmError> {
