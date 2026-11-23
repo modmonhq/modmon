@@ -5,11 +5,12 @@
 use super::*;
 
 impl Walk<'_> {
-    /// How long a node may take for a stack: its convergence window, the
-    /// work around it, and what Compose waits for while containers stop
-    /// and dependencies become healthy.
+    /// How long a node may take for a stack: its convergence window, its
+    /// pull, the work around it, and what Compose waits for while
+    /// containers stop and dependencies become healthy.
     pub(super) fn stack_patience(&self) -> Duration {
         Duration::from_secs(self.rollout.convergence_timeout_seconds)
+            + self.rollout.pull_timeout()
             + STACK_OVERHEAD
             + self.environment.compose_wait
     }
@@ -78,7 +79,9 @@ impl Walk<'_> {
                 stack: stage.stack.clone(),
                 job: planned.job.clone(),
             };
-            let patience = Duration::from_secs(planned.timeout_seconds) + STACK_OVERHEAD;
+            let patience = Duration::from_secs(planned.timeout_seconds)
+                + self.rollout.pull_timeout()
+                + STACK_OVERHEAD;
             match self.step(index, step, patience).await {
                 Ok(RolloutAnswer::JobRan(run)) => {
                     self.say(

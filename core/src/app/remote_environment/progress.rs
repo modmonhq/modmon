@@ -39,8 +39,9 @@ pub(super) struct Watched<'a> {
 
 /// What one look at the host found.
 enum Look {
-    /// The operation runs, and the host saw it at work this long ago.
-    Working(Option<i64>),
+    /// The operation runs, the host saw it at work then, and says what it
+    /// does now.
+    Working(Option<i64>, Option<String>),
     /// The operation does not run yet: these hold the host.
     Waiting(Vec<OperationInFlight>),
     /// The host did not answer.
@@ -81,13 +82,13 @@ impl RemoteEnvironment {
                         }
                     };
                     let line = match &look {
-                        Look::Working(alive) => {
+                        Look::Working(alive, doing) => {
                             // At work if the host saw it since the last look.
                             let fresh = seen_alive.is_none() || *alive != seen_alive;
                             seen_alive = *alive;
                             if fresh {
                                 progressed = tokio::time::Instant::now();
-                                "the host is working on it".to_owned()
+                                doing.clone().unwrap_or_else(|| "the host is working on it".to_owned())
                             } else {
                                 "the host has not seen it at work since the last look".to_owned()
                             }
@@ -143,7 +144,9 @@ async fn look(node: &RemoteNode, operation: &str) -> Look {
                 .iter()
                 .find(|running| running.id == operation)
             {
-                Some(running) => Look::Working(Some(running.alive_at_unix_ms)),
+                Some(running) => {
+                    Look::Working(Some(running.alive_at_unix_ms), running.doing.clone())
+                }
                 None => Look::Waiting(status.operations),
             }
         }

@@ -676,6 +676,7 @@ environments:
     deploy:
       convergence-timeout: 10m # default; how long a stack may take to become healthy
       progress-timeout: 2m # default; how long a deployment waits for a sign of progress from a host
+      pull-timeout: 20m # default; how long a host may take to pull the images of a stack or a job
   production:
     target: production
     tls: { certificate: tls.certificate, key: tls.key } # optional
@@ -752,6 +753,15 @@ default is `2m`. While a step runs, the command prints a line every 15
 seconds. A step that takes long while its host is at work, such as a
 `before-deploy` job, a container's `drain`, or a large `delivery: push`
 upload, shows progress the whole time and is not stopped by this timeout.
+
+`deploy.pull-timeout` is how long a host may take to pull the images a stack
+or a job lacks, before any of its containers starts or stops: at least `1s`,
+the default is `20m`. The pull is a step of its own, with the registry logins
+of `registries`, so `compose up` and `compose run` find every image in place
+and keep their own shorter limit. A pull past the limit stops the deployment
+with `MM_TIMEOUT` and names this key. An image that `pull_policy: always` asks
+for is pulled each time; one with a `build` section, one mm built, or one with
+`pull_policy: never` or `build` is not pulled.
 
 `deploy.mm-version` pins the release of mm that may plan deployments to the
 environment and of `mmd` on its hosts. It is written as Cargo writes a

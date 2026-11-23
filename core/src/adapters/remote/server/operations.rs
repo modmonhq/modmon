@@ -123,6 +123,13 @@ impl Running {
         }
     }
 
+    fn set_doing(&self, doing: Option<String>) {
+        self.info
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .doing = doing;
+    }
+
     /// Asks the operation to stop at its next wait on the engine. The
     /// first reason given is the one it keeps.
     fn ask_to_stop(&self, stop: Stop) {
@@ -208,6 +215,7 @@ impl Operations {
                 alive_at_unix_ms: now,
                 deadline_unix_ms: context.deadline_unix_ms,
                 stopping: None,
+                doing: None,
             }),
             project: context.scope.project_id,
             environment: context.scope.environment.clone(),
@@ -249,6 +257,7 @@ impl Operations {
                 alive_at_unix_ms: now,
                 deadline_unix_ms,
                 stopping: None,
+                doing: None,
             }),
             project: scope.project_id,
             environment: scope.environment.clone(),

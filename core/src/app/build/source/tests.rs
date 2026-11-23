@@ -490,7 +490,7 @@ fn snapshots_copy_internal_and_external_dockerfiles_and_bind_the_reviewed_hash()
                 .permissions()
                 .mode()
                 & 0o777,
-            0o700
+            0o755
         );
     }
     assert!(snapshot_build_context(&context, &context, &external, &destination, &hash).is_err());

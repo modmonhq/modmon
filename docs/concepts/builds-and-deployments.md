@@ -180,6 +180,13 @@ excludes it at any depth. `*` matches within one directory, and a later
 `!pattern` sends again what an earlier pattern excluded. `.git` at the top of
 the context is never sent.
 
+The context keeps only one mode bit from your checkout: whether a file is
+executable. Directories reach the engine as 0755, executable files as 0755,
+and other files as 0644, whatever your umask, so a non-root user in the image
+can read what `COPY` put there. Set other modes in the Dockerfile with
+`COPY --chmod`. Making a file executable, or no longer executable, rebuilds
+the image.
+
 The plan refuses a file that would be sent when it is a symlink, a socket or
 other special file, or looks like a secret (`.env`, `.env.*`, SSH private
 keys, `age-identity.txt`). The refusal names the path in the context and the
