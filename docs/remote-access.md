@@ -507,6 +507,38 @@ A name in `container:NAME` can match any container on the host, including
 another project's, so a host refuses it as `container-join`. Write
 `service:<service>` to join a service of the same stack.
 
+A key on this list whose value comes from a variable, such as
+`privileged: ${PRIVILEGED:-false}` or `external: ${EXTERNAL}`, is refused as
+the feature it could turn on, whatever the default: write the value itself.
+`$$` is a literal `$`, and variables in other keys, such as `image` or
+`environment`, are fine. A variable in `pid`, `ipc` or `network_mode` could
+name a container, so no exception allows it.
+
+Services share a namespace with `service:`, which names a service of the
+same stack:
+
+```yaml
+services:
+  agent:
+    image: ghcr.io/acme/agent:2.1
+    pid: host
+  web:
+    image: ghcr.io/acme/web:1.0
+    network_mode: service:proxy # an ordinary service: no exception needed
+    pid: service:agent # reaches the host's PID namespace through agent
+```
+
+A service that joins another this way, directly or through a chain of
+`service:` joins, runs in the namespace that service runs in. When that is
+the host's, the joining service needs the same exception: here `web` needs
+`pid-host` as well as `agent`. The check follows joins across all the
+stack's Compose files and through `extends`.
+
+A host refuses `container:NAME` in `pid`, `ipc` and `network_mode` outright,
+as the feature `container-join`, and no exception allows it: a name can match
+any container on the host, including another project's. Write
+`service:<service>` to join a service of the same stack.
+
 A host checks only the services the environment it plans runs: the ones
 `mm deploy plan` renders. A service whose `environments:` leaves the
 environment out is not checked there, and neither is a stack left with no

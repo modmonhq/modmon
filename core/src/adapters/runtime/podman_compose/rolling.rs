@@ -51,6 +51,7 @@ impl PodmanComposeRuntime {
         require_local_target(target)?;
         self.require_local_engine_environment()?;
         self.preflight_project(target).await?;
+        crate::adapters::runtime::podman_apparmor::require_shared_pid_confined(target)?;
         let auth = crate::adapters::runtime::registry_auth::RegistryAuth::prepare(
             &target.registry_credentials,
         )?;
@@ -108,6 +109,7 @@ impl PodmanComposeRuntime {
         require_local_target(target)?;
         self.require_local_engine_environment()?;
         self.preflight_project(target).await?;
+        crate::adapters::runtime::podman_apparmor::require_shared_pid_confined(target)?;
         let hashes = self.config_hashes(target).await?;
         let mut started = Vec::new();
         for service in services {

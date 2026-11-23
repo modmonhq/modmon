@@ -320,6 +320,7 @@ async fn a_host_plans_a_host_path_only_when_its_policy_lists_it() -> TestResult 
         compose: None,
         compose_version: None,
         problem: None,
+        apparmor: None,
         recursive_read_only: true,
     });
     host.plan_at(ALICE, &commit).await?;

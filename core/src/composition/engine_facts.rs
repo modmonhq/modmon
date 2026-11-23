@@ -49,7 +49,7 @@ impl HostEngine {
             return facts.clone();
         }
         let driver = super::RuntimeComposition::new().driver(runtime);
-        let facts = match tokio::time::timeout(PATIENCE, driver.probe()).await {
+        let mut facts = match tokio::time::timeout(PATIENCE, driver.probe()).await {
             Ok(probe) => EngineFacts::of(&probe),
             Err(_) => EngineFacts {
                 runtime,
@@ -60,14 +60,16 @@ impl HostEngine {
                     "the engine did not answer within {} seconds",
                     PATIENCE.as_secs()
                 )),
+                apparmor: None,
                 recursive_read_only: false,
             },
         };
-        let facts = EngineFacts {
-            recursive_read_only: runtime == RuntimeKind::DockerCompose
-                && recursive_read_only(runtime).await,
-            ..facts
-        };
+        if runtime == RuntimeKind::PodmanCompose {
+            facts.apparmor =
+                crate::adapters::runtime::podman_apparmor::container_apparmor(facts.release());
+        }
+        facts.recursive_read_only =
+            runtime == RuntimeKind::DockerCompose && recursive_read_only(runtime).await;
         *self
             .last
             .lock()

@@ -36,6 +36,10 @@ pub struct EngineFacts {
     /// Why the engine cannot be used, as the probe said.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub problem: Option<String>,
+    /// The AppArmor profile of Podman's containers, on a kernel that runs
+    /// AppArmor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub apparmor: Option<super::ContainerAppArmor>,
     /// Whether the engine mounts a bind recursively read-only when asked,
     /// or refuses to: Docker Engine API 1.44 or later on Linux 5.12 or later.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -84,6 +88,7 @@ impl EngineFacts {
                 .as_ref()
                 .and_then(|provider| provider.version.clone()),
             problem,
+            apparmor: None,
             recursive_read_only: false,
         }
     }
@@ -128,8 +133,9 @@ impl EngineFacts {
 }
 
 /// What `mm doctor` says about each answering host's engine: one that does
-/// not answer, Podman older than [`PODMAN_MINIMUM`], and a Compose provider
-/// other than Docker Compose behind `podman compose`.
+/// not answer, Podman older than [`PODMAN_MINIMUM`], a Compose provider
+/// other than Docker Compose behind `podman compose`, and an AppArmor
+/// profile that keeps a container's processes from signalling each other.
 #[must_use]
 pub fn engine_diagnostics(reports: &[NodeReport]) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
@@ -195,6 +201,9 @@ pub fn engine_diagnostics(reports: &[NodeReport]) -> Vec<Diagnostic> {
                     "on the node, `apt-get install docker-compose` and `systemctl enable --now podman.socket`; `mm target setup plan` and its apply do both",
                 ),
             );
+        }
+        if let Some(apparmor) = &engine.apparmor {
+            diagnostics.extend(super::apparmor_diagnostic(node, apparmor));
         }
     }
     diagnostics

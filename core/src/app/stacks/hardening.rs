@@ -47,6 +47,10 @@ impl GeneratedSecurity {
     fn is_empty(&self) -> bool {
         *self == Self::default()
     }
+
+    pub(super) fn confine_with(&mut self, option: &'static str) {
+        self.security_opt.push(option);
+    }
 }
 
 /// The security of one stack: what the overlay adds to each service, and

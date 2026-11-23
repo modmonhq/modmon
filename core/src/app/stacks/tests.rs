@@ -9,6 +9,7 @@ use crate::domain::workspace::ProjectId;
 
 use super::*;
 
+mod shared_pid;
 pub(super) mod support;
 use support::StackFixture;
 
