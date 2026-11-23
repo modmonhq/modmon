@@ -40,6 +40,22 @@ pub struct EngineFacts {
     /// AppArmor.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub apparmor: Option<super::ContainerAppArmor>,
+    /// Whether the engine mounts a bind recursively read-only when asked,
+    /// or refuses to: Docker Engine API 1.44 or later on Linux 5.12 or later.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub recursive_read_only: bool,
+}
+
+/// Whether Docker Engine API `api` on kernel `kernel` mounts a bind
+/// recursively read-only when asked, or refuses to.
+#[must_use]
+pub fn recursive_read_only(api: &str, kernel: &str) -> bool {
+    let parts = |text: &str| -> Option<(u32, u32)> {
+        let mut numbers = text.split(|character: char| !character.is_ascii_digit());
+        Some((numbers.next()?.parse().ok()?, numbers.next()?.parse().ok()?))
+    };
+    parts(api).is_some_and(|version| version >= (1, 44))
+        && parts(kernel).is_some_and(|version| version >= (5, 12))
 }
 
 impl EngineFacts {
@@ -73,6 +89,7 @@ impl EngineFacts {
                 .and_then(|provider| provider.version.clone()),
             problem,
             apparmor: None,
+            recursive_read_only: false,
         }
     }
 

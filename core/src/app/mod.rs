@@ -50,7 +50,9 @@ mod shared_storage;
 pub use shared_storage::{SharedStorageNode, StorageScope};
 mod stacks;
 pub use stacks::guardrails::{
-    GuardrailFinding, check_project as workload_guardrails, remote_guardrail_diagnostics,
+    GuardrailFinding, check_host_paths_unsupported as unsupported_host_path_guardrails,
+    check_named_resources as named_resource_guardrails, check_project as workload_guardrails,
+    remote_guardrail_diagnostics,
 };
 mod target_ingress;
 mod targets;

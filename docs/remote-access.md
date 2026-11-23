@@ -439,12 +439,73 @@ report that the container is not reachable.
 ## What a deploy may run
 
 Trusting the repo means trusting it inside the host's limits. A remote host
-refuses Compose features that would reach the host itself: `privileged`,
-capabilities beyond Docker's defaults, devices, host namespaces (`pid`, `ipc`,
-`uts`, `userns_mode`, `cgroup`, `network_mode: host`), `cgroup_parent`,
-unconfined `security_opt`, non-`net.*` sysctls, bind or device `driver_opts`
-volumes, external volumes and networks, `configs`/`secrets` files outside the
-project, and `build:` (remote hosts never build).
+refuses Compose features that would reach the host itself or another
+project. Each has a feature name, which a host exception names to allow it:
+
+| Feature                                                                                  | What a host refuses                                                                                                              |
+| ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `privileged`                                                                             | `privileged: true`                                                                                                               |
+| `cap-add`                                                                                | `cap_add` beyond Docker's default capabilities                                                                                   |
+| `devices`                                                                                | `devices`, `device_cgroup_rules`, `gpus`, device reservations                                                                    |
+| `pid-host`, `ipc-host`, `uts-host`, `userns-host`, `cgroup-host`, `network-host`         | `pid`, `ipc`, `uts`, `userns_mode`, `cgroup` or `network_mode` set to `host`                                                     |
+| `cgroup-parent`                                                                          | `cgroup_parent`                                                                                                                  |
+| `security-opt`                                                                           | any `security_opt` entry other than `no-new-privileges` (also `:true` or `=true`) and `seccomp=builtin`                          |
+| `sysctls`                                                                                | sysctls outside `net.*`                                                                                                          |
+| `volume-bind`                                                                            | a volume whose `driver_opts` bind a path or mount a device                                                                       |
+| `external-volume`, `external-network`                                                    | `external`, or a `name:` that is not the stack's Compose project name on that host or under it (`<project>_...`)                 |
+| `host-path`                                                                              | a bind mount of a host path outside the project; with the exception, only read-only and only the paths it lists                 |
+| `file-outside-project`                                                                   | a config's or secret's `file` outside the project, or reached through a symlink                                                  |
+| `build`                                                                                  | `build:` (remote hosts never build; publish images from CI)                                                                      |
+| `container-join`                                                                         | a namespace other than the service's own, a service's of its stack, or the host's, such as `container:NAME`; no exception allows it |
+
+Without an exception a service may set `pid: private`, `ipc` to `none`,
+`private` or `shareable`, `uts: private`, `userns_mode` to `auto` or
+`private`, `cgroup: private`, `network_mode` to `bridge`, `none`, `default`
+or `private`, and `service:<service>` in `pid`, `ipc` and `network_mode`.
+Podman's `userns_mode: keep-id` and `nomap` need `userns-host`, and
+`network_mode: slirp4netns` and `pasta` need `network-host`: each keeps part
+of the host's namespace.
+
+A volume or network `name:` is host-wide, so it could name another
+project's. A host checks it when it plans, against the stack's Compose
+project name there: a name equal to it or starting with it and `_` runs,
+any other needs `external-volume` or `external-network`. `mm config validate
+--for-remote` cannot know that name, so it warns
+(`MM_REMOTE_GUARDRAIL_NAME`). Leaving `name:` out is not a free fix for an
+existing volume: Compose then creates a new, empty one. To keep the data, a
+host admin allows `external-volume` for `<stack>/volume:<key>`, or you move
+the data first.
+
+A key on this list whose value comes from a variable, such as
+`privileged: ${PRIVILEGED:-false}` or `external: ${EXTERNAL}`, is refused as
+the feature it could turn on, whatever the default: write the value itself.
+`$$` is a literal `$`, and variables in other keys, such as `image` or
+`environment`, are fine. A variable in `pid`, `ipc` or `network_mode` could
+name a container, so no exception allows it.
+
+Services share a namespace with `service:`, which names a service of the
+same stack:
+
+```yaml
+services:
+  agent:
+    image: ghcr.io/acme/agent:2.1
+    pid: host
+  web:
+    image: ghcr.io/acme/web:1.0
+    network_mode: service:proxy # an ordinary service: no exception needed
+    pid: service:agent # reaches the host's PID namespace through agent
+```
+
+A service that joins another this way, directly or through a chain of
+`service:` joins, runs in the namespace that service runs in. When that is
+the host's, the joining service needs the same exception: here `web` needs
+`pid-host` as well as `agent`. The check follows joins across all the
+stack's Compose files and through `extends`.
+
+A name in `container:NAME` can match any container on the host, including
+another project's, so a host refuses it as `container-join`. Write
+`service:<service>` to join a service of the same stack.
 
 A key on this list whose value comes from a variable, such as
 `privileged: ${PRIVILEGED:-false}` or `external: ${EXTERNAL}`, is refused as
@@ -511,6 +572,42 @@ projects:
         features: [pid-host]
 ```
 
+A `host-path` exception also lists the host paths the service may mount, in
+`paths`. Each must match a mount's source exactly, and the mount must be
+recursively read-only, so that the mounts under the path are read-only too.
+Write it in the long syntax with `read_only: true` and
+`bind.recursive: readonly`, without `propagation` (other than `private` or
+`rprivate`) and without an SELinux relabel. The short syntax cannot say
+recursive, so a host refuses a host path written that way. Without `paths`,
+`host-path` allows nothing.
+
+Recursive read-only mounts need Docker Engine 25 (API 1.44) or later on
+Linux 5.12 or later. `mmd` asks its engine for both before it plans a host
+path and refuses the plan otherwise, with or without an exception. A Podman
+host refuses every host path for now: Podman mounts a plain read-only bind
+non-recursively, and mm cannot yet confirm that it honours
+`bind.recursive: readonly`.
+
+Allowing a host path hands the repo whatever that path holds, read-only or
+not: a container can connect to a Unix socket on a read-only mount, and a
+bind mount includes the mounts under it. Allowing `/`, or any path with an
+engine socket or secrets in it, gives the repo root on the host. A host
+policy that lists `/`, a path that holds or is inside `/run`, `/var/run`,
+`/var/lib/docker`, `/var/lib/containers`, `/var/lib/containerd`, `/etc/mm`,
+`/var/lib/mm`, `/root`, `/home`, `/etc/shadow` or `/etc/ssh` is refused when `mmd` or `mm config
+validate --host-policy` reads it. So is a path inside `/proc` other than
+`/proc` itself, such as `/proc/1/root`. `mmd` also resolves each listed path
+through symlinks when it reads the policy, refuses a path it cannot resolve,
+and checks where it leads; `--host-policy` on your machine checks the text
+only. Keep the list to paths without sockets or secrets.
+
+Even `/proc` is a broad grant. The host's `/proc` shows every process on the
+host, so the service can read other projects' processes, including their
+environment variables (where secrets often are) and, through
+`/proc/<pid>/root`, their files. Granting `host-path` for `/proc` is close
+to granting `pid-host` and read access to every container on that host:
+grant it only on hosts where every project is trusted with that.
+
 To check a project against the policy its hosts have, for example in CI,
 keep a copy of their `host.yaml` and pass it:
 
@@ -527,6 +624,54 @@ enroll the project is refused with the project's id.
 A host also decides which OCI runtimes a service's `runtime:` may name, and
 can run every service that is reachable from outside under one of them. See
 [choose an OCI runtime](./hardening.md#choose-an-oci-runtime).
+
+### Collect host metrics
+
+A metrics exporter such as Prometheus node-exporter or Grafana Alloy's
+`prometheus.exporter.unix` reads the host's `/proc` and `/sys`. Mount them
+read-only and put the exporter on the host's network:
+
+```yaml
+# compose.yaml, stack monitoring
+services:
+  alloy:
+    image: grafana/alloy:v1.5.0
+    network_mode: host
+    volumes:
+      - type: bind
+        source: /proc
+        target: /host/proc
+        read_only: true
+        bind: { recursive: readonly }
+      - type: bind
+        source: /sys
+        target: /host/sys
+        read_only: true
+        bind: { recursive: readonly }
+```
+
+On your machine mm refuses host paths, so run the exporter only where a
+host decides, for example with `environments: [production]` on the service
+in `mm.yaml`. Point the exporter at the mounts (`procfs_path: /host/proc`,
+`sysfs_path: /host/sys`). A host admin allows it on every host that runs the
+service, after reading what a `/proc` grant exposes (above):
+
+```yaml
+projects:
+  019c527b-6242-7b43-bfd4-bd60e27c1de3:
+    allow:
+      - service: monitoring/alloy
+        features: [host-path, network-host]
+        paths: [/proc, /sys]
+```
+
+With `network-host`, network metrics show the host's interfaces instead of
+the container's `eth0`. CPU, memory, load and disk I/O come from `/proc`.
+Do not mount `/` for filesystem usage: mm refuses it, as above. To report a
+data disk's usage, mount its mount point the same way, such as `/mnt/data`
+at `/host/mnt/data`, list it under `paths`, and check first that it holds no
+sockets or secrets. The exporter sees only the host it runs on:
+run one per host to cover a cluster.
 
 ### Run a service on the host's network
 

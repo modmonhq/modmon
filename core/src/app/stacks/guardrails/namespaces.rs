@@ -1,5 +1,5 @@
-//! Namespace keys: the host's own, another container's by name, and the
-//! ones a service reaches by joining another service's.
+//! Namespace keys: the host's own, the modes a host runs, and the ones a
+//! service reaches by joining another service's.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -7,7 +7,8 @@ use serde_yaml_ng::{Mapping, Value};
 
 use super::{GuardrailFinding, push};
 
-/// The feature no host exception covers: joining a container by name.
+/// The feature no host exception covers: a namespace other than the
+/// service's own, a service's of its stack, or the host's.
 pub(super) const CONTAINER_JOIN: &str = "container-join";
 
 const HOST_NAMESPACES: [(&str, &str); 6] = [
@@ -18,6 +19,31 @@ const HOST_NAMESPACES: [(&str, &str); 6] = [
     ("cgroup", "cgroup-host"),
     ("network_mode", "network-host"),
 ];
+
+/// The modes each key may take besides `host`, `service:` where it joins,
+/// and leaving it unset.
+const PRIVATE_MODES: [(&str, &[&str]); 6] = [
+    ("pid", &["private"]),
+    ("ipc", &["none", "private", "shareable"]),
+    ("uts", &["private"]),
+    ("userns_mode", &["auto", "private"]),
+    ("cgroup", &["private"]),
+    ("network_mode", &["bridge", "none", "default", "private"]),
+];
+
+/// Podman modes that keep part of the host's namespace for that key: a
+/// host runs them under the key's host feature.
+const HOST_REACHING: [(&str, &[&str]); 2] = [
+    ("userns_mode", &["keep-id", "nomap"]),
+    ("network_mode", &["slirp4netns", "pasta"]),
+];
+
+fn reaches_the_host(key: &str, mode: &str) -> bool {
+    let name = mode.split(':').next().unwrap_or(mode);
+    HOST_REACHING
+        .iter()
+        .any(|(named, modes)| *named == key && modes.contains(&name))
+}
 
 const JOINABLE: [(&str, &str); 3] = [
     ("pid", "pid-host"),
@@ -36,19 +62,53 @@ pub(super) fn check_service(
         let Some(mode) = service.get(key).and_then(Value::as_str) else {
             continue;
         };
+        let joinable = JOINABLE.iter().any(|(joins, _)| *joins == key);
+        let private = PRIVATE_MODES
+            .iter()
+            .find(|(named, _)| *named == key)
+            .map_or(&[][..], |(_, modes)| *modes);
         if mode == "host" {
             push(findings, subject, feature, format!("{key}: host"));
+        } else if reaches_the_host(key, mode) {
+            push(
+                findings,
+                subject,
+                feature,
+                format!("{key}: {mode} in {file} keeps part of the host's namespace"),
+            );
         } else if super::interpolates(mode) {
-            let joinable = JOINABLE.iter().any(|(joins, _)| *joins == key);
-            let refused = if joinable { CONTAINER_JOIN } else { feature };
-            super::push_variable(findings, (subject, refused), (key, mode), file);
-        } else if mode.starts_with("container:") {
+            super::push_variable(findings, (subject, CONTAINER_JOIN), (key, mode), file);
+        } else if mode.is_empty()
+            || private.contains(&mode)
+            || (joinable && mode.starts_with("service:"))
+        {
+            continue;
+        } else if joinable && mode.starts_with("container:") {
             push(
                 findings,
                 subject,
                 CONTAINER_JOIN,
                 format!(
                     "{key}: {mode} in {file} joins any container of that name on the host; write `{key}: service:<service>` to join a service of this stack"
+                ),
+            );
+        } else {
+            let join = if joinable {
+                ", `service:<service>`"
+            } else {
+                ""
+            };
+            push(
+                findings,
+                subject,
+                CONTAINER_JOIN,
+                format!(
+                    "{key}: {mode} in {file} is not a mode a host runs; write {}{join}, or leave `{key}` out",
+                    private
+                        .iter()
+                        .map(|mode| format!("`{mode}`"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 ),
             );
         }
@@ -69,7 +129,7 @@ pub(super) fn check_joins(
                 let Some(joined) = mode.strip_prefix("service:") else {
                     continue;
                 };
-                if let Some((holder, held)) = reaches_host(&modes, joined) {
+                if let Some((holder, held)) = reaches_host(&modes, key, joined) {
                     push(
                         findings,
                         &format!("{stack}/{service}"),
@@ -112,7 +172,7 @@ fn written_modes(sources: &[(String, Mapping)], key: &str) -> Modes {
 
 /// The first service, from `start` along `service:` joins, whose mode is
 /// the host's or comes from a variable, with that mode.
-fn reaches_host<'a>(modes: &'a Modes, start: &'a str) -> Option<(&'a str, &'a str)> {
+fn reaches_host<'a>(modes: &'a Modes, key: &str, start: &'a str) -> Option<(&'a str, &'a str)> {
     let mut seen = BTreeSet::new();
     let mut next = vec![start];
     while let Some(service) = next.pop() {
@@ -120,7 +180,7 @@ fn reaches_host<'a>(modes: &'a Modes, start: &'a str) -> Option<(&'a str, &'a st
             continue;
         }
         for mode in modes.get(service).into_iter().flat_map(BTreeMap::keys) {
-            if mode == "host" || super::interpolates(mode) {
+            if mode == "host" || super::interpolates(mode) || reaches_the_host(key, mode) {
                 return Some((service, mode));
             }
             if let Some(joined) = mode.strip_prefix("service:") {

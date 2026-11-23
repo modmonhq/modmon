@@ -12,7 +12,8 @@ fn check_compose(
     project_root: &Path,
     allowed: &[GuardrailException],
 ) -> Vec<GuardrailFinding> {
-    let mut findings = compose_findings(stack, "compose.yaml", compose, project_root);
+    let mut findings =
+        compose_findings(stack, "compose.yaml", compose, (project_root, project_root));
     findings.retain(|finding| !allows(allowed, finding));
     findings
 }
@@ -86,6 +87,7 @@ fn host_escapes_are_refused_unless_the_host_allows_them() -> Result<(), Box<dyn 
         &[GuardrailException {
             service: "app/api".to_owned(),
             features: BTreeSet::from(["pid-host".to_owned(), "privileged".to_owned()]),
+            paths: BTreeSet::new(),
         }],
     );
     assert!(!features(&allowed).contains("pid-host"));
@@ -141,6 +143,7 @@ fn a_feature_inherited_through_extends_is_found_under_the_extending_service()
         &[GuardrailException {
             service: "app/base".to_owned(),
             features: BTreeSet::from(["privileged".to_owned(), "cap-add".to_owned()]),
+            paths: BTreeSet::new(),
         }],
     );
     assert!(
@@ -150,4 +153,13 @@ fn a_feature_inherited_through_extends_is_found_under_the_extending_service()
         "a grant for the base is not one for what extends it"
     );
     Ok(())
+}
+
+#[test]
+fn an_escaped_dollar_is_no_variable() {
+    assert!(interpolates("${TAG}"));
+    assert!(interpolates("$TAG"));
+    assert!(interpolates("$$$TAG"));
+    assert!(!interpolates("price$$"));
+    assert!(!interpolates("$$$$"));
 }

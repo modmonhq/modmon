@@ -219,6 +219,7 @@ fn node(apparmor: Option<ContainerAppArmor>) -> NodeReport {
             compose_version: Some("Docker Compose version 2.37.1".to_owned()),
             problem: None,
             apparmor,
+            recursive_read_only: false,
         }),
         daemon: None,
         secret_store: None,

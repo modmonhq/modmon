@@ -171,6 +171,13 @@ fn container(row: &Value, inspected: &Value) -> Option<EngineContainer> {
 }
 
 /// The engine's version, as `docker --version` would name it.
+/// The engine's API version and the kernel it runs on, as it says.
+pub async fn engine_versions(api: &EngineApi) -> Result<(String, String), MmError> {
+    let version = api.json("/version").await?;
+    let text = |key: &str| version[key].as_str().unwrap_or_default().to_owned();
+    Ok((text("ApiVersion"), text("KernelVersion")))
+}
+
 pub async fn engine_version(api: &EngineApi) -> Result<String, MmError> {
     let version = api.json("/version").await?;
     Ok(format!(
