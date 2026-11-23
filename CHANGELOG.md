@@ -35,6 +35,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (default `20m`). A large image on a slow registry no longer fails the
   deployment with `MM_PROCESS_TIMEOUT` after 120 seconds. `mm deploy apply`
   and `mm deploy status` show which image a host is pulling.
+- A job whose image pull takes longer than 30 seconds keeps its claim on the
+  run while it pulls, so a second worker no longer launches the same run
+  again, and the job keeper of `mmd` looks after the other runs' timeouts and
+  cancels meanwhile. A cancel stops the pull.
+- `pull_policy: daily`, `weekly` and `every_<duration>` images are pulled on
+  every deployment, like `always`, instead of only when missing; the time a
+  host spends finding which images it lacks counts against
+  `deploy.pull-timeout`.
 
 ## [0.1.1] - 2026-11-19
 
