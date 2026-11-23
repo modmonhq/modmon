@@ -10,6 +10,7 @@ mod launchd_ingress;
 mod operation_lock;
 mod pins;
 mod privileged_ingress;
+mod private_json;
 mod public_ingress;
 pub use ingress_prerequisites::IngressPrerequisites;
 pub use launchd_ingress::{
