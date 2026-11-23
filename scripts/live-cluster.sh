@@ -4032,7 +4032,11 @@ if grep -q locks_lock "$TMP/wedge-threads.log"; then cat "$TMP/wedge-threads.log
 
 # One of the waiting clients is killed. Its relay on app-1 leaves at once,
 # and the daemon gives the request up without ever running it.
-WAITING=$(steady_relays app-1)
+WAITING=0
+for _ in $(seq 1 30); do
+  WAITING=$(steady_relays app-1)
+  [ "$WAITING" -ge 3 ] && break
+done
 [ "$WAITING" -ge 3 ] || { relays app-1 >&2; fail "expected the relays of the step and of two waiting syncs on app-1"; }
 docker exec "$CLIENT" python3 -c '
 import os, signal, sys
