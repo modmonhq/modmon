@@ -106,12 +106,13 @@ pub(crate) fn remote_environment_as(
         node: None,
     };
     let nodes = if context.target.definition.is_cluster() {
-        cluster_nodes(&document, &context.target, access, &scope)?
+        cluster_nodes(&document, &context.target, (access, &home), &scope)?
     } else {
         vec![crate::app::RemoteNode {
             name: None,
             host: host.clone(),
             port: *port,
+            repo_address: None,
             private_address: None,
             transport: Ok(Arc::new(SshRemoteTransport::for_target(
                 &context.target,

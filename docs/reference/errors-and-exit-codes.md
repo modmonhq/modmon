@@ -64,7 +64,7 @@ Human output prints the corresponding quoted command. Other errors may have
 | `MM_STATE`                        |                       1 | Private state-store failure, or state that a newer release wrote: the message names the file and says to run `mm update`, or on a host `mm target setup plan --upgrade`. See [stored state](./compatibility.md#stored-state). |
 | `MM_PLACEMENT`                    |                       2 | A service cannot be placed on the environment's cluster target: a `placement` name is not a node or group, a Compose service has no entry under `modules`, two services that share an engine are on different nodes, `--nodes` leaves out a node a service moves to, or a job's `placement` names a node where its service does not run. |
 | `MM_RELEASE_INPUT`                |                       2 | A deployment plan's release does not fit the commit: a `release-inputs:` value that a template of the environment reads is missing, one is given that is not declared, a value does not match its `pattern`, the `--release` name is not one word, or a template reads a release fact the deployment does not have, such as `MM.IMAGE.<module>` without a build. Also a `release-inputs:` entry with a bad name or pattern in `mm config validate`. |
-| `MM_UNREACHABLE`                  |                       3 | A remote host or cluster node, or its `mmd`, did not answer. The message says what happened and what to run.  |
+| `MM_UNREACHABLE`                  |                       3 | A remote host or cluster node, or its `mmd`, did not answer. The message names the address tried, says what happened and what to run, and says when the address is this device's own (`mm target preference set-address`). |
 | `MM_NODE_MISMATCH`                |                       3 | A request for one cluster node reached a host with another node name. Nothing was applied there.              |
 | `MM_NOT_DEPLOYED`                 |                       3 | A remote host never began a deployment of the environment, so it has nothing to show or run. The message names the command that plans one. |
 | `MM_APPLY_STOPPED`                |                       3 | A cluster deployment failed on a node. The message names the node, the service, and its last log lines, and says which nodes were rolled back, left changed, or never reached. |
@@ -139,6 +139,14 @@ file that `mm deploy` or `mm dev up` would refuse in the environments it
 names, such as `network_mode: host` on a service of this machine without
 [`host-network`](./configuration.md#modules-services-and-builds); the
 message names the file, the service, and what to change.
+`MM_PODMAN_APPARMOR` refuses a plan on a Podman host for a service that
+sees processes beyond its own containers (`pid: host`, `container:` or
+`service:` of such a service) when it sets `apparmor=mm-containers`, or
+when the host gives containers `mm-containers` without having loaded
+`mm-containers-shared-pid`. A job, a rollback, or a scale-up that would
+create such a service's containers from files rendered before setup
+installed the profile fails with it too; deploy again. See
+[AppArmor](../remote-daemon.md#apparmor).
 `MM_USER_NAMESPACE` is the finding for `host-user-namespace` without a
 reason, and, on Podman hosts, where each service has [user ids of its
 own](../remote-daemon.md#run-podman-on-the-hosts), for two services with ids
@@ -146,20 +154,34 @@ of their own that mount one volume and for a `uid` or `gid` of a config
 file or secret file outside the service's ids 0 to 65535, and for a config
 file or secret file that names an owner other than root or a mode not every
 user can read, of a service whose Compose file sets a `userns_mode` other than
-`host`. A plan on such a
-host fails with it when the host has no `mm-services` range in `/etc/subuid`
-(run `mm target setup`), when the range is full, and when a service on a
-shared volume cannot have the ids every other node gives it.
+`host` or a plain `auto`. A plan on such a host fails with it when the host
+has no `mm-services` range in `/etc/subuid` (run `mm target setup`), when the
+range is full, and when a service on a shared volume cannot have the ids
+every other node gives it. On Docker Engine with `userns-remap` the plan
+fails with it for a secret file or config file that names an owner other than
+root or a mode not every user can read, of a service that does not run in the
+host's user namespace, and when `docker info` does not say whether the remap
+is on; the runtime's status notes the remap as
+`MM_DOCKER_USERNS_REMAP`.
 `MM_SECRET_FILE_OWNER` is the warning for a `secret-files` entry in an
 environment that runs on Docker on this machine, where mm runs as you and the
 file belongs to you: the entry names other ids than yours, and they can
 matter, either because they are not root's or because the `mode` lets no
 other user read the file. The default mode `0444` lets every user in the
 container read it. See [file delivery](../secret-delivery.md#file-delivery).
+`MM_HEALTHCHECK_ARGUMENTS` is the warning for a Compose `healthcheck:` whose
+`test` is in exec form (`["CMD", ...]`) with an argument that contains
+whitespace or is empty, or that comes from a `${VAR}` whose value could, in an
+environment that runs on Podman: Podman before 5.8 splits such an argument at
+whitespace, so the check never passes. `mm config validate` and `mm doctor`
+report it, and the deployment plan lists it unless it depends on a `${VAR}`
+or the engine is Podman 5.8 or later. The help gives the same command
+as a `CMD-SHELL` check, quoted for the shell. See [run Podman on the
+hosts](../remote-daemon.md#run-podman-on-the-hosts).
 `MM_UPDATE_ORDER` is the finding for a service's `update:` that cannot work:
 `order: start-first` on a service that publishes a fixed host port, sets
 `container_name`, runs more than one container, or on Podman sets its own
-`userns_mode` other than `host`, or a `parallelism` of 0. `MM_STACK_ORDER` is the finding for a stack's
+`userns_mode` other than `host` or a plain `auto`, or a `parallelism` of 0. `MM_STACK_ORDER` is the finding for a stack's
 `after:` that names no stack, the stack itself, or a loop,
 `MM_DEPLOY_TIMEOUT` for a `deploy.convergence-timeout` or
 `deploy.progress-timeout` that is not a time, `MM_DEPLOY_MM_VERSION` for a
@@ -212,7 +234,9 @@ environment that `environments:` does not declare.
 a Compose feature that [a remote host refuses](../remote-access.md#what-a-deploy-may-run)
 in a service the named environment runs. With `--host-policy`, a feature the
 policy's `allow` list grants is the information `MM_REMOTE_GUARDRAIL_ALLOWED`
-instead, which does not fail the command.
+instead, which does not fail the command. A `container:` join
+(`container-join`) is always an error: no `allow` entry covers it, and the
+help says to join a service with `service:` instead.
 A deployment that does not become healthy says why inside its message:
 `MM_RUNTIME_UNHEALTHY` (the health check fails), `MM_RUNTIME_EXITED` (the
 container exited), `MM_RUNTIME_RESTARTING` (the engine keeps restarting it),
@@ -238,8 +262,13 @@ ones anyway; fix the service or its `healthcheck:`), `MM_SERVICE_RESTART_LIMIT`
 `mm service logs` shows why, and a deployment or `mm service restart` starts
 it again), what each node says about its container engine: `MM_NODE_ENGINE` (the engine
 does not answer), `MM_PODMAN_VERSION` (Podman older than 5.0), and
-`MM_PODMAN_COMPOSE` (`podman compose` does not run Docker Compose); a
-target that names one host is asked for these three and for how its `mmd`
+`MM_PODMAN_COMPOSE` (`podman compose` does not run Docker Compose), and
+`MM_PODMAN_APPARMOR` (a warning that Podman's containers run under its
+default AppArmor profile, under which processes in a container may not be
+able to signal each other, or that `mm-containers-shared-pid` is not loaded;
+an error when Podman is pointed at mm's profile and the kernel has not
+loaded it); a
+target that names one host is asked for these four and for how its `mmd`
 fares (below), not for the rest. For every remote environment, cluster or single host, it reports how each host's
 `mmd` fares: `MM_DAEMON_NOT_ANSWERING` (a part of the daemon does not
 answer), the note `MM_DAEMON_RESTARTED` (it started in the last 15 minutes),

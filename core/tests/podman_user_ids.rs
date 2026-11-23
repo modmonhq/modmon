@@ -18,6 +18,7 @@ use mm::app::ports::{ProjectDocumentStore, RuntimeSecretDelivery, ServiceUserIds
 use mm::app::{StackManager, WorkspaceSelection};
 use mm::domain::operation::OperationId;
 use mm::domain::placement::NodeScope;
+use mm::domain::remote::{SharedPidAppArmor, refuse_unconfined_shared_pid};
 use mm::domain::runtime::RuntimeKind;
 use mm::domain::runtime_secret::{
     RuntimeSecretConsumer, RuntimeSecretMaterial, RuntimeSecretPlan, RuntimeSecretPlanItem,
@@ -350,7 +351,7 @@ const COMPOSE: &str = "services:
     image: example/cache
   legacy:
     image: example/legacy
-    userns_mode: keep-id
+    userns_mode: auto:size=1024
 volumes:
   uploads: {}
 ";
@@ -529,6 +530,186 @@ fn each_service_runs_in_its_own_fixed_namespace_and_its_files_are_its_own() -> T
     assert_eq!(
         modes["app-1"], modes["app-2"],
         "web's ids differ between nodes"
+    );
+    Ok(())
+}
+
+/// A host that confines containers sharing a process namespace as `.1` says.
+#[derive(Debug)]
+struct ConfinedHost(Arc<FilesystemServiceUserIds>, SharedPidAppArmor);
+
+impl ServiceUserIds for ConfinedHost {
+    fn reserve(
+        &self,
+        wanted: &BTreeSet<ServiceIdsOwner>,
+    ) -> Result<BTreeMap<ServiceIdsOwner, ServiceIdsChoice>, mm::domain::error::MmError> {
+        self.0.reserve(wanted)
+    }
+
+    fn release(
+        &self,
+        owners: &BTreeSet<ServiceIdsOwner>,
+    ) -> Result<(), mm::domain::error::MmError> {
+        self.0.release(owners)
+    }
+
+    fn shared_pid_apparmor(&self) -> SharedPidAppArmor {
+        self.1
+    }
+}
+
+#[test]
+fn a_service_that_shares_another_process_namespace_keeps_podmans_apparmor_rules() -> TestResult {
+    let temporary = temp_dirs::tempdir()?;
+    let root = temporary.path().join("project");
+    write_project(&root)?;
+    fs::write(
+        root.join("compose.yaml"),
+        "services:
+  web:
+    image: example/web
+  monitor:
+    image: example/monitor
+    pid: host
+  sidecar:
+    image: example/sidecar
+    pid: \"service:monitor\"
+  peer:
+    image: example/peer
+    pid: \"service:web\"
+  joined:
+    image: example/joined
+    pid: \"container:elsewhere\"
+  chosen:
+    image: example/chosen
+    pid: host
+    security_opt: [\"apparmor=custom\"]
+",
+    )?;
+    let config = root.join(".config/mm.yaml");
+    let text = fs::read_to_string(&config)?;
+    fs::write(
+        &config,
+        text.replace("    shared-volumes: [uploads]\n", "").replace(
+            "      api:
+        stack: app
+        placement: all
+        config-files:
+          /etc/api.conf: {file: api.conf, mode: 0o600}
+      cache: {stack: app, placement: all, host-user-namespace: shares its socket with the host}
+      legacy: {stack: app, placement: all}",
+            "      monitor: {stack: app, placement: all}
+      sidecar: {stack: app, placement: all}
+      peer: {stack: app, placement: all}
+      joined: {stack: app, placement: all}
+      chosen: {stack: app, placement: all}",
+        ),
+    )?;
+    let host = Host::with_lines(SETUP_LINES)?;
+    let confined = compile_on(
+        &root,
+        &temporary.path().join("confined"),
+        "app-1",
+        Arc::new(ConfinedHost(host.ids.clone(), SharedPidAppArmor::Pin)),
+    )?;
+    let overlay = overlay_of(&confined)?;
+    let options = |service: &str| {
+        overlay["services"][service]["security_opt"]
+            .as_sequence()
+            .map(|options| {
+                options
+                    .iter()
+                    .filter_map(serde_yaml_ng::Value::as_str)
+                    .filter(|option| option.starts_with("apparmor"))
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    };
+    let pinned = ["apparmor=mm-containers-shared-pid".to_owned()];
+    for service in ["monitor", "sidecar", "joined"] {
+        assert_eq!(options(service), pinned, "{service}: {overlay:?}");
+    }
+    for service in ["web", "peer", "chosen"] {
+        assert!(options(service).is_empty(), "{service}: {overlay:?}");
+    }
+
+    let unconfined = compile_on(
+        &root,
+        &temporary.path().join("unconfined"),
+        "app-1",
+        host.ids.clone(),
+    )?;
+    let overlay = overlay_of(&unconfined)?;
+    assert!(
+        !serde_yaml_ng::to_string(&overlay)?.contains("mm-containers-shared-pid"),
+        "a host without AppArmor: {overlay:?}"
+    );
+
+    let rendered = |report: &mm::domain::stack::StackCompilationReport| -> Result<Vec<serde_yaml_ng::Value>, Box<dyn std::error::Error>> {
+        report.stacks[0]
+            .compose_files
+            .iter()
+            .map(|path| -> Result<serde_yaml_ng::Value, Box<dyn std::error::Error>> {
+                let mut model: serde_yaml_ng::Value = serde_yaml_ng::from_str(&fs::read_to_string(path)?)?;
+                model.apply_merge()?;
+                Ok(model)
+            })
+            .collect()
+    };
+    refuse_unconfined_shared_pid(rendered(&confined)?)?;
+    let stale = refuse_unconfined_shared_pid(rendered(&unconfined)?)
+        .err()
+        .ok_or("files rendered before setup installed the profile")?;
+    assert!(
+        stale.contains("service 'joined'")
+            && stale.contains("would run under mm-containers")
+            && stale.contains("`mm deploy plan`"),
+        "{stale}"
+    );
+
+    let missing = compile_on(
+        &root,
+        &temporary.path().join("missing"),
+        "app-1",
+        Arc::new(ConfinedHost(host.ids.clone(), SharedPidAppArmor::Missing)),
+    )
+    .err()
+    .ok_or("a host that would give monitor mm-containers")?;
+    assert_eq!(missing.code(), "MM_PODMAN_APPARMOR");
+    let message = missing.to_string();
+    assert!(
+        message.contains("service 'joined'")
+            && message.contains("`pid: container:elsewhere`")
+            && message.contains("has not loaded mm-containers-shared-pid")
+            && message.contains("`mm target setup plan`"),
+        "{message}"
+    );
+
+    let compose = root.join("compose.yaml");
+    let text = fs::read_to_string(&compose)?;
+    fs::write(
+        &compose,
+        text.replace(
+            "security_opt: [\"apparmor=custom\"]",
+            "security_opt: [\"apparmor:mm-containers\"]",
+        ),
+    )?;
+    let wide = compile_on(
+        &root,
+        &temporary.path().join("wide"),
+        "app-1",
+        Arc::new(ConfinedHost(host.ids.clone(), SharedPidAppArmor::Pin)),
+    )
+    .err()
+    .ok_or("a pid-sharing service that chooses mm-containers")?;
+    assert_eq!(wide.code(), "MM_PODMAN_APPARMOR");
+    let message = wide.to_string();
+    assert!(
+        message.contains("service 'chosen'")
+            && message.contains("apparmor=mm-containers")
+            && message.contains("Remove the option"),
+        "{message}"
     );
     Ok(())
 }
@@ -713,8 +894,8 @@ fn a_file_of_a_service_whose_ids_podman_picks_has_to_hold_for_any_owner() -> Tes
         .to_string();
     for part in [
         "modules.shop.services.legacy.config-files.\"/etc/legacy.conf\"",
-        "sets `userns_mode: keep-id`",
-        "Remove `userns_mode` from service 'legacy'",
+        "sets `userns_mode: auto:size=1024`",
+        "Remove `userns_mode` from service 'legacy' or set it to plain `auto`",
         "uid \"0\", gid \"0\" and a mode every user can read",
     ] {
         assert!(error.contains(part), "{part}: {error}");
@@ -726,8 +907,78 @@ fn a_file_of_a_service_whose_ids_podman_picks_has_to_hold_for_any_owner() -> Tes
         "legacy: {stack: app, placement: all, ",
         "legacy: {stack: app, placement: all, host-user-namespace: reads host files, ",
     );
-    if let Err(error) = compile(kept, "app-1")? {
-        assert!(!error.to_string().contains("userns_mode"), "{error}");
+    match compile(kept, "app-1")? {
+        Ok(_) => {}
+        Err(error) if !rustix::process::geteuid().is_root() => assert!(
+            error
+                .to_string()
+                .contains("cannot give a file to another user"),
+            "{error}"
+        ),
+        Err(error) => {
+            return Err(format!(
+                "a file of a service that keeps the host's ids was refused: {error}"
+            )
+            .into());
+        }
+    }
+    Ok(())
+}
+
+/// A plain `userns_mode: auto`, or one that is `~`, is what mm gives a
+/// service anyway: the service gets mm's ids, and a 0400 file of uid 1000
+/// belongs to the host id its uid 1000 is.
+#[test]
+fn a_service_with_plain_auto_gets_its_own_ids_and_its_files_their_owner() -> TestResult {
+    let temporary = temp_dirs::tempdir()?;
+    let root = temporary.path().join("project");
+    write_project(&root)?;
+    let config = fs::read_to_string(root.join(".config/mm.yaml"))?.replace(
+        "legacy: {stack: app, placement: all}",
+        "legacy: {stack: app, placement: all, config-files: {/etc/legacy.conf: {file: api.conf, uid: \"1000\", gid: \"1000\", mode: 0o400}}}",
+    );
+    fs::write(root.join(".config/mm.yaml"), config)?;
+    let legacy = ServiceIdsOwner {
+        project: ProjectId(uuid::Uuid::parse_str(PROJECT_ID)?),
+        environment: "production".to_owned(),
+        stack: "app".to_owned(),
+        service: "legacy".to_owned(),
+    }
+    .first_choice(HostIdRange::default_range());
+    for (node, mode) in [("app-1", "auto"), ("app-2", "~")] {
+        fs::write(
+            root.join("compose.yaml"),
+            COMPOSE.replace("auto:size=1024", mode),
+        )?;
+        let host = Host::with_lines(SETUP_LINES)?;
+        let compiled = compile_on(&root, &temporary.path().join(node), node, host.ids.clone());
+        if !rustix::process::geteuid().is_root() {
+            let error = compiled.err().ok_or("a config file was given away")?;
+            assert!(
+                error
+                    .to_string()
+                    .contains("cannot give a file to another user"),
+                "{mode}: {error}"
+            );
+            continue;
+        }
+        let overlay = overlay_of(&compiled?)?;
+        let service = &overlay["services"]["legacy"];
+        assert_eq!(
+            service["userns_mode"].as_str(),
+            Some(legacy.userns_mode().as_str()),
+            "{mode}"
+        );
+        let mount = service["volumes"][0]
+            .as_str()
+            .ok_or("legacy mounts no config file")?;
+        let metadata = fs::metadata(mount.split(':').next().ok_or("no source")?)?;
+        assert_eq!(
+            (metadata.uid(), metadata.gid()),
+            (legacy.first + 1000, legacy.first + 1000),
+            "{mode}"
+        );
+        assert_eq!(metadata.permissions().mode() & 0o777, 0o400);
     }
     Ok(())
 }

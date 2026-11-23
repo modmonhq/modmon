@@ -143,7 +143,7 @@ fn select_runtime(
         RuntimeKind::DockerCompose => RuntimeKindArg::DockerCompose,
         RuntimeKind::PodmanCompose => RuntimeKindArg::PodmanCompose,
     };
-    super::target::run_prefer_command(
+    super::target_preference::run_prefer_command(
         PreferCommand::SetRuntime {
             runtime,
             environment: report.environment.clone(),

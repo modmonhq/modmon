@@ -1345,6 +1345,7 @@
             runtime_changes: Vec::new(),
             unknown_config_keys: Vec::new(),
             secret_file_owners: Vec::new(),
+            healthcheck_arguments: Vec::new(),
             release: None,
             plan_hash: String::new(),
         };

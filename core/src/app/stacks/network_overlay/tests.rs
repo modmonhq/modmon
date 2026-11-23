@@ -52,6 +52,7 @@ fn generated_overlay_contains_owned_services_routes_networks_and_mail()
         user_ids: &Default::default(),
         low_ports: &Default::default(),
         host_userns: &Default::default(),
+        shared_pid: &Default::default(),
     })?;
     assert!(generated.preserved_volumes.is_empty());
     let overlay: serde_yaml_ng::Value = serde_yaml_ng::from_slice(&generated.bytes)?;
@@ -111,6 +112,7 @@ fn development_mount_overlay_is_owned_sorted_and_rejects_invalid_inputs()
                 user_ids: &Default::default(),
                 low_ports: &Default::default(),
                 host_userns: &Default::default(),
+                shared_pid: &Default::default(),
             })
         };
     }
@@ -265,6 +267,7 @@ fn network_source_and_overlay_parsing_failures_are_propagated()
             user_ids: &Default::default(),
             low_ports: &Default::default(),
             host_userns: &Default::default(),
+            shared_pid: &Default::default(),
         })
         .is_err()
     );
@@ -297,6 +300,7 @@ fn a_service_on_a_network_with_a_resolver_file_mounts_it() -> Result<(), Box<dyn
             user_ids: &Default::default(),
             low_ports: &Default::default(),
             host_userns: &Default::default(),
+            shared_pid: &Default::default(),
         })?;
         let overlay: serde_yaml_ng::Value = serde_yaml_ng::from_slice(&generated.bytes)?;
         Ok(overlay["services"][service]["volumes"].clone())

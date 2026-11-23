@@ -326,6 +326,7 @@ fn cluster_built(
             name: Some((*name).to_owned()),
             host: format!("203.0.113.{}", index + 1),
             port: 22,
+            repo_address: None,
             private_address: Some(Ipv4Addr::new(10, 90, 0, u8::try_from(index + 1)?)),
             transport: Ok(node as Arc<dyn RemoteTransport>),
             scope: RemoteScope {

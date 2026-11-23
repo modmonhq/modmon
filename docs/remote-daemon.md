@@ -694,6 +694,27 @@ mm sets it to 0 on each service that has a network namespace of its own
 (not `network_mode: host`, `container:` or `service:`) and does not set it
 under `sysctls`, and the plan lists those services under `ports:`.
 
+Podman before 5.8 splits each argument of an exec-form health check at
+whitespace, so a check such as `["CMD", "node", "-e", "<script with
+spaces>"]` never passes there. The supported hosts are affected: Debian 13 and
+Ubuntu 25.04 ship Podman 5.4. `mm config validate`, `mm doctor` and the
+deployment plan warn about such a check (`MM_HEALTHCHECK_ARGUMENTS`), after
+merging the stack's Compose files and following `extends` within a file (mm
+refuses `extends.file`), and give the same
+check in shell form, which needs `/bin/sh` in the image:
+
+```yaml
+healthcheck:
+  test: ["CMD-SHELL", "node -e 'require(\"http\").get(\"http://127.0.0.1:3000\", (r) => process.exit(r.statusCode < 400 ? 0 : 1)).on(\"error\", () => process.exit(1))'"]
+```
+
+mm does not know the values of `${VAR}` interpolations in a Compose file, so
+`mm config validate` and `mm doctor` also warn about an argument that is a
+whole `${VAR}` or `$VAR`, or whose `${VAR:-default}` default contains
+whitespace; the warning says the value decides. The deployment plan lists
+only arguments that split whatever the values are. `mm doctor` and the plan
+say nothing when the engine's Podman is 5.8 or later.
+
 Requirements on each host:
 
 - Podman 5.0 or later: Debian 13, or Ubuntu 25.04 or later.
@@ -749,15 +770,21 @@ modules:
         host-user-namespace: shares its uploads with the host's backup job
 ```
 
-A Compose file that sets `userns_mode` on a service keeps it (`host` needs the
-`userns-host` exception in the host policy). With a mode other than `host`,
-such as `auto`, Podman picks the service's ids when it creates a container,
-after mm wrote the service's files, so each config file and `secret-files`
-entry of that service has to read the same for any owner: `uid` and `gid` 0
-(or left out) and a mode every user can read, such as the default 0o444.
-`mm config validate` and the plan refuse an entry that asks for more
-(`MM_USER_NAMESPACE`). Remove `userns_mode` from the service to give it ids of
-its own, and the file is given to its `uid` and `gid` again. A [shared
+A plain `userns_mode: auto` is what mm gives a service anyway: mm replaces it
+with the service's own block, the same 65536 ids Podman's `auto` would give at
+most, taken from the `mm-services` range instead of Podman's `containers`
+range, so the service's files get their owner. Any other mode a Compose file
+sets on a service is kept (`host` needs the `userns-host` exception in the
+host policy). With a mode other than `host`, such as `auto:size=1024`, Podman
+picks the service's ids when it creates a container, after mm wrote the
+service's files, so each config file and `secret-files` entry of that service
+has to read the same for any owner: `uid` and `gid` 0 (or left out) and a mode
+every user can read, such as the default 0o444. `mm config validate` and the
+plan refuse an entry that asks for more (`MM_USER_NAMESPACE`). Remove
+`userns_mode` from the service, or set it to plain `auto`, to give it ids of
+its own, and the file is given to its `uid` and `gid` again. With several
+Compose files, the last file that sets `userns_mode` decides, as in Compose;
+`userns_mode: ~` or `""` counts as not set. A [shared
 volume](#shared-volumes-across-nodes) has to reach a service with the same ids
 on every node: a node where another service already has that service's first
 choice refuses the plan and names that service.
@@ -774,7 +801,9 @@ container user's id to `FIRST` for a service that runs as another user.
 `mm doctor` asks each host for its engine and reports a host whose Podman is
 older than 5.0 (`MM_PODMAN_VERSION`), whose `podman compose` does not run
 Docker Compose (`MM_PODMAN_COMPOSE`), or whose engine does not answer
-(`MM_NODE_ENGINE`), each with the command that fixes it. `mm target nodes
+(`MM_NODE_ENGINE`), each with the command that fixes it. It also warns about
+a host whose containers run under Podman's default AppArmor profile
+(`MM_PODMAN_APPARMOR`); see [AppArmor](#apparmor). `mm target nodes
 --output json` shows the engine of each node under `engine`.
 
 A cluster node runs one engine for every environment: it refuses to plan a
@@ -796,6 +825,92 @@ Limits on Podman:
   with its last; `mmd` gives a bridge that came back its settings within a
   few seconds, and until then a container reaches only the members on its
   own node.
+
+### AppArmor
+
+On a host whose kernel runs AppArmor (Debian and Ubuntu do by default),
+Podman confines every container with a profile. Its own profile,
+`containers-default-<version>`, lets a process signal only processes under
+the same profile. With user namespaces, which mm gives every service,
+AppArmor stacks that profile with the OCI runtime's profile (for example
+`containers-default-0.66.0//&crun` on Ubuntu 26.04 with Podman 5.7). The
+same-profile rule then no longer matches, so a process cannot signal
+another one in its container: a supervisor cannot stop the database it
+runs, and `kill` inside the container fails with `Permission denied`.
+
+Setup avoids this. Where the kernel runs AppArmor, it installs
+`/etc/apparmor.d/mm-containers`, loads it, and points Podman at it in
+`/etc/containers/containers.conf.d/50-mm-apparmor.conf`:
+
+```toml
+[containers]
+apparmor_profile = "mm-containers"
+```
+
+The profile is Podman's own with two more rules, `signal (send,receive),`
+and `ptrace (read),`, so the processes of a container can signal each other
+and read each other's `/proc` entries again. The rules name no peer, so
+they reach every process the container sees, and a container that sees only
+its own processes reaches nothing else.
+
+A container can also see processes beyond its own: with `pid: host`, which
+the workload guardrails refuse unless the host admin allows `pid-host` for
+the service (see [what a deploy may run](./remote-access.md#what-a-deploy-may-run)), with
+`pid: "container:NAME"`, or with `pid: "service:NAME"` of such a service.
+For those mm keeps Podman's own rules: setup also installs
+`/etc/apparmor.d/mm-containers-shared-pid`, Podman's profile unchanged
+under mm's name, and the Compose overlay gives each such service
+`security_opt: ["apparmor=mm-containers-shared-pid"]` on a host whose
+kernel holds it, also when the `pid` comes through `extends`. Their
+processes may hit the same stacking problem, as they would without mm. A
+service that sets its own `apparmor=` option keeps it, except
+`apparmor=mm-containers`, which mm refuses on such a service
+(`MM_PODMAN_APPARMOR`). On a host whose containers get `mm-containers` but
+whose kernel has not loaded `mm-containers-shared-pid`, for example one set
+up by an earlier mm, mm refuses to plan such a service and names
+`mm target setup plan` as the fix. Jobs of a service run from the same
+Compose files as the service, so they get the same profile.
+
+Containers that mm creates later from the files of an earlier deployment
+(a job, a rollback, a scale-up) are checked the same way: on a host whose
+containers get `mm-containers`, a pid-sharing service whose files name no
+profile, because they were rendered before setup installed it, is refused
+with `MM_PODMAN_APPARMOR`. Deploy the environment again (`mm deploy plan`)
+to render it with `mm-containers-shared-pid`.
+
+The plan lists both profiles under remote access (`apparmor:` in the text
+and `apparmor-profiles` in `--output json`; the cluster plan shows them as
+`apparmor`). Setup replaces a profile when a newer mm changes it, loads one
+the kernel does not hold, and removes the drop-in from a host whose kernel
+does not run AppArmor, where Podman refuses any profile.
+
+Containers that were running before setup keep Podman's profile until they
+are created again, for example by the next deployment that changes them.
+
+To use a profile of your own, load it and set `apparmor_profile` in a
+drop-in that sorts after `50-mm-apparmor.conf`, such as `60-apparmor.conf`.
+Do not use `unconfined`: the workload guardrails refuse
+`security_opt: [apparmor:unconfined]` for a reason, and a host-wide
+`unconfined` removes the same protection from every container.
+
+`mm doctor` asks each Podman host which profile its containers get and
+reports `MM_PODMAN_APPARMOR`: a warning when it is Podman's default (set
+the host up again with `mm target setup plan` and its apply), and an error
+when Podman is pointed at `mm-containers` and the kernel has not loaded it,
+which stops every container from starting (on the node,
+`apparmor_parser --replace /etc/apparmor.d/mm-containers`). It also warns
+when the kernel has not loaded `mm-containers-shared-pid` on a host whose
+containers get `mm-containers`. It reads the
+profile from `containers.conf` and its drop-ins in the order the host's
+Podman applies them (Podman 5 reads `/usr/share/containers/containers.conf`,
+`/etc/containers/containers.conf` and `/etc/containers/containers.conf.d`;
+Podman 6 also reads the `containers.conf.d` and `containers.rootful.conf.d`
+directories under `/usr/share/containers` and `/etc/containers`). It does
+not see a profile set with `CONTAINERS_CONF`, in the configuration of the
+account `mmd` runs Podman as, or on a single container.
+
+Setup changes nothing for Docker Engine: mm runs its containers in the
+host's user namespace, and the stacking above comes with user namespaces.
 
 ## Apply the users file for the first time
 
@@ -1162,7 +1277,9 @@ deployment. The command exits with status 3 when a node is not ready, and
 prints the list either way. `--output json` prints the same facts as
 `{"target": ..., "nodes": [...], "addresses": {...}}`. Each node has `name`,
 `host`, `port`, `mesh_address`, `state`, `reachable`, `problem`,
-`mmd_version`, and `deployed`.
+`mmd_version`, and `deployed`. `host` and `port` are the address this device
+connected to; when it is [this device's own](#reach-the-nodes-at-another-address),
+`repo_address` holds the one in `targets.yaml`.
 
 Below the nodes, the command prints the addresses of the
 [networks that span the nodes](#networks-across-nodes), for the environment
@@ -1370,7 +1487,8 @@ a container counts as healthy once it has run for five seconds.
 publishes a fixed host port, sets `container_name`, or runs more than one
 container (`scale`). On Podman hosts the two containers have the service's
 own user ids, so the new one keeps the old one's volumes; a service whose
-Compose file sets `userns_mode` other than `host` is refused there, since
+Compose file sets `userns_mode` other than `host` or a plain `auto` is
+refused there, since
 its new container would get other ids. It takes effect when the
 service's configuration or image reference changes; a tag that was pushed
 again under the same name is replaced the ordinary way.
@@ -2801,6 +2919,45 @@ on one release: `mm doctor` warns with `MM_NODE_VERSION_SKEW` until they are.
 When `mm` and a node share no protocol, the error says which side to upgrade:
 `mm` on your machine (`mm update`), or the host (run
 `mm target setup plan --upgrade` and apply that plan with `--upgrade`).
+
+### Reach the nodes at another address
+
+Each node's `host` in `.config/mm/targets.yaml` is shared by everyone who
+deploys, CI included. When your workstation reaches the nodes another way, for
+example over a VPN at their private addresses while SSH on the public
+addresses is open only to CI, tell `mm` on your device where to connect:
+
+```sh
+mm target preference set-address staging app-1 10.0.0.3
+mm target preference set-address staging app-2 10.0.0.4
+mm target preference set-address staging app-3 10.0.0.5:2222
+mm target preference show
+```
+
+The arguments are the environment, the node's name from `nodes:`, and a
+hostname, IPv4 address, or IPv6 address with an optional port (`[fd00::3]:22`).
+Without a port, `mm` uses the node's `port`. The address is kept in
+`node-addresses.json` in this device's mm home, never in the repo, so CI and
+the other developers keep using `host`. `mm` refuses an environment the
+project does not declare and a node its target does not list. The address
+belongs to the target the environment used when you set it: if the
+environment moves to another target, `mm` warns and connects to that target's
+`host` until you set the address again.
+
+Only where `mm` connects changes. The node must still present the SSH host key
+and daemon identity recorded for it in `targets.yaml`; `mm` checks them against
+the node's recorded name, so another host at the new address is refused as
+before. Every command uses the address: deploys, logs, status, `mm target
+nodes`, the terminal UI, and the MCP server. `mm target nodes` shows it with a
+line that names the address in `targets.yaml`, and an `MM_UNREACHABLE` error
+names the address that was tried and says it is this device's own.
+`mm target setup` still connects to `host`.
+
+To use the repo's address again:
+
+```sh
+mm target preference unset-address staging app-1
+```
 
 ### When mmd stops answering
 

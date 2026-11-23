@@ -684,6 +684,17 @@ pub use cluster::{
     NodeDeploymentPlan, NodeFacts, NodeReport, NodeState, SealCarried, UnfinishedRollout,
     node_diagnostics, unreachable_help,
 };
+#[path = "remote/apparmor.rs"]
+mod apparmor;
+pub use apparmor::{
+    CONTAINER_PROFILES, ContainerAppArmor, MM_CONTAINER_PROFILE, MM_SHARED_PID_PROFILE,
+    SharedPidAppArmor, apparmor_diagnostic,
+};
+#[path = "remote/shared_pid.rs"]
+mod shared_pid;
+pub use shared_pid::{
+    SharedPidService, refuse_unconfined_rendered, refuse_unconfined_shared_pid, shared_pid_services,
+};
 #[path = "remote/engine.rs"]
 mod engine;
 pub use engine::{EngineFacts, PODMAN_MINIMUM, engine_diagnostics};

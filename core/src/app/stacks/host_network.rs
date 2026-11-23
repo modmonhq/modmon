@@ -192,6 +192,9 @@ impl<'a> HostNetwork<'a> {
             };
             let mut model: Value = serde_yaml_ng::from_slice(&source.bytes).map_err(invalid)?;
             model.apply_merge().map_err(invalid)?;
+            if let Some(mapping) = model.as_mapping_mut() {
+                crate::domain::compose_extends::resolve_extends(mapping);
+            }
             let Some(listed) = model.get("services").and_then(Value::as_mapping) else {
                 continue;
             };
@@ -201,7 +204,11 @@ impl<'a> HostNetwork<'a> {
                 };
                 let entry = found.entry(name.to_owned()).or_default();
                 entry.0 |= on_host_network(service);
-                entry.1 |= service.get("userns_mode").is_some();
+                match super::user_namespace::userns_setting(service) {
+                    super::user_namespace::UsernsSetting::Unset => {}
+                    super::user_namespace::UsernsSetting::Reset => entry.1 = false,
+                    super::user_namespace::UsernsSetting::Mode(_) => entry.1 = true,
+                }
             }
         }
         let mut services = HostNetworkServices::default();

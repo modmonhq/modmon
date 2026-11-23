@@ -101,11 +101,25 @@ impl DeploymentManager {
         Ok(plan)
     }
 
+    async fn keep_split_healthchecks(
+        &self,
+        checks: &mut Vec<crate::domain::compose_healthcheck::HealthcheckArgumentNote>,
+    ) {
+        if !checks.is_empty()
+            && (self.runtime.probe().await.engine_version.as_deref())
+                .is_some_and(crate::domain::compose_healthcheck::podman_keeps_arguments)
+        {
+            checks.clear();
+        }
+    }
+
     async fn prepare_deployment(
         &self,
         selection: &WorkspaceSelection,
     ) -> Result<DeploymentPreparation, MmError> {
-        let compiled = self.compile(selection)?;
+        let mut compiled = self.compile(selection)?;
+        self.keep_split_healthchecks(&mut compiled.healthcheck_arguments)
+            .await;
         let environment_review = self
             .environments
             .review_for_deployment(
@@ -118,6 +132,7 @@ impl DeploymentManager {
             compiled.selection.runtime,
             &environment_review.secret_revisions,
         )?;
+        self.owners_hold_under_remap(&compiled).await?;
         if let Some(required) = environment_review
             .delivery
             .mode
@@ -194,6 +209,39 @@ impl DeploymentManager {
             target_fingerprint,
             current,
             previous_dynamic_config,
+        })
+    }
+
+    /// Refuses owned files whose owner Docker's `userns-remap` hides.
+    async fn owners_hold_under_remap(
+        &self,
+        compiled: &crate::app::stacks::DeploymentStackCompilation,
+    ) -> Result<(), MmError> {
+        if compiled.selection.runtime != crate::domain::runtime::RuntimeKind::DockerCompose {
+            return Ok(());
+        }
+        let owned = &compiled.placement.outside_host_namespace;
+        if owned.is_empty() {
+            return Ok(());
+        }
+        let Some(remapped) = self.runtime.probe().await.remaps_user_ids() else {
+            return Err(MmError::Remote {
+                code: "MM_USER_NAMESPACE",
+                message: format!(
+                    "mm could not read from `docker info` whether Docker on this host runs with userns-remap, which gives containers other user ids than the host's, and {} name an owner or a mode that only holds with the host's ids. Check that Docker answers (`docker info`), then run `mm deploy plan` again, or give each of these entries uid \"0\", gid \"0\" and a mode every user can read, such as 0o444",
+                    owned.join(", ")
+                ),
+            });
+        };
+        if !remapped {
+            return Ok(());
+        }
+        Err(MmError::Remote {
+            code: "MM_USER_NAMESPACE",
+            message: format!(
+                "Docker on this host runs with userns-remap, so its containers do not have the host's user ids, and {} would belong to an id they do not have. Give each of these entries uid \"0\", gid \"0\" and a mode every user can read, such as 0o444, run the service in the host's user namespace (`userns_mode: host` in its Compose file), or turn off `userns-remap` in /etc/docker/daemon.json and restart Docker",
+                owned.join(", ")
+            ),
         })
     }
 
@@ -376,6 +424,7 @@ impl DeploymentManager {
             runtime_changes: Vec::new(),
             unknown_config_keys: compiled.unknown_keys,
             secret_file_owners: Vec::new(),
+            healthcheck_arguments: compiled.healthcheck_arguments,
             release: compiled.release,
             plan_hash: String::new(),
         };

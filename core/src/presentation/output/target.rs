@@ -328,6 +328,14 @@ fn write_bootstrap_access(
         )
         .map_err(output_error)?;
     }
+    for profile in &access.apparmor_profiles {
+        writeln!(
+            writer,
+            "    apparmor:        /etc/apparmor.d/{}, where the kernel runs AppArmor",
+            terminal_safe(profile)
+        )
+        .map_err(output_error)?;
+    }
     for notice in &access.notices {
         writeln!(writer, "    release:         {}", terminal_safe(notice)).map_err(output_error)?;
     }
