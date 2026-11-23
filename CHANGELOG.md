@@ -10,10 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - A host exception for host paths: `host-path` in an `allow` entry of
   `/etc/mm/host.yaml`, with the paths in `paths`, lets one service bind-mount
-  those host paths read-only, such as `/proc`, `/sys` and `/` for a metrics
-  exporter. A writable mount, `shared` propagation or an SELinux relabel of a
-  host path is still refused. See "Collect host metrics" in the remote access
-  guide.
+  exactly those host paths read-only, such as `/proc` and `/sys` for a
+  metrics exporter. Allowing a path hands the repo what it holds: a path with
+  an engine socket or secrets in it, such as `/`, is root on the host, so a
+  policy that lists `/`, `/run`, `/var/run`, `/var/lib/docker`,
+  `/var/lib/containers`, `/etc/mm`, `/var/lib/mm`, `/root`, `/home` or
+  `/etc/shadow`, or a path above or inside one, is refused. A writable mount,
+  `shared` propagation, an SELinux relabel, a repeated access or propagation
+  option, or `bind.recursive` other than `readonly` is still refused. See
+  "Collect host metrics" in the remote access guide.
 - `mm target preference set-address ENVIRONMENT NODE HOST[:PORT]` connects
   this device to a cluster node at an address of its own, such as a VPN
   address, without changing the repo. The node's recorded host key and daemon
@@ -44,14 +49,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `privileged: "true"` and the `external: {name: ...}` form are caught too.
   `mm config validate --for-remote` reports the same.
 - Security: a remote host checks more Compose keys against the values it
-  runs rather than a list of known-bad ones. `security_opt` accepts only
-  `no-new-privileges` and `seccomp=builtin` without the `security-opt`
-  exception; a namespace mode other than the service's own, a `service:`
-  join or `host` counts as `container-join`; a volume or network `name:`
-  counts as `external-volume` or `external-network`; and a config's or
-  secret's `file` reached through a symlink or a `..` out of the project
-  counts as `file-outside-project`. `cap_add` entries in lower case, such as
-  `cap_chown`, are no longer refused.
+  runs rather than a list of known-bad ones. A config's or secret's `file`
+  reached through a symlink or a `..` out of the project counts as
+  `file-outside-project`, and `cap_add` entries in lower case, such as
+  `cap_chown`, are no longer refused by mistake. **Breaking for remote
+  targets**; each needs a change or a host exception:
+  - `security_opt` accepts only `no-new-privileges` and `seccomp=builtin`
+    without the `security-opt` exception, so a custom seccomp profile, SELinux
+    label or AppArmor profile is refused.
+  - A namespace mode other than the service's own, a `service:` join or
+    `host` is `container-join`, which no exception allows; Podman's
+    `userns_mode: keep-id` and `nomap` need `userns-host`, and
+    `network_mode: slirp4netns` and `pasta` need `network-host`.
+  - A volume or network `name:` must be the stack's Compose project name on
+    that host or start with it and `_`; any other needs `external-volume` or
+    `external-network`. `mm config validate --for-remote` warns
+    (`MM_REMOTE_GUARDRAIL_NAME`). Do not just remove `name:` from a volume
+    that holds data: Compose would create a new, empty volume. Have the host
+    admin allow `external-volume` for `<stack>/volume:<key>`, or move the data
+    first.
 - A container that resolves its own `tasks.<service>` name as soon as it
   starts finds itself: `mmd` reads the engine for a lookup from a container it
   has not seen yet before answering it, instead of letting the name fall

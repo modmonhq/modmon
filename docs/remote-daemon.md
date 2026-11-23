@@ -170,8 +170,9 @@ projects:
 - **`allow`** lets one service use one Compose feature that reaches the host,
   such as `network-host` for `network_mode: host`, in the environments the
   host runs. For `host-path`, the entry's `paths` lists the host paths the
-  service may bind-mount read-only, such as `[/proc, /sys, /]` for a metrics
-  exporter. See
+  service may bind-mount read-only, such as `[/proc, /sys]` for a metrics
+  exporter. A path that would give root on the host, such as `/` or `/run`,
+  is refused. See
   [what a deploy may run](./remote-access.md#what-a-deploy-may-run); `mm config
   validate --for-remote --host-policy FILE` checks a project against a copy of
   this file.

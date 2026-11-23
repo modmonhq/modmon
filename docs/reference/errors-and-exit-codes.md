@@ -220,6 +220,10 @@ policy's `allow` list grants is the information `MM_REMOTE_GUARDRAIL_ALLOWED`
 instead, which does not fail the command. A `container:` join
 (`container-join`) is always an error: no `allow` entry covers it, and the
 help says to join a service with `service:` instead.
+`MM_REMOTE_GUARDRAIL_NAME` is the warning for a volume or network `name:`:
+only the host that plans knows the stack's Compose project name, so the
+command cannot tell whether the host runs it; the help says what the host
+accepts and why removing `name:` from a volume loses its data.
 A deployment that does not become healthy says why inside its message:
 `MM_RUNTIME_UNHEALTHY` (the health check fails), `MM_RUNTIME_EXITED` (the
 container exited), `MM_RUNTIME_RESTARTING` (the engine keeps restarting it),

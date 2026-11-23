@@ -452,7 +452,7 @@ project. Each has a feature name, which a host exception names to allow it:
 | `security-opt`                                                                           | any `security_opt` entry other than `no-new-privileges` (also `:true` or `=true`) and `seccomp=builtin`                          |
 | `sysctls`                                                                                | sysctls outside `net.*`                                                                                                          |
 | `volume-bind`                                                                            | a volume whose `driver_opts` bind a path or mount a device                                                                       |
-| `external-volume`, `external-network`                                                    | `external`, or a `name:`, which is host-wide: leave it out and Compose names the volume or network after the stack               |
+| `external-volume`, `external-network`                                                    | `external`, or a `name:` that is not the stack's Compose project name on that host or under it (`<project>_...`)                 |
 | `host-path`                                                                              | a bind mount of a host path outside the project; with the exception, only read-only and only the paths it lists                 |
 | `file-outside-project`                                                                   | a config's or secret's `file` outside the project, or reached through a symlink                                                  |
 | `build`                                                                                  | `build:` (remote hosts never build; publish images from CI)                                                                      |
@@ -462,6 +462,19 @@ Without an exception a service may set `pid: private`, `ipc` to `none`,
 `private` or `shareable`, `uts: private`, `userns_mode` to `auto` or
 `private`, `cgroup: private`, `network_mode` to `bridge`, `none`, `default`
 or `private`, and `service:<service>` in `pid`, `ipc` and `network_mode`.
+Podman's `userns_mode: keep-id` and `nomap` need `userns-host`, and
+`network_mode: slirp4netns` and `pasta` need `network-host`: each keeps part
+of the host's namespace.
+
+A volume or network `name:` is host-wide, so it could name another
+project's. A host checks it when it plans, against the stack's Compose
+project name there: a name equal to it or starting with it and `_` runs,
+any other needs `external-volume` or `external-network`. `mm config validate
+--for-remote` cannot know that name, so it warns
+(`MM_REMOTE_GUARDRAIL_NAME`). Leaving `name:` out is not a free fix for an
+existing volume: Compose then creates a new, empty one. To keep the data, a
+host admin allows `external-volume` for `<stack>/volume:<key>`, or you move
+the data first.
 
 A key on this list whose value comes from a variable, such as
 `privileged: ${PRIVILEGED:-false}` or `external: ${EXTERNAL}`, is refused as
@@ -533,6 +546,16 @@ read-only (`:ro`, or `read_only: true` in the long syntax), without `z`/`Z`
 relabelling and without `shared` or `rshared` propagation; `rslave` is fine.
 Without `paths`, `host-path` allows nothing.
 
+Allowing a host path hands the repo whatever that path holds, read-only or
+not: a container can connect to a Unix socket on a read-only mount, and a
+bind mount includes the mounts under it. Allowing `/`, or any path with an
+engine socket or secrets in it, gives the repo root on the host. A host
+policy that lists `/`, a path that holds or is inside `/run`, `/var/run`,
+`/var/lib/docker`, `/var/lib/containers`, `/etc/mm`, `/var/lib/mm`,
+`/root`, `/home` or `/etc/shadow` is refused when `mmd` or `mm config
+validate --host-policy` reads it. Keep the list to paths without sockets or
+secrets, such as `/proc` and `/sys`.
+
 To check a project against the policy its hosts have, for example in CI,
 keep a copy of their `host.yaml` and pass it:
 
@@ -553,8 +576,8 @@ can run every service that is reachable from outside under one of them. See
 ### Collect host metrics
 
 A metrics exporter such as Prometheus node-exporter or Grafana Alloy's
-`prometheus.exporter.unix` reads the host's `/proc`, `/sys` and root
-filesystem. Mount them read-only and put the exporter on the host's network:
+`prometheus.exporter.unix` reads the host's `/proc` and `/sys`. Mount them
+read-only and put the exporter on the host's network:
 
 ```yaml
 # compose.yaml, stack monitoring
@@ -565,14 +588,13 @@ services:
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
-      - /:/host/root:ro,rslave
 ```
 
 On your machine mm refuses host paths, so run the exporter only where a
 host decides, for example with `environments: [production]` on the service
 in `mm.yaml`. Point the exporter at the mounts (`procfs_path: /host/proc`,
-`sysfs_path: /host/sys`, `rootfs_path: /host/root`). A host admin allows it
-on every host that runs the service:
+`sysfs_path: /host/sys`). A host admin allows it on every host that runs the
+service:
 
 ```yaml
 projects:
@@ -580,14 +602,16 @@ projects:
     allow:
       - service: monitoring/alloy
         features: [host-path, network-host]
-        paths: [/proc, /sys, /]
+        paths: [/proc, /sys]
 ```
 
-With the root filesystem mounted, filesystem metrics show the host's disks
-(`ext4`, `xfs`) instead of the container's `overlay`; with `network-host`,
-network metrics show the host's interfaces instead of the container's
-`eth0`. CPU, memory and load come from `/proc` either way. The exporter
-sees only the host it runs on: run one per host to cover a cluster.
+With `network-host`, network metrics show the host's interfaces instead of
+the container's `eth0`. CPU, memory, load and disk I/O come from `/proc`.
+Do not mount `/` for filesystem usage: mm refuses it, as above. To report a
+data disk's usage, mount its mount point read-only, such as
+`/mnt/data:/host/mnt/data:ro`, list it under `paths`, and check first that
+it holds no sockets or secrets. The exporter sees only the host it runs on:
+run one per host to cover a cluster.
 
 ### Run a service on the host's network
 
