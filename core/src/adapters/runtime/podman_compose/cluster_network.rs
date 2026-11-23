@@ -61,17 +61,20 @@ fn has_podman_default_route(inspected: &Value) -> bool {
     inspected["options"][NO_DEFAULT_ROUTE_OPTION].as_str() != Some("true")
 }
 
-/// The addressing of an inspected network, and its default route when
-/// `wanted` is internal and should have none.
+/// The addressing of an inspected network, and whether it carries a
+/// default route when `wanted` calls for the other.
 fn observed_podman_addresses(
     inspected: &Value,
     wanted: Option<&crate::domain::cluster_network::LocalNetwork>,
 ) -> String {
     let addresses = podman_network_addresses(inspected);
-    if wanted.is_some_and(|wanted| wanted.internal) && has_podman_default_route(inspected) {
-        format!("{addresses}, with a default route")
-    } else {
-        addresses
+    let routed = has_podman_default_route(inspected);
+    match wanted {
+        Some(wanted) if wanted.internal == routed => {
+            let route = if routed { "with" } else { "without" };
+            format!("{addresses}, {route} a default route")
+        }
+        _ => addresses,
     }
 }
 
