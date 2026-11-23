@@ -684,6 +684,9 @@ pub use cluster::{
     NodeDeploymentPlan, NodeFacts, NodeReport, NodeState, SealCarried, UnfinishedRollout,
     node_diagnostics, unreachable_help,
 };
+#[path = "remote/apparmor.rs"]
+mod apparmor;
+pub use apparmor::{ContainerAppArmor, MM_CONTAINER_PROFILE, apparmor_diagnostic};
 #[path = "remote/engine.rs"]
 mod engine;
 pub use engine::{EngineFacts, PODMAN_MINIMUM, engine_diagnostics};

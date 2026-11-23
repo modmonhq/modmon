@@ -11,6 +11,7 @@ pub mod launch_failure;
 mod observe;
 mod oci_runtime;
 mod operations;
+pub(crate) mod podman_apparmor;
 mod podman_compose;
 mod project_services;
 pub(crate) mod registry_auth;

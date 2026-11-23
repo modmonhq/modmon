@@ -35,7 +35,7 @@ impl HostEngine {
             return facts.clone();
         }
         let driver = super::RuntimeComposition::new().driver(runtime);
-        let facts = match tokio::time::timeout(PATIENCE, driver.probe()).await {
+        let mut facts = match tokio::time::timeout(PATIENCE, driver.probe()).await {
             Ok(probe) => EngineFacts::of(&probe),
             Err(_) => EngineFacts {
                 runtime,
@@ -46,8 +46,12 @@ impl HostEngine {
                     "the engine did not answer within {} seconds",
                     PATIENCE.as_secs()
                 )),
+                apparmor: None,
             },
         };
+        if runtime == RuntimeKind::PodmanCompose {
+            facts.apparmor = crate::adapters::runtime::podman_apparmor::container_apparmor();
+        }
         *self
             .last
             .lock()
