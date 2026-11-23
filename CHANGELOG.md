@@ -17,6 +17,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Security: a remote host or cluster node no longer runs a service that
+  reaches a host namespace or another container without an exception.
+  `container:NAME` in `pid`, `ipc` and `network_mode` is refused (`container-join`, which no exception allows; use
+  `service:<service>`), a `service:` join that reaches a service with a host
+  namespace needs the same exception as that service, such as `pid-host`, and
+  a namespace mode written with a variable counts as the host's. `mm config
+  validate --for-remote` reports the same.
 - A container that resolves its own `tasks.<service>` name as soon as it
   starts finds itself: `mmd` reads the engine for a lookup from a container it
   has not seen yet before answering it, instead of letting the name fall

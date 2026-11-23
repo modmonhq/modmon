@@ -446,6 +446,34 @@ unconfined `security_opt`, non-`net.*` sysctls, bind or device `driver_opts`
 volumes, external volumes and networks, `configs`/`secrets` files outside the
 project, and `build:` (remote hosts never build).
 
+A namespace mode written with a variable, such as `pid: ${PID_MODE:-host}`,
+counts as the host's: write the mode itself.
+
+Services share a namespace with `service:`, which names a service of the
+same stack:
+
+```yaml
+services:
+  agent:
+    image: ghcr.io/acme/agent:2.1
+    pid: host
+  web:
+    image: ghcr.io/acme/web:1.0
+    network_mode: service:proxy # an ordinary service: no exception needed
+    pid: service:agent # reaches the host's PID namespace through agent
+```
+
+A service that joins another this way, directly or through a chain of
+`service:` joins, runs in the namespace that service runs in. When that is
+the host's, the joining service needs the same exception: here `web` needs
+`pid-host` as well as `agent`. The check follows joins across all the
+stack's Compose files and through `extends`.
+
+A host refuses `container:NAME` in `pid`, `ipc` and `network_mode` outright,
+as the feature `container-join`, and no exception allows it: a name can match
+any container on the host, including another project's. Write
+`service:<service>` to join a service of the same stack.
+
 A host checks only the services the environment it plans runs: the ones
 `mm deploy plan` renders. A service whose `environments:` leaves the
 environment out is not checked there, and neither is a stack left with no
@@ -465,7 +493,8 @@ mm -e staging config validate --for-remote       # one environment
 ```
 
 Expected result: `config: valid`, or one `MM_REMOTE_GUARDRAIL` error per
-feature, naming the environment, the `<stack>/<service>`, and the Compose key.
+feature, naming the environment, the `<stack>/<service>`, and the Compose key,
+and for a join or a variable, the Compose file.
 
 Only a host admin can make an exception, for one feature of one service, in
 `/etc/mm/host.yaml`:
