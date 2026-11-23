@@ -340,17 +340,18 @@
       register: mm_apparmor
       changed_when: false
       failed_when: false
-      when: mm_runtime == 'podman-compose' and not mm_runtime_rootless
+      when: mm_access_apparmor_profiles | length > 0
 
-    - name: Install mm's AppArmor profile for Podman's containers
+    - name: Install mm's AppArmor profiles for Podman's containers
       ansible.builtin.copy:
-        src: "{{ mm_access_files }}/mm-containers"
-        dest: /etc/apparmor.d/mm-containers
+        src: "{{ mm_access_files }}/{{ item }}"
+        dest: "/etc/apparmor.d/{{ item }}"
         owner: root
         group: root
         mode: '0644'
         validate: apparmor_parser --skip-kernel-load --skip-cache %s
-      register: mm_apparmor_profile
+      loop: "{{ mm_access_apparmor_profiles }}"
+      register: mm_apparmor_profiles
       when: (mm_apparmor.stdout | default('')) == 'Y'
 
     - name: Read the AppArmor profiles the kernel holds
@@ -360,12 +361,13 @@
       changed_when: false
       when: (mm_apparmor.stdout | default('')) == 'Y'
 
-    - name: Load mm's AppArmor profile
+    - name: Load mm's AppArmor profiles
       ansible.builtin.command:
-        argv: [apparmor_parser, --replace, --write-cache, /etc/apparmor.d/mm-containers]
+        argv: [apparmor_parser, --replace, --write-cache, "/etc/apparmor.d/{{ item.item }}"]
+      loop: "{{ mm_apparmor_profiles.results | default([]) }}"
       when:
         - (mm_apparmor.stdout | default('')) == 'Y'
-        - mm_apparmor_profile.changed or 'mm-containers (enforce)' not in mm_apparmor_loaded.stdout_lines
+        - item.changed or (item.item ~ ' (enforce)') not in mm_apparmor_loaded.stdout_lines
 
     - name: Give Podman's containers mm's AppArmor profile
       ansible.builtin.copy:
@@ -384,7 +386,7 @@
         path: /etc/containers/containers.conf.d/50-mm-apparmor.conf
         state: absent
       when:
-        - mm_runtime == 'podman-compose' and not mm_runtime_rootless
+        - mm_access_apparmor_profiles | length > 0
         - (mm_apparmor.stdout | default('')) != 'Y'
 
     - name: Read how Podman starts containers at boot

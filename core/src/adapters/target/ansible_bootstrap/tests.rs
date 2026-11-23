@@ -73,6 +73,7 @@ impl FakeProcess {
             "mm-mesh.service",
             "mm-network.service",
             "mm-containers",
+            "mm-containers-shared-pid",
         ] {
             if !files.join(name).is_file() {
                 return Err(MmError::State {
@@ -415,6 +416,7 @@ fn access_plan(
         upgrade: false,
         downgrade: false,
         notices: Vec::new(),
+        apparmor_profiles: requirements.apparmor_profiles,
     });
     plan.plan_hash = plan.canonical_hash().map_err(std::io::Error::other)?;
     Ok(plan)

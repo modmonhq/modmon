@@ -686,7 +686,10 @@ pub use cluster::{
 };
 #[path = "remote/apparmor.rs"]
 mod apparmor;
-pub use apparmor::{ContainerAppArmor, MM_CONTAINER_PROFILE, apparmor_diagnostic};
+pub use apparmor::{
+    CONTAINER_PROFILES, ContainerAppArmor, MM_CONTAINER_PROFILE, MM_SHARED_PID_PROFILE,
+    apparmor_diagnostic,
+};
 #[path = "remote/engine.rs"]
 mod engine;
 pub use engine::{EngineFacts, PODMAN_MINIMUM, engine_diagnostics};

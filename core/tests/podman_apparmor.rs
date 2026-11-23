@@ -3,11 +3,14 @@
 
 use mm::domain::diagnostic::Severity;
 use mm::domain::remote::{
-    ContainerAppArmor, EngineFacts, MM_CONTAINER_PROFILE, NodeReport, NodeState, engine_diagnostics,
+    CONTAINER_PROFILES, ContainerAppArmor, EngineFacts, MM_CONTAINER_PROFILE,
+    MM_SHARED_PID_PROFILE, NodeReport, NodeState, engine_diagnostics,
 };
 use mm::domain::runtime::RuntimeKind;
+use mm::domain::target::{TargetTransport, bootstrap_requirements};
 
 const PROFILE: &str = include_str!("../../packaging/apparmor/mm-containers");
+const SHARED_PID: &str = include_str!("../../packaging/apparmor/mm-containers-shared-pid");
 const PLAYBOOK: &str = include_str!("../src/adapters/target/ansible_bootstrap/access.yml");
 
 fn rules(profile: &str) -> Vec<&str> {
@@ -56,41 +59,66 @@ fn the_profile_is_podmans_with_signal_and_ptrace_read_between_peers() {
     assert!(PROFILE.contains("#include <tunables/global>"));
     assert!(PROFILE.contains("#include <abstractions/base>"));
     assert!(PROFILE.contains(&format!("profile {MM_CONTAINER_PROFILE} ")));
+
+    let renamed = |line: &&str| line.replace(MM_CONTAINER_PROFILE, MM_SHARED_PID_PROFILE);
+    let mut upstream = podmans.iter().map(renamed).collect::<Vec<_>>();
+    upstream.push("}".to_owned());
+    assert_eq!(rules(SHARED_PID), upstream);
+    assert!(SHARED_PID.contains("#include <tunables/global>"));
 }
 
 #[test]
-fn setup_loads_the_profile_before_podman_uses_it_and_only_where_apparmor_runs() -> Result<(), String>
-{
+fn setup_loads_the_profiles_before_podman_uses_them_and_only_where_apparmor_runs()
+-> Result<(), String> {
     let position = |needle: &str| {
         PLAYBOOK
             .find(needle)
             .ok_or_else(|| format!("the playbook has no {needle:?}"))
     };
     let read = position("argv: [cat, /sys/module/apparmor/parameters/enabled]")?;
-    let install = position("dest: /etc/apparmor.d/mm-containers")?;
+    let install = position("dest: \"/etc/apparmor.d/{{ item }}\"")?;
     let load = position(
-        "argv: [apparmor_parser, --replace, --write-cache, /etc/apparmor.d/mm-containers]",
+        "argv: [apparmor_parser, --replace, --write-cache, \"/etc/apparmor.d/{{ item.item }}\"]",
     )?;
     let point = position("apparmor_profile = \"mm-containers\"")?;
     let drop_ins = position("path: /etc/containers/containers.conf.d\n")?;
     assert!(drop_ins < read && read < install && install < load && load < point);
     assert!(PLAYBOOK.contains("validate: apparmor_parser --skip-kernel-load --skip-cache %s"));
-    assert!(PLAYBOOK.contains("'mm-containers (enforce)' not in mm_apparmor_loaded.stdout_lines"));
+    assert!(PLAYBOOK.contains("loop: \"{{ mm_access_apparmor_profiles }}\""));
+    assert!(PLAYBOOK.contains(
+        "item.changed or (item.item ~ ' (enforce)') not in mm_apparmor_loaded.stdout_lines"
+    ));
     assert_eq!(
         PLAYBOOK
             .matches("when: (mm_apparmor.stdout | default('')) == 'Y'")
             .count(),
         3
     );
-    assert!(PLAYBOOK.contains(
-        "- (mm_apparmor.stdout | default('')) == 'Y'\n        - mm_apparmor_profile.changed"
-    ));
     let removal = &PLAYBOOK[point..];
     assert!(removal.contains(
         "path: /etc/containers/containers.conf.d/50-mm-apparmor.conf\n        state: absent"
     ));
     assert!(removal.contains("(mm_apparmor.stdout | default('')) != 'Y'"));
     assert!(!PLAYBOOK.contains("apparmor=unconfined") && !PLAYBOOK.contains("apparmor:unconfined"));
+    Ok(())
+}
+
+#[test]
+fn the_plan_lists_the_profiles_only_for_rootful_podman_with_remote_access() -> Result<(), String> {
+    let local = TargetTransport::Local;
+    let podman = bootstrap_requirements(&local, RuntimeKind::PodmanCompose, false, true)?;
+    assert_eq!(podman.apparmor_profiles, CONTAINER_PROFILES);
+    assert_eq!(
+        CONTAINER_PROFILES,
+        [MM_SHARED_PID_PROFILE, MM_CONTAINER_PROFILE]
+    );
+    for (runtime, access) in [
+        (RuntimeKind::PodmanCompose, false),
+        (RuntimeKind::DockerCompose, true),
+    ] {
+        let none = bootstrap_requirements(&local, runtime, false, access)?;
+        assert!(none.apparmor_profiles.is_empty(), "{runtime:?} {access}");
+    }
     Ok(())
 }
 
@@ -110,11 +138,64 @@ fn the_profile_podman_uses_is_the_last_one_containers_conf_sets() {
         "custom"
     );
 
+    assert_eq!(
+        ContainerAppArmor::configured_profile([
+            "[containers] # Podman's\napparmor_profile = \"a#b\" # x\n"
+        ]),
+        "a#b"
+    );
+
     let profiles = "crun (unconfined)\nmm-containers (enforce)\nmm-containers-old (enforce)\n";
     assert!(ContainerAppArmor::is_loaded(profiles, "mm-containers"));
     assert!(ContainerAppArmor::is_loaded(profiles, "crun"));
     assert!(!ContainerAppArmor::is_loaded(profiles, "mm"));
     assert!(!ContainerAppArmor::is_loaded("", "mm-containers"));
+}
+
+#[test]
+fn doctor_reads_the_files_podman_reads_in_the_order_it_reads_them() {
+    let present = [
+        "/usr/share/containers/containers.conf",
+        "/etc/containers/containers.conf",
+    ];
+    let exists = |path: &str| present.contains(&path);
+    let listing = |directory: &str| -> Vec<String> {
+        match directory {
+            "/usr/share/containers/containers.conf.d" => vec![
+                "10-vendor.conf".to_owned(),
+                "50-mm-apparmor.conf".to_owned(),
+            ],
+            "/usr/share/containers/containers.rootful.conf.d" => vec!["20-rootful.conf".to_owned()],
+            "/etc/containers/containers.conf.d" => {
+                vec!["50-mm-apparmor.conf".to_owned(), "60-own.conf".to_owned()]
+            }
+            "/etc/containers/containers.rootful.conf.d" => vec!["60-own.conf".to_owned()],
+            _ => Vec::new(),
+        }
+    };
+    let podman_5 = [
+        "/usr/share/containers/containers.conf",
+        "/etc/containers/containers.conf",
+        "/etc/containers/containers.conf.d/50-mm-apparmor.conf",
+        "/etc/containers/containers.conf.d/60-own.conf",
+    ];
+    for release in [None, Some((5, 0)), Some((5, 7)), Some((5, 8))] {
+        assert_eq!(
+            ContainerAppArmor::podman_config_files(release, &exists, &listing),
+            podman_5,
+            "{release:?}"
+        );
+    }
+    assert_eq!(
+        ContainerAppArmor::podman_config_files(Some((6, 2)), &exists, &listing),
+        [
+            "/etc/containers/containers.conf",
+            "/usr/share/containers/containers.conf.d/10-vendor.conf",
+            "/usr/share/containers/containers.rootful.conf.d/20-rootful.conf",
+            "/etc/containers/containers.conf.d/50-mm-apparmor.conf",
+            "/etc/containers/containers.rootful.conf.d/60-own.conf",
+        ]
+    );
 }
 
 fn node(apparmor: Option<ContainerAppArmor>) -> NodeReport {

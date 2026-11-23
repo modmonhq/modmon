@@ -533,6 +533,120 @@ fn each_service_runs_in_its_own_fixed_namespace_and_its_files_are_its_own() -> T
     Ok(())
 }
 
+/// A host whose kernel holds mm's AppArmor profiles.
+#[derive(Debug)]
+struct ConfinedHost(Arc<FilesystemServiceUserIds>);
+
+impl ServiceUserIds for ConfinedHost {
+    fn reserve(
+        &self,
+        wanted: &BTreeSet<ServiceIdsOwner>,
+    ) -> Result<BTreeMap<ServiceIdsOwner, ServiceIdsChoice>, mm::domain::error::MmError> {
+        self.0.reserve(wanted)
+    }
+
+    fn release(
+        &self,
+        owners: &BTreeSet<ServiceIdsOwner>,
+    ) -> Result<(), mm::domain::error::MmError> {
+        self.0.release(owners)
+    }
+
+    fn confines_shared_pid(&self) -> bool {
+        true
+    }
+}
+
+#[test]
+fn a_service_that_shares_another_process_namespace_keeps_podmans_apparmor_rules() -> TestResult {
+    let temporary = temp_dirs::tempdir()?;
+    let root = temporary.path().join("project");
+    write_project(&root)?;
+    fs::write(
+        root.join("compose.yaml"),
+        "services:
+  web:
+    image: example/web
+  monitor:
+    image: example/monitor
+    pid: host
+  sidecar:
+    image: example/sidecar
+    pid: \"service:monitor\"
+  peer:
+    image: example/peer
+    pid: \"service:web\"
+  joined:
+    image: example/joined
+    pid: \"container:elsewhere\"
+  chosen:
+    image: example/chosen
+    pid: host
+    security_opt: [\"apparmor=custom\"]
+",
+    )?;
+    let config = root.join(".config/mm.yaml");
+    let text = fs::read_to_string(&config)?;
+    fs::write(
+        &config,
+        text.replace("    shared-volumes: [uploads]\n", "").replace(
+            "      api:
+        stack: app
+        placement: all
+        config-files:
+          /etc/api.conf: {file: api.conf, mode: 0o600}
+      cache: {stack: app, placement: all, host-user-namespace: shares its socket with the host}
+      legacy: {stack: app, placement: all}",
+            "      monitor: {stack: app, placement: all}
+      sidecar: {stack: app, placement: all}
+      peer: {stack: app, placement: all}
+      joined: {stack: app, placement: all}
+      chosen: {stack: app, placement: all}",
+        ),
+    )?;
+    let host = Host::with_lines(SETUP_LINES)?;
+    let confined = compile_on(
+        &root,
+        &temporary.path().join("confined"),
+        "app-1",
+        Arc::new(ConfinedHost(host.ids.clone())),
+    )?;
+    let overlay = overlay_of(&confined)?;
+    let options = |service: &str| {
+        overlay["services"][service]["security_opt"]
+            .as_sequence()
+            .map(|options| {
+                options
+                    .iter()
+                    .filter_map(serde_yaml_ng::Value::as_str)
+                    .filter(|option| option.starts_with("apparmor"))
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    };
+    let pinned = ["apparmor=mm-containers-shared-pid".to_owned()];
+    for service in ["monitor", "sidecar", "joined"] {
+        assert_eq!(options(service), pinned, "{service}: {overlay:?}");
+    }
+    for service in ["web", "peer", "chosen"] {
+        assert!(options(service).is_empty(), "{service}: {overlay:?}");
+    }
+
+    let unconfined = compile_on(
+        &root,
+        &temporary.path().join("unconfined"),
+        "app-1",
+        host.ids.clone(),
+    )?;
+    let overlay = overlay_of(&unconfined)?;
+    assert!(
+        !serde_yaml_ng::to_string(&overlay)?.contains("mm-containers-shared-pid"),
+        "a host without the profile: {overlay:?}"
+    );
+    Ok(())
+}
+
 #[test]
 fn a_service_with_a_network_of_its_own_may_listen_below_1024_as_any_user_on_podman() -> TestResult {
     let temporary = temp_dirs::tempdir()?;

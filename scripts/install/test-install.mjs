@@ -45,7 +45,7 @@ write(path.join(repo, 'scripts/install/build.sh'), read(path.join(root, 'scripts
 write(path.join(repo, 'scripts/install/local-dns.sh'), read(path.join(root, 'scripts/install/local-dns.sh')));
 write(path.join(repo, 'scripts/install/local-dns-macos.sh'), read(path.join(root, 'scripts/install/local-dns-macos.sh')));
 write(path.join(repo, 'packaging/local/Dockerfile'), read(path.join(root, 'packaging/local/Dockerfile')));
-for (const file of ['packaging/mm-relay-shell', 'packaging/sshd/90-mm-relay.conf', 'packaging/systemd/mmd.service', 'packaging/systemd/mm-mesh.service', 'packaging/systemd/mm-network.service']) write(path.join(repo, file), 'embedded packaging');
+for (const file of ['packaging/mm-relay-shell', 'packaging/sshd/90-mm-relay.conf', 'packaging/systemd/mmd.service', 'packaging/systemd/mm-mesh.service', 'packaging/systemd/mm-network.service', 'packaging/apparmor/mm-containers', 'packaging/apparmor/mm-containers-shared-pid']) write(path.join(repo, file), 'embedded packaging');
 write(path.join(repo, 'scripts/install/workstation.sh'), '#!/bin/bash\nprintf "%s\\n" "$1" >> "$FIX_SETUP_TRACE"\n[[ ${FIX_SETUP_FAIL:-0} != 1 ]]\n');
 for (const file of ['Cargo.toml', 'Cargo.lock', 'core/Cargo.toml']) write(path.join(repo, file), 'fixture');
 write(path.join(repo, 'rust-toolchain.toml'), '[toolchain]\nchannel = "1.99.1"\n');

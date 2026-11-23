@@ -50,7 +50,8 @@ impl HostEngine {
             },
         };
         if runtime == RuntimeKind::PodmanCompose {
-            facts.apparmor = crate::adapters::runtime::podman_apparmor::container_apparmor();
+            facts.apparmor =
+                crate::adapters::runtime::podman_apparmor::container_apparmor(facts.release());
         }
         *self
             .last

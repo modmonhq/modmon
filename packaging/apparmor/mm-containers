@@ -1,5 +1,7 @@
-# Written by mm: Podman's containers-default profile, plus signal and ptrace
-# read between the processes of a container when AppArmor stacks the profile.
+# Written by mm: Podman's containers-default profile plus signal and ptrace
+# read for any process the container sees, which a profile AppArmor stacks
+# needs. Containers that share another process namespace get
+# mm-containers-shared-pid, Podman's profile unchanged, instead.
 #include <tunables/global>
 
 profile mm-containers flags=(attach_disconnected,mediate_deleted) {

@@ -18,6 +18,8 @@ const MMD_SERVICE: &str = include_str!("../../../../../packaging/systemd/mmd.ser
 const MESH_SERVICE: &str = include_str!("../../../../../packaging/systemd/mm-mesh.service");
 const NETWORK_SERVICE: &str = include_str!("../../../../../packaging/systemd/mm-network.service");
 const CONTAINER_PROFILE: &str = include_str!("../../../../../packaging/apparmor/mm-containers");
+const SHARED_PID_PROFILE: &str =
+    include_str!("../../../../../packaging/apparmor/mm-containers-shared-pid");
 const MAX_REPORT_BYTES: usize = 64 * 1024;
 const COPY_BUFFER_BYTES: usize = 64 * 1024;
 
@@ -59,6 +61,7 @@ pub(super) fn stage(
         ("mm-mesh.service", MESH_SERVICE),
         ("mm-network.service", NETWORK_SERVICE),
         ("mm-containers", CONTAINER_PROFILE),
+        ("mm-containers-shared-pid", SHARED_PID_PROFILE),
         ("access.yml", ACCESS_PLAYBOOK),
     ] {
         super::write_private_file(&directory.join(name), contents.as_bytes())?;
@@ -74,6 +77,7 @@ pub(super) fn stage(
             .map(|set| set.architecture.as_str())
             .collect::<Vec<_>>(),
         "mm_access_enroll_argv": enroll_arguments(plan, access),
+        "mm_access_apparmor_profiles": access.apparmor_profiles,
     });
     reject_templating(&values)?;
     let bytes = serde_json::to_vec_pretty(&values).map_err(|error| MmError::Target {

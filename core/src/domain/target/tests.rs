@@ -314,6 +314,7 @@ fn access_plan() -> Result<TargetBootstrapPlan, String> {
         upgrade: false,
         downgrade: false,
         notices: Vec::new(),
+        apparmor_profiles: requirements.apparmor_profiles,
     });
     plan.plan_hash = plan.canonical_hash()?;
     Ok(plan)

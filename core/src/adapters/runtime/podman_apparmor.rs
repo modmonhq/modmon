@@ -1,27 +1,30 @@
 //! Reads which AppArmor profile rootful Podman gives this host's containers.
 
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use crate::domain::remote::ContainerAppArmor;
+use crate::domain::remote::{ContainerAppArmor, MM_SHARED_PID_PROFILE};
 
 const ENABLED: &str = "/sys/module/apparmor/parameters/enabled";
 const LOADED: &str = "/sys/kernel/security/apparmor/profiles";
-const CONFIG_ROOTS: [&str; 2] = ["/usr/share/containers", "/etc/containers"];
 const MAX_FILE_BYTES: u64 = 1024 * 1024;
 const MAX_DROP_INS: usize = 256;
 
-/// The profile Podman's containers get, or `None` when the kernel does not
-/// run AppArmor or the files cannot be read.
+/// The profile the containers of Podman `release` get, or `None` when the
+/// kernel does not run AppArmor.
 #[must_use]
-pub(crate) fn container_apparmor() -> Option<ContainerAppArmor> {
+pub(crate) fn container_apparmor(release: Option<(u32, u32)>) -> Option<ContainerAppArmor> {
     if !read(Path::new(ENABLED))?.trim_start().starts_with('Y') {
         return None;
     }
-    let files = config_files()
-        .iter()
-        .filter_map(|path| read(path))
-        .collect::<Vec<_>>();
+    let files = ContainerAppArmor::podman_config_files(
+        release,
+        &|path| Path::new(path).is_file(),
+        &drop_ins,
+    )
+    .iter()
+    .filter_map(|path| read(Path::new(path)))
+    .collect::<Vec<_>>();
     let profile = ContainerAppArmor::configured_profile(files.iter().map(String::as_str));
     let loaded = !profile.is_empty()
         && read(Path::new(LOADED))
@@ -29,40 +32,39 @@ pub(crate) fn container_apparmor() -> Option<ContainerAppArmor> {
     Some(ContainerAppArmor { profile, loaded })
 }
 
-fn config_files() -> Vec<PathBuf> {
-    let mut files = Vec::new();
-    for root in CONFIG_ROOTS.map(Path::new) {
-        files.push(root.join("containers.conf"));
-        for directory in ["containers.conf.d", "containers.rootful.conf.d"] {
-            files.extend(drop_ins(&root.join(directory)));
-        }
-    }
-    files
+/// Whether the kernel runs AppArmor and holds the profile setup installs
+/// for containers that share a process namespace beyond their own.
+#[must_use]
+pub(crate) fn holds_shared_pid_profile() -> bool {
+    read(Path::new(ENABLED)).is_some_and(|enabled| enabled.trim_start().starts_with('Y'))
+        && read(Path::new(LOADED))
+            .is_some_and(|profiles| ContainerAppArmor::is_loaded(&profiles, MM_SHARED_PID_PROFILE))
 }
 
-fn drop_ins(directory: &Path) -> Vec<PathBuf> {
-    let Ok(entries) = std::fs::read_dir(directory) else {
-        return Vec::new();
+fn drop_ins(directory: &str) -> Vec<String> {
+    let entries = match std::fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(_) => return Vec::new(),
     };
-    let mut files = entries
+    let mut names = entries
         .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.extension()
-                .is_some_and(|extension| extension == "conf")
-        })
-        .take(MAX_DROP_INS)
+        .filter(|entry| entry.file_type().is_ok_and(|kind| !kind.is_dir()))
+        .filter_map(|entry| entry.file_name().to_str().map(str::to_owned))
+        .filter(|name| name.ends_with(".conf"))
         .collect::<Vec<_>>();
-    files.sort();
-    files
+    names.sort();
+    names.truncate(MAX_DROP_INS);
+    names
 }
 
 fn read(path: &Path) -> Option<String> {
+    let file = match std::fs::File::open(path) {
+        Ok(file) => file,
+        Err(_) => return None,
+    };
     let mut text = String::new();
-    std::fs::File::open(path)
-        .ok()?
-        .take(MAX_FILE_BYTES)
-        .read_to_string(&mut text)
-        .ok()?;
-    Some(text)
+    match file.take(MAX_FILE_BYTES).read_to_string(&mut text) {
+        Ok(_) => Some(text),
+        Err(_) => None,
+    }
 }

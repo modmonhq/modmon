@@ -155,6 +155,7 @@ pub(super) struct GeneratedOverlayInput<'a> {
     pub low_ports: &'a BTreeSet<String>,
     /// The services on the host's network that keep its user namespace.
     pub host_userns: &'a BTreeSet<String>,
+    pub shared_pid: &'a BTreeSet<String>,
 }
 
 /// The overlay's bytes, and what its development mounts preserve and mask.
@@ -183,6 +184,13 @@ pub(super) fn generated_overlay(
             .security = security.clone();
     }
     set_user_namespaces(&input, &labels, &mut services);
+    for name in input.shared_pid {
+        services
+            .entry(name.clone())
+            .or_insert_with(|| empty_generated_service(None, &labels))
+            .security
+            .confine_with(super::shared_pid::SHARED_PID_APPARMOR);
+    }
     for name in input.low_ports {
         services
             .entry(name.clone())

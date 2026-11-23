@@ -29,6 +29,7 @@ pub struct FilesystemServiceUserIds {
     registry: PathBuf,
     subuid: PathBuf,
     subgid: PathBuf,
+    apparmor: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -49,11 +50,14 @@ impl FilesystemServiceUserIds {
     /// in the system's subordinate id files.
     #[must_use]
     pub fn on_host(mm_home: &Path) -> Self {
-        Self::at(
-            mm_home.join(REGISTRY_FILE),
-            PathBuf::from("/etc/subuid"),
-            PathBuf::from("/etc/subgid"),
-        )
+        Self {
+            apparmor: true,
+            ..Self::at(
+                mm_home.join(REGISTRY_FILE),
+                PathBuf::from("/etc/subuid"),
+                PathBuf::from("/etc/subgid"),
+            )
+        }
     }
 
     #[must_use]
@@ -62,6 +66,7 @@ impl FilesystemServiceUserIds {
             registry,
             subuid,
             subgid,
+            apparmor: false,
         }
     }
 
@@ -184,6 +189,10 @@ impl ServiceUserIds for FilesystemServiceUserIds {
             self.write(&kept)?;
         }
         Ok(())
+    }
+
+    fn confines_shared_pid(&self) -> bool {
+        self.apparmor && crate::adapters::runtime::podman_apparmor::holds_shared_pid_profile()
     }
 }
 

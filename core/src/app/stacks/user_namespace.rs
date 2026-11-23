@@ -68,6 +68,7 @@ pub(super) struct StackHost {
     pub user_ids: StackUserIds,
     pub config_files: super::config_files::StackConfigFiles,
     pub low_ports: BTreeSet<String>,
+    pub shared_pid: BTreeSet<String>,
 }
 
 pub(super) struct ServiceHost<'a> {
@@ -125,10 +126,17 @@ impl<'a> ServiceHost<'a> {
             Some(_) => super::low_ports::services_opening_low_ports(sources)?,
             None => BTreeSet::new(),
         };
+        let shared_pid = match self.user_ids {
+            Some(ids) if ids.confines_shared_pid() => {
+                super::shared_pid::services_sharing_pid(sources)?
+            }
+            _ => BTreeSet::new(),
+        };
         Ok(StackHost {
             user_ids,
             config_files,
             low_ports,
+            shared_pid,
         })
     }
 
