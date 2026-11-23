@@ -153,6 +153,16 @@ pub enum MmError {
     #[error("{message}")]
     ApplyStopped { message: String },
 
+    /// A stack did not become healthy, or a job before it failed: the
+    /// message for a person, and the failure with its kept log for the
+    /// host's record.
+    #[error("{message}")]
+    Unhealthy {
+        code: &'static str,
+        message: String,
+        failure: Box<crate::domain::rollout::StepFailure>,
+    },
+
     /// A request addressed to one cluster node reached a host that is not it.
     #[error("this request is for node '{requested}', but the host that answered {}. The address recorded for '{requested}' reaches the wrong host: check `host` for each node under the target's nodes:, then run `mm target setup record`", wrong_node_identity(.actual.as_deref()))]
     WrongNode {
@@ -319,6 +329,7 @@ impl MmError {
             Self::Cancelled { .. } => "MM_CANCELLED",
             Self::WrongNode { .. } => NODE_MISMATCH_CODE,
             Self::ApplyStopped { .. } => "MM_APPLY_STOPPED",
+            Self::Unhealthy { code, .. } => code,
             Self::UnsupportedCapability { .. } => "MM_RUNTIME_UNSUPPORTED",
             Self::State { .. } => "MM_STATE",
             Self::Placement { .. } => "MM_PLACEMENT",
@@ -361,6 +372,7 @@ impl MmError {
             | Self::Cancelled { .. }
             | Self::WrongNode { .. }
             | Self::ApplyStopped { .. }
+            | Self::Unhealthy { .. }
             | Self::Remote { .. }
             | Self::UnsupportedCapability { .. } => 3,
             Self::Io { .. } | Self::State { .. } | Self::Terminal { .. } | Self::Update { .. } => 1,
@@ -415,7 +427,11 @@ impl MmError {
                     |code| format!("with exit code {code}")
                 )
             ),
-            Self::RuntimeResponse { .. } => "the container engine or a host answered in a way mm could not use; what it printed is left out here".to_owned(),
+            Self::RuntimeResponse { .. }
+            | Self::Unhealthy {
+                code: "MM_RUNTIME_RESPONSE",
+                ..
+            } => "the container engine or a host answered in a way mm could not use; what it printed is left out here".to_owned(),
             Self::Remote {
                 code: code @ ("MM_PROCESS_FAILED" | "MM_REMOTE"),
                 ..
@@ -469,6 +485,30 @@ impl MmError {
             | Self::Remote { message, .. } => message.clone(),
             other => other.to_string(),
         })
+    }
+
+    /// The message for a record another principal may read: a secret
+    /// error says only where to look.
+    #[must_use]
+    pub fn recordable_message(&self) -> String {
+        match self {
+            Self::Secret { .. } | Self::SecretCompatibility { .. } => {
+                "secret operation failed; inspect target-side audit diagnostics".to_owned()
+            }
+            _ => self.to_string(),
+        }
+    }
+
+    /// The failed stack or job behind this error, with its kept log.
+    #[must_use]
+    pub fn step_failure(&self) -> Option<&crate::domain::rollout::StepFailure> {
+        match self {
+            Self::Unhealthy { failure, .. } => Some(failure),
+            Self::InOwnWords(inner) | Self::OperationFailure { primary: inner, .. } => {
+                inner.step_failure()
+            }
+            _ => None,
+        }
     }
 
     #[must_use]

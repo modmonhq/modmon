@@ -213,12 +213,7 @@ impl DeploymentService {
             members.first().map(|container| container.id.clone())
         });
         let log = match container.filter(|id| !id.is_empty()) {
-            Some(container) => inspector
-                .container_log_tail(&container, crate::domain::rollout::FAILURE_LOG_LINES)
-                .await
-                .unwrap_or_else(|error| {
-                    vec![format!("(the container's log could not be read: {error})")]
-                }),
+            Some(container) => self.failed_log(plan, target, &container).await,
             None => Vec::new(),
         };
         Ok(Some(crate::domain::rollout::StepFailure {
@@ -228,6 +223,41 @@ impl DeploymentService {
             log,
             code: outcome.diagnostic_code,
         }))
+    }
+
+    async fn failed_log(
+        &self,
+        plan: &DeploymentPlan,
+        target: &RuntimeTarget,
+        container: &str,
+    ) -> Vec<String> {
+        let lines = plan.rollout.failure_log_lines();
+        let read = async {
+            let log = self
+                .ports
+                .inspector
+                .container_log_tail(container, lines)
+                .await?;
+            let document = self.ports.documents.load_from(&target.root)?;
+            let redactions = self
+                .ports
+                .environments
+                .redactions(&document, &plan.environment)
+                .await?;
+            Ok::<_, MmError>(crate::domain::observability::redact_output(
+                &log.join("\n"),
+                &redactions,
+            ))
+        };
+        match read.await {
+            Ok(log) => {
+                crate::domain::rollout::kept_failure_log(&log.lines().collect::<Vec<_>>(), lines)
+            }
+            Err(error) => vec![format!(
+                "(the container's log could not be read: {})",
+                error.recordable_message()
+            )],
+        }
     }
 
     pub(super) async fn preflight_runtime(

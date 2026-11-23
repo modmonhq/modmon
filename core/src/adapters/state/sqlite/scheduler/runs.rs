@@ -85,7 +85,15 @@ macro_rules! scheduler_runs { () => {
                  WHERE id=?1 AND (lease_expires_at_ms IS NULL OR lease_expires_at_ms<=?4)
                    AND (state IN ('launching','running','cancelling','unknown')
                      OR (state IN ('queued','retry_wait')
-                         AND (next_attempt_at_ms IS NULL OR next_attempt_at_ms<=?4)))",
+                         AND (next_attempt_at_ms IS NULL OR next_attempt_at_ms<=?4)
+                         AND (schedule_concurrency IS NULL OR schedule_concurrency!='forbid'
+                           OR NOT EXISTS (
+                              SELECT 1 FROM job_runs active
+                              WHERE active.project_id=job_runs.project_id
+                                AND active.environment_name=job_runs.environment_name
+                                AND active.schedule_name=job_runs.schedule_name
+                                AND active.id!=job_runs.id
+                                AND active.state IN ('launching','running','cancelling','unknown')))))",
                 params![run_id.to_string(), owner.to_string(), expires, now_unix_ms],
             )
             .map_err(state_error)?;

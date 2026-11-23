@@ -400,29 +400,7 @@ impl RemoteDaemon {
                 %error,
                 "remote deployment failed"
             );
-            if let MmError::OperationFailure { operation_id, recovery, primary, .. } = &error
-                && error.kept()
-            {
-                return MmError::operation_failure(
-                    operation_id.clone(),
-                    crate::domain::error::MutationStatus::Kept,
-                    MmError::Remote {
-                        code: error.code(),
-                        message: format!("the deployment failed on the host: {}", bounded_message(&primary.to_string())),
-                    },
-                    Vec::new(),
-                    recovery.clone(),
-                );
-            }
-            // Its own code, not a security refusal: the deploy was allowed
-            // and something on the host failed.
-            MmError::Remote {
-                code: error.code(),
-                message: format!(
-                    "the deployment failed on the host: {}. The host returned to what it ran before where it could, and nothing is retried automatically; `mm deploy status` shows what it runs and `mm deploy plan` plans from there",
-                    bounded_message(&error.to_string())
-                ),
-            }
+            failed_on_host(&error)
         })?;
         // A node still runs containers of the environment while a service
         // that moved away waits to be stopped.
@@ -489,12 +467,19 @@ impl RemoteDaemon {
         hash: &str,
         (failed, cancelled): (Option<&MmError>, bool),
     ) -> Result<(), MmError> {
-        let failure = failed.map(|error| StepFailure {
-            stack: String::new(),
-            service: None,
-            reason: bounded_message(&redacted_error_message(error)),
-            log: Vec::new(),
-            code: Some(error.code().to_owned()),
+        let failure = failed.map(|error| match error.step_failure() {
+            Some(step) => StepFailure {
+                reason: bounded_message(&step.reason),
+                code: Some(error.code().to_owned()),
+                ..step.clone()
+            },
+            None => StepFailure {
+                stack: String::new(),
+                service: None,
+                reason: bounded_message(&redacted_error_message(error)),
+                log: Vec::new(),
+                code: Some(error.code().to_owned()),
+            },
         });
         let unfinished = failed.is_some_and(|error| {
             matches!(error, MmError::Security { .. } | MmError::Cancelled { .. } | MmError::Timeout { .. })
@@ -771,6 +756,46 @@ fn reconcile_from_checkout(
 
 /// A host error for the client: at most 4000 characters, without control
 /// characters other than newlines.
+/// What the client is told of a deployment that failed on this host: its
+/// own code, the cause bounded, and a failed stack's last log lines after
+/// it. A kept first deployment stays an operation failure that says so.
+fn failed_on_host(error: &MmError) -> MmError {
+    let cause = |error: &MmError| match error.step_failure() {
+        Some(failure) => format!(
+            "the deployment did not become healthy: {}{}",
+            bounded_message(&failure.to_string()),
+            failure.log_suffix()
+        ),
+        None => bounded_message(&error.to_string()),
+    };
+    let on_host = |message: String| match error.step_failure() {
+        Some(failure) => MmError::Unhealthy {
+            code: error.code(),
+            message,
+            failure: Box::new(failure.clone()),
+        },
+        None => MmError::Remote {
+            code: error.code(),
+            message,
+        },
+    };
+    if let MmError::OperationFailure { operation_id, recovery, primary, .. } = error
+        && error.kept()
+    {
+        return MmError::operation_failure(
+            operation_id.clone(),
+            crate::domain::error::MutationStatus::Kept,
+            on_host(format!("the deployment failed on the host: {}", cause(primary))),
+            Vec::new(),
+            recovery.clone(),
+        );
+    }
+    on_host(format!(
+        "the deployment failed on the host: {}. The host returned to what it ran before where it could, and nothing is retried automatically; `mm deploy status` shows what it runs and `mm deploy plan` plans from there",
+        cause(error)
+    ))
+}
+
 fn bounded_message(message: &str) -> String {
     let mut bounded = message
         .chars()

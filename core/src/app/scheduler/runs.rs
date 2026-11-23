@@ -112,7 +112,7 @@ impl JobSchedulerService {
         };
         let mut runs = listed(self)?;
         let mut moved = false;
-        for run in runs.iter().filter(|run| run.state.is_active()) {
+        for run in runs.iter().filter(|run| moves_on_read(run)) {
             moved |= self.advance(selection, &document, run.id, approval).await?;
         }
         if moved {
@@ -387,6 +387,14 @@ impl crate::app::ports::DeploymentJobs for JobSchedulerService {
         }
         Ok(removed)
     }
+}
+
+/// Whether a read of the runs moves `run` on: one that runs, or one that
+/// waits for its next attempt. A deployment's own run waits for that
+/// deployment, which starts it with its own files.
+fn moves_on_read(run: &JobRun) -> bool {
+    run.state.is_active()
+        || (run.state == JobRunState::RetryWait && run.trigger != JobTrigger::BeforeDeploy)
 }
 
 /// Who a deployment's job runs as, in the run's record.

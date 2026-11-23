@@ -433,7 +433,11 @@ impl RemoteDaemon {
             Ok(run) if run.state == crate::domain::scheduler::JobRunState::Succeeded => {
                 RolloutAnswer::JobRan(Box::new(run))
             }
-            Ok(run) => RolloutAnswer::Failed(crate::domain::rollout::job_failure(stack, &run)),
+            Ok(run) => RolloutAnswer::Failed(crate::domain::rollout::job_failure(
+                stack,
+                &run,
+                plan.rollout.failure_log_lines(),
+            )),
             Err(error) => {
                 let error = host_failure(context, "job", error);
                 RolloutAnswer::Failed(StepFailure {
@@ -703,14 +707,15 @@ impl RemoteDaemon {
             rollout.state = RolloutState::RolledBack;
             rollout.expires_at_unix_ms = now;
             if let Some(why) = why {
+                let earlier = rollout.failure.take();
                 rollout.failure = Some(StepFailure {
                     stack: String::new(),
                     service: None,
-                    reason: match rollout.failure.take() {
-                        Some(failure) => format!("{why}; {}", failure.with_log()),
+                    reason: match &earlier {
+                        Some(failure) => format!("{why}; {failure}"),
                         None => why,
                     },
-                    log: Vec::new(),
+                    log: earlier.map(|failure| failure.log).unwrap_or_default(),
                     code: None,
                 });
             }

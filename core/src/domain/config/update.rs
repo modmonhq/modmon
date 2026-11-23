@@ -102,6 +102,12 @@ pub struct DeployConfig {
     /// speaks the hosts' protocol.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mm_version: Option<String>,
+    /// How many last lines of a failed container's log a host keeps for
+    /// `mm deploy status` and the deployment's report. The default is 200;
+    /// at most 1000, and never more than 64 KiB.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(range(min = 1, max = 1000))]
+    pub failure_log_lines: Option<u32>,
 }
 
 impl DeployConfig {
@@ -147,6 +153,16 @@ impl DeployConfig {
                 }
                 Ok(timeout)
             }
+        }
+    }
+
+    /// The configured number of failed-log lines, or the default.
+    pub fn failure_log_lines(config: Option<&Self>) -> Result<u32, String> {
+        use crate::domain::rollout::{DEFAULT_FAILURE_LOG_LINES, MAX_FAILURE_LOG_LINES};
+        match config.and_then(|deploy| deploy.failure_log_lines) {
+            None => Ok(DEFAULT_FAILURE_LOG_LINES),
+            Some(lines) if (1..=MAX_FAILURE_LOG_LINES).contains(&lines) => Ok(lines),
+            Some(_) => Err(format!("must be between 1 and {MAX_FAILURE_LOG_LINES}")),
         }
     }
 }

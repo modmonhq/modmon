@@ -35,6 +35,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Podman before 5.8 splits such an argument, so the check never passes. The
   warning names the service and file and gives the equivalent `CMD-SHELL`
   check.
+- `deploy.failure-log-lines` sets how many last lines of a failed container's
+  log a deployment keeps; `mm deploy status` shows them after a rollback
+  removed the container.
 
 ### Changed
 
@@ -47,6 +50,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   for, and `mm deploy plan --receipt` refuses a receipt that lacks a module
   the environment runs before asking any host. Builds without `--publish`
   are unchanged.
+- A deployment keeps the last 200 lines of a failed container's log, bounded
+  to 64 KiB with secret values hidden, instead of 20, also on a single host.
 - A first deployment that fails while a stack starts is no longer removed:
   nothing ran before it, so the stacks it started keep running as they are,
   the failed one too, and the error names them with the commands to look at
@@ -167,6 +172,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   every deployment, like `always`, instead of only when missing; the time a
   host spends finding which images it lacks counts against
   `deploy.pull-timeout`.
+- A job stopped at its timeout keeps the output it wrote, and `mm deploy logs`
+  and `mm job history` show it.
+- `mm job run` of a job with `retry` no longer waits forever after a failed
+  attempt: reading the runs starts the next attempt once it is due.
 
 ## [0.1.1] - 2026-11-19
 

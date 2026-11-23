@@ -98,6 +98,10 @@ impl ContainerEngine for Engine {
                 containers.retain(|(id, ..)| !args.iter().any(|arg| arg == id));
                 String::new()
             }
+            Some("logs") => format!(
+                "2026-11-23T10:00:00.000000001Z starting\n2026-11-23T10:00:00.000000002Z {}password=runtime-secret-material\n",
+                "x".repeat(390)
+            ),
             Some("network") if args.get(1).map(String::as_str) == Some("ls") => self
                 .networks
                 .iter()
@@ -230,5 +234,23 @@ async fn the_last_service_of_a_project_takes_its_networks_and_no_volume() -> Tes
             .iter()
             .any(|command| command.starts_with("stop"))
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_log_line_reaches_redaction_whole() -> TestResult {
+    let engine = Engine::new("Podman", &CONTAINERS);
+    let log = log_tail(&engine, "c1", 200).await?;
+    assert_eq!(log.len(), 2);
+    assert_eq!(log[0], "starting");
+    assert!(
+        log[1].ends_with("password=runtime-secret-material"),
+        "a line is cut only after redaction: {}",
+        log[1].len()
+    );
+    let redacted =
+        crate::domain::observability::redact_output(&log[1], &["runtime-secret-material"]);
+    let kept = crate::domain::rollout::kept_failure_log(&[redacted], 200);
+    assert!(!kept[0].contains("runtime"), "{}", kept[0]);
     Ok(())
 }

@@ -664,6 +664,42 @@ async fn a_cancelled_step_holds_the_environment_until_it_is_rolled_back() -> Tes
     Ok(())
 }
 
+#[tokio::test]
+async fn a_cancelled_rollout_keeps_the_log_of_the_failure_before_it() -> TestResult {
+    let node = Node::named(Some(NODE))?;
+    let hash = node.sealed(7_000).await?;
+    node.begun(7_010, &hash).await?;
+    let apply = step(
+        &hash,
+        RolloutStep::Apply {
+            stack: "sick".to_owned(),
+        },
+    );
+    let failed = answer(node.call(7_020, Some(NODE), apply).await?)?;
+    assert!(matches!(failed, RolloutAnswer::Failed(_)), "{failed:?}");
+
+    let cancel = RemoteMethod::Cancel { operation: None };
+    let ServerFrame::Result { result, .. } = node.call(7_030, Some(NODE), cancel).await? else {
+        return Err("the cancellation failed".into());
+    };
+    assert!(matches!(*result, RemoteResult::Cancelled(_)), "{result:?}");
+    let rollout = node
+        .status(7_040)
+        .await?
+        .rollout
+        .ok_or("the rollout is on record")?;
+    assert_eq!(rollout.state, RolloutState::RolledBack);
+    let failure = rollout.failure.ok_or("the cancellation is on record")?;
+    assert!(failure.reason.contains("cancelled"), "{}", failure.reason);
+    assert!(
+        failure.reason.contains("its health check fails"),
+        "{}",
+        failure.reason
+    );
+    assert_eq!(failure.log, ["cannot reach the database"]);
+    Ok(())
+}
+
 /// A node's turn can come long after the plan's ten-minute review window
 /// closed: on the VMs a 10-minute `before-deploy` migration on node 1 made
 /// node 2's Begin fail ("reviewed remote plan has expired") and rolled node

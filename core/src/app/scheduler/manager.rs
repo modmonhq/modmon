@@ -428,7 +428,7 @@ impl JobSchedulerService {
                 &claim.run.runtime_name,
                 claim.run.runtime_id.as_deref(),
                 output_limit,
-                redactions,
+                redactions.clone(),
             )
             .await;
         match observed {
@@ -443,21 +443,8 @@ impl JobSchedulerService {
             }
             Ok(RuntimeJobState::Running) => {
                 if timed_out(&claim, self.clock.now_unix_ms())? {
-                    self.runtime
-                        .cancel(
-                            target,
-                            &claim.run.runtime_name,
-                            claim.run.runtime_id.as_deref(),
-                        )
+                    self.time_out(target, &claim, output_limit, redactions)
                         .await?;
-                    self.fail_or_retry(
-                        target,
-                        &claim,
-                        "MM_JOB_TIMEOUT",
-                        JobRunState::TimedOut,
-                        (Some(124), String::new(), false),
-                    )
-                    .await?;
                 }
                 return Ok(false);
             }
@@ -499,6 +486,35 @@ impl JobSchedulerService {
         self.launch_claimed(document, selection, target, claim, output_limit)
             .await?;
         Ok(false)
+    }
+
+    async fn time_out(
+        &self,
+        target: &crate::domain::runtime::RuntimeTarget,
+        claim: &ClaimedJobRun,
+        output_limit: usize,
+        redactions: Vec<zeroize::Zeroizing<String>>,
+    ) -> Result<(), MmError> {
+        let (name, id) = (&claim.run.runtime_name, claim.run.runtime_id.as_deref());
+        self.runtime.cancel(target, name, id).await?;
+        let (output, truncated) = match self
+            .runtime
+            .inspect(target, name, id, output_limit, redactions)
+            .await
+        {
+            Ok(RuntimeJobState::Exited {
+                output, truncated, ..
+            }) => (output, truncated),
+            _ => (String::new(), false),
+        };
+        self.fail_or_retry(
+            target,
+            claim,
+            "MM_JOB_TIMEOUT",
+            JobRunState::TimedOut,
+            (Some(124), output, truncated),
+        )
+        .await
     }
 
     async fn cancel_claim(
