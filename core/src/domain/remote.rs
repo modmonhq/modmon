@@ -686,7 +686,7 @@ pub use cluster::{
 };
 #[path = "remote/engine.rs"]
 mod engine;
-pub use engine::{EngineFacts, PODMAN_MINIMUM, engine_diagnostics};
+pub use engine::{EngineFacts, PODMAN_MINIMUM, engine_diagnostics, recursive_read_only};
 #[path = "remote/method.rs"]
 mod method;
 #[path = "remote/protocol.rs"]

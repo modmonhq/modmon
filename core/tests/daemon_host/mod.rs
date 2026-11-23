@@ -95,6 +95,8 @@ pub struct Handlers {
     pub stages: std::sync::Mutex<Vec<String>>,
     /// The staged changes that went live, by key.
     pub live: std::sync::Mutex<Vec<String>>,
+    /// What `engine` says about the host's engine; nothing by default.
+    pub engine: std::sync::Mutex<Option<mm::domain::remote::EngineFacts>>,
 }
 
 impl Handlers {
@@ -132,6 +134,14 @@ struct UseCases(Arc<Handlers>);
 
 #[async_trait]
 impl RemoteUseCases for UseCases {
+    async fn engine(&self, _runtime: RuntimeKind) -> Option<mm::domain::remote::EngineFacts> {
+        self.0
+            .engine
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
     async fn status(&self, context: &RemoteRequestContext) -> Result<WorkspaceSnapshot, MmError> {
         Ok(workspace_snapshot(context))
     }

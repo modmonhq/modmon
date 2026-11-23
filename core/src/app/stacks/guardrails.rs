@@ -113,22 +113,20 @@ pub fn check_named_resources(
         .collect())
 }
 
-/// Each host path a service bind-mounts in `environment`, refused outright:
-/// for a host whose engine mm cannot have mount it recursively read-only.
+/// Each host path a service bind-mounts in `environment`, refused outright
+/// for `why`: on a host whose engine cannot be relied on to mount it
+/// recursively read-only.
 pub fn check_host_paths_unsupported(
     document: &crate::domain::config::ConfigDocument,
     environment: &str,
-    engine: &str,
+    why: &str,
 ) -> Result<Vec<GuardrailFinding>, crate::domain::error::MmError> {
     Ok(project_findings(document, environment)?
         .into_iter()
         .filter(|finding| finding.host_path.is_some())
         .map(|mut finding| {
             finding.outright = true;
-            finding.detail = format!(
-                "{}; this host runs {engine}, which mm cannot yet have mount a host path recursively read-only, so no exception allows it here",
-                finding.detail
-            );
+            finding.detail = format!("{}; {why}, so no exception allows it here", finding.detail);
             finding
         })
         .collect())

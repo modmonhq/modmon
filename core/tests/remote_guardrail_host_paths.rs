@@ -234,12 +234,26 @@ fn a_host_whose_engine_cannot_mount_recursively_read_only_refuses_host_paths() -
     let temporary = project(&["alloy"], &[("compose.yaml", EXPORTER)])?;
     let document =
         mm::adapters::config::ConfigLoader.load_from(&temporary.path().join("project"))?;
-    let findings = mm::app::unsupported_host_path_guardrails(&document, "staging", "Podman")?;
+    let findings =
+        mm::app::unsupported_host_path_guardrails(&document, "staging", "this host cannot")?;
     assert_eq!(findings.len(), 2);
-    assert!(findings.iter().all(|finding| !finding.grantable()
-        && finding.to_string().ends_with(
-            "; this host runs Podman, which mm cannot yet have mount a host path recursively read-only, so no exception allows it here)"
-        )));
+    assert!(findings.iter().all(|finding| {
+        !finding.grantable()
+            && finding
+                .to_string()
+                .ends_with("; this host cannot, so no exception allows it here)")
+    }));
+    assert!(mm::domain::remote::recursive_read_only(
+        "1.44",
+        "5.12.0-100-generic"
+    ));
+    assert!(mm::domain::remote::recursive_read_only(
+        "1.56",
+        "7.2.11-200.fc44.x86_64"
+    ));
+    assert!(!mm::domain::remote::recursive_read_only("1.43", "6.8.0"));
+    assert!(!mm::domain::remote::recursive_read_only("1.44", "5.11.22"));
+    assert!(!mm::domain::remote::recursive_read_only("", ""));
     Ok(())
 }
 
@@ -294,6 +308,20 @@ async fn a_host_plans_a_host_path_only_when_its_policy_lists_it() -> TestResult 
         &host.config.host_policy_path,
         allow("        paths: [/proc]\n"),
     )?;
+    let (_, message) = host.ask(ALICE, plan()).await?.refusal(PROMPT).await?;
+    assert!(
+        message.contains("this host's Docker Engine cannot be relied on to mount a host path recursively read-only: that needs Docker Engine 25 (API 1.44) or later on Linux 5.12 or later, so no exception allows it here"),
+        "{message}"
+    );
+
+    *host.handlers.engine.lock().map_err(|_| "poisoned")? = Some(mm::domain::remote::EngineFacts {
+        runtime: mm::domain::runtime::RuntimeKind::DockerCompose,
+        version: Some("Docker version 29.9.1".to_owned()),
+        compose: None,
+        compose_version: None,
+        problem: None,
+        recursive_read_only: true,
+    });
     host.plan_at(ALICE, &commit).await?;
     Ok(())
 }
