@@ -6,11 +6,11 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use crate::domain::error::MmError;
-use crate::domain::target::NodeAddress;
+use crate::domain::target::DeviceNodeAddress;
 
 /// Per project and environment (`<project-id>/<environment>`), each node's
 /// address.
-pub type NodeAddresses = BTreeMap<String, BTreeMap<String, NodeAddress>>;
+pub type NodeAddresses = BTreeMap<String, BTreeMap<String, DeviceNodeAddress>>;
 
 #[derive(Debug, Clone)]
 pub struct NodeAddressStore {
@@ -27,31 +27,53 @@ impl NodeAddressStore {
         super::private_json::read(&self.path)
     }
 
-    pub fn environment(&self, key: &str) -> Result<BTreeMap<String, NodeAddress>, MmError> {
+    pub fn environment(&self, key: &str) -> Result<BTreeMap<String, DeviceNodeAddress>, MmError> {
         Ok(self.all()?.remove(key).unwrap_or_default())
     }
 
-    pub fn set(&self, key: &str, node: &str, address: NodeAddress) -> Result<(), MmError> {
-        let mut all = self.all()?;
-        all.entry(key.to_owned())
-            .or_default()
-            .insert(node.to_owned(), address);
-        super::private_json::write(&self.path, &all, "node addresses")
+    pub fn set(&self, key: &str, node: &str, address: DeviceNodeAddress) -> Result<(), MmError> {
+        self.change(|all| {
+            all.entry(key.to_owned())
+                .or_default()
+                .insert(node.to_owned(), address);
+            true
+        })
+        .map(|_| ())
     }
 
     /// Whether there was an address to remove.
     pub fn unset(&self, key: &str, node: &str) -> Result<bool, MmError> {
+        self.change(|all| {
+            let Some(nodes) = all.get_mut(key) else {
+                return false;
+            };
+            if nodes.remove(node).is_none() {
+                return false;
+            }
+            if nodes.is_empty() {
+                all.remove(key);
+            }
+            true
+        })
+    }
+
+    fn change(&self, apply: impl FnOnce(&mut NodeAddresses) -> bool) -> Result<bool, MmError> {
+        let lock_path = self.path.with_extension("lock");
+        let lock = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&lock_path)
+            .map_err(|source| MmError::Io {
+                context: format!("opening {}", lock_path.display()),
+                source,
+            })?;
+        crate::adapters::file_lock::exclusive(&lock, &lock_path)?;
         let mut all = self.all()?;
-        let Some(nodes) = all.get_mut(key) else {
-            return Ok(false);
-        };
-        if nodes.remove(node).is_none() {
-            return Ok(false);
+        let changed = apply(&mut all);
+        if changed {
+            super::private_json::write(&self.path, &all, "node addresses")?;
         }
-        if nodes.is_empty() {
-            all.remove(key);
-        }
-        super::private_json::write(&self.path, &all, "node addresses")?;
-        Ok(true)
+        Ok(changed)
     }
 }

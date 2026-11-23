@@ -50,8 +50,12 @@ pub(super) fn cluster_nodes(
     (access, home): (ClientAccess<'_>, &MmHome),
     scope: &crate::domain::remote::RemoteScope,
 ) -> Result<Vec<crate::app::RemoteNode>, MmError> {
-    let addresses =
-        super::super::node_addresses::device_node_addresses(home, document, &scope.environment)?;
+    let addresses = super::super::node_addresses::device_node_addresses(
+        home,
+        document,
+        &scope.environment,
+        &target.name,
+    )?;
     let names = target
         .definition
         .nodes
@@ -102,7 +106,7 @@ pub(super) fn cluster_nodes(
                 name: Some(node.name.clone()),
                 host,
                 port,
-                repo_address: address.map(|_| node.address()),
+                repo_address: address.map(|_| (node.host.clone(), node.port)),
                 private_address: node.private_address,
                 transport,
                 scope: crate::domain::remote::RemoteScope {

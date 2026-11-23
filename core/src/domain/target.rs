@@ -740,7 +740,7 @@ pub use host_binaries::{
 
 #[path = "target/node_address.rs"]
 mod node_address;
-pub use node_address::{NodeAddress, host_and_port};
+pub use node_address::{DeviceNodeAddress, NodeAddress, host_and_port};
 
 #[path = "target/nodes.rs"]
 mod nodes;

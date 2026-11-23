@@ -1,15 +1,14 @@
-// Building one host's endpoint and the `ssh` command that reaches it.
+// Building one host's endpoint: where it connects, the key it pins, and
+// the identity it offers.
 
 /// How messages name a host: `node 'app-2' (host:22)`, and say so when the
 /// address is this device's own.
 fn endpoint_subject(label: &str, host: &str, port: u16, device_address: bool) -> String {
+    let address = crate::domain::target::host_and_port(host, port);
     if device_address {
-        format!(
-            "{label} ({}, this device's address for it)",
-            crate::domain::target::host_and_port(host, port)
-        )
+        format!("{label} ({address}, this device's address for it)")
     } else {
-        format!("{label} ({host}:{port})")
+        format!("{label} ({address})")
     }
 }
 

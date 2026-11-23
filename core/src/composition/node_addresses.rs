@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use super::*;
 use crate::adapters::target::NodeAddressStore;
-use crate::domain::target::NodeAddress;
+use crate::domain::target::{DeviceNodeAddress, NodeAddress};
 
 fn store(home: &MmHome) -> NodeAddressStore {
     NodeAddressStore::new(home.root.join("node-addresses.json"))
@@ -15,20 +15,37 @@ fn key(document: &ConfigDocument, environment: &str) -> String {
     format!("{}/{environment}", document.config.project.id.0)
 }
 
-/// This device's addresses for the nodes of `environment`, by node name.
+/// This device's addresses for the nodes of `environment` on `target`, by
+/// node name. An address set while the environment used another target is
+/// left out, with a warning.
 pub(super) fn device_node_addresses(
     home: &MmHome,
     document: &ConfigDocument,
     environment: &str,
+    target: &str,
 ) -> Result<BTreeMap<String, NodeAddress>, MmError> {
-    store(home).environment(&key(document, environment))
+    Ok(store(home)
+        .environment(&key(document, environment))?
+        .into_iter()
+        .filter_map(|(node, entry)| {
+            if entry.applies_to(target) {
+                return Some((node, entry.address));
+            }
+            tracing::warn!(
+                "this device's address {} for node '{node}' of environment '{environment}' was set for target '{}', and the environment now uses target '{target}', so mm connects to the node's host in targets.yaml. Run `mm target preference set-address {environment} {node} ADDRESS` to set it for '{target}', or `mm target preference unset-address {environment} {node}`",
+                entry.address,
+                entry.target.as_deref().unwrap_or_default()
+            );
+            None
+        })
+        .collect())
 }
 
 /// This project's node addresses on this device, by environment.
 pub(crate) fn project_node_addresses(
     document: &ConfigDocument,
     explicit_home: Option<&Path>,
-) -> Result<BTreeMap<String, BTreeMap<String, NodeAddress>>, MmError> {
+) -> Result<BTreeMap<String, BTreeMap<String, DeviceNodeAddress>>, MmError> {
     let home = MmHome::resolve(explicit_home)?;
     let prefix = key(document, "");
     Ok(store(&home)
@@ -106,7 +123,14 @@ pub(crate) fn set_node_address(
             ),
         });
     }
-    store(&home).set(&key(document, environment), node, address.clone())?;
+    store(&home).set(
+        &key(document, environment),
+        node,
+        DeviceNodeAddress {
+            address: address.clone(),
+            target: Some(name),
+        },
+    )?;
     Ok(address)
 }
 

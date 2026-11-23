@@ -2816,7 +2816,10 @@ hostname, IPv4 address, or IPv6 address with an optional port (`[fd00::3]:22`).
 Without a port, `mm` uses the node's `port`. The address is kept in
 `node-addresses.json` in this device's mm home, never in the repo, so CI and
 the other developers keep using `host`. `mm` refuses an environment the
-project does not declare and a node its target does not list.
+project does not declare and a node its target does not list. The address
+belongs to the target the environment used when you set it: if the
+environment moves to another target, `mm` warns and connects to that target's
+`host` until you set the address again.
 
 Only where `mm` connects changes. The node must still present the SSH host key
 and daemon identity recorded for it in `targets.yaml`; `mm` checks them against

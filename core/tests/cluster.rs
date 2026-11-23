@@ -478,7 +478,7 @@ fn a_device_address_is_private_checked_and_used_by_every_connection() -> TestRes
     let shown: serde_json::Value = serde_json::from_str(&shown.stdout)?;
     assert_eq!(
         shown["node_addresses"],
-        serde_json::json!({"local": {"app-1": "127.0.0.1:3"}})
+        serde_json::json!({"local": {"app-1": {"address": "127.0.0.1:3", "target": "production"}}})
     );
     assert_eq!(std::fs::read(root.join(".config/mm.yaml"))?, config);
     #[cfg(unix)]
@@ -513,8 +513,67 @@ fn a_device_address_is_private_checked_and_used_by_every_connection() -> TestRes
 
     let unset = preference(&["unset-address", "local", "app-1"])?;
     assert_eq!(unset.code, Some(0), "{}", unset.stderr);
+    assert!(
+        !unset.stderr.contains("No address is set"),
+        "{}",
+        unset.stderr
+    );
+    let again = preference(&["unset-address", "local", "app-1"])?;
+    assert_eq!(again.code, Some(0), "{}", again.stderr);
+    assert!(
+        again
+            .stderr
+            .contains("No address is set on this device for node 'app-1' of environment 'local'"),
+        "{}",
+        again.stderr
+    );
     let shown = preference(&["show"])?;
     let shown: serde_json::Value = serde_json::from_str(&shown.stdout)?;
     assert_eq!(shown["node_addresses"], serde_json::json!({}));
+    Ok(())
+}
+
+#[test]
+fn a_device_address_set_for_another_target_is_left_out_and_bare_ones_still_apply() -> TestResult {
+    if !ssh_is_installed() {
+        eprintln!("skipped: no ssh client on this machine");
+        return Ok(());
+    }
+    let project_directory = temp_dirs::tempdir()?;
+    let home = temp_dirs::tempdir()?;
+    project(project_directory.path())?;
+    let (root, home) = (project_directory.path(), home.path());
+    let document = mm::adapters::config::ConfigLoader.load_from(root)?;
+    let key = format!("{}/local", document.config.project.id.0);
+    let shown = mm(root, home, &["target", "preference", "show"])?;
+    assert_eq!(shown.code, Some(0), "{}", shown.stderr);
+    let first_port = |run: &Run| -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+        let report: serde_json::Value = serde_json::from_str(&run.stdout)
+            .map_err(|error| format!("{error}: {}{}", run.stdout, run.stderr))?;
+        Ok(report["nodes"][0]["port"].clone())
+    };
+
+    std::fs::write(
+        home.join("node-addresses.json"),
+        format!(r#"{{"{key}": {{"app-1": "127.0.0.1:3"}}}}"#),
+    )?;
+    let bare = mm(root, home, &["--output", "json", "target", "nodes"])?;
+    assert_eq!(first_port(&bare)?, 3, "{}", bare.stderr);
+
+    std::fs::write(
+        home.join("node-addresses.json"),
+        format!(r#"{{"{key}": {{"app-1": {{"address": "127.0.0.1:3", "target": "staging"}}}}}}"#),
+    )?;
+    let other = mm(root, home, &["--output", "json", "target", "nodes"])?;
+    assert_eq!(first_port(&other)?, 1, "{}", other.stderr);
+    assert!(
+        other.stderr.contains(
+            "was set for target 'staging', and the environment now uses target 'production'"
+        ) && other
+            .stderr
+            .contains("`mm target preference unset-address local app-1`"),
+        "{}",
+        other.stderr
+    );
     Ok(())
 }

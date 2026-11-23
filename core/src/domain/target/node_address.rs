@@ -101,3 +101,47 @@ impl<'de> Deserialize<'de> for NodeAddress {
             .map_err(serde::de::Error::custom)
     }
 }
+
+/// One node's address on this device, with the target it was set for.
+/// An entry written before the target was recorded is a bare address and
+/// has no target.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "StoredNodeAddress")]
+pub struct DeviceNodeAddress {
+    pub address: NodeAddress,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+}
+
+impl DeviceNodeAddress {
+    /// Whether the address applies to a node of `target`.
+    #[must_use]
+    pub fn applies_to(&self, target: &str) -> bool {
+        self.target
+            .as_deref()
+            .is_none_or(|set_for| set_for == target)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum StoredNodeAddress {
+    Bare(NodeAddress),
+    Entry {
+        address: NodeAddress,
+        #[serde(default)]
+        target: Option<String>,
+    },
+}
+
+impl From<StoredNodeAddress> for DeviceNodeAddress {
+    fn from(stored: StoredNodeAddress) -> Self {
+        match stored {
+            StoredNodeAddress::Bare(address) => Self {
+                address,
+                target: None,
+            },
+            StoredNodeAddress::Entry { address, target } => Self { address, target },
+        }
+    }
+}

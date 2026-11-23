@@ -102,7 +102,13 @@ pub(super) fn run_prefer_command(
             )?;
         }
         PreferCommand::UnsetAddress { environment, node } => {
-            composition::unset_node_address(&document, explicit_home, (&environment, &node))?;
+            if !composition::unset_node_address(&document, explicit_home, (&environment, &node))? {
+                eprintln!(
+                    "No address is set on this device for node '{}' of environment '{}'; `mm target preference show` lists the ones that are.",
+                    output::terminal_safe(&node),
+                    output::terminal_safe(&environment)
+                );
+            }
         }
         PreferCommand::SetRuntime {
             runtime,
