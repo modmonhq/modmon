@@ -42,8 +42,10 @@ pub enum PreferCommand {
         after_help = "Examples:\n  mm target preference set-address staging app-1 10.0.0.3\n  mm target preference set-address staging app-2 node-2.internal:2222\n  mm target preference set-address staging app-3 '[fd00::5]:22'\n\nThe address is kept in this device's mm home and nowhere else. Without a port, mm uses the node's port from targets.yaml."
     )]
     SetAddress {
+        /// The environment whose target lists the node.
         #[arg(id = "address_environment", value_name = "ENVIRONMENT")]
         environment: String,
+        /// The node's name under `nodes:`.
         #[arg(id = "address_node", value_name = "NODE")]
         node: String,
         /// A hostname, IPv4 or IPv6 address, with an optional port.
@@ -52,8 +54,10 @@ pub enum PreferCommand {
     },
     /// Connect to a cluster node at its host in targets.yaml again.
     UnsetAddress {
+        /// The environment whose target lists the node.
         #[arg(id = "address_environment", value_name = "ENVIRONMENT")]
         environment: String,
+        /// The node's name under `nodes:`.
         #[arg(id = "address_node", value_name = "NODE")]
         node: String,
     },
