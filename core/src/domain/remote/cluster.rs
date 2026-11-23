@@ -545,8 +545,13 @@ pub enum NodeState {
 #[serde(deny_unknown_fields)]
 pub struct NodeReport {
     pub name: String,
+    /// The address this device connected to.
     pub host: String,
     pub port: u16,
+    /// The repo's `host:port` for the node, when this device connects at
+    /// an address of its own instead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo_address: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mesh_address: Option<Ipv4Addr>,
     pub state: NodeState,

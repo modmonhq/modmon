@@ -102,6 +102,11 @@ struct SshEndpoint {
     subject: String,
     host: String,
     port: u16,
+    /// The recorded host the pinned key belongs to, as `known_hosts` names
+    /// it, whatever address this device connects to.
+    host_key_alias: String,
+    /// Whether this device connects at an address of its own.
+    device_address: bool,
     user: String,
     host_key: String,
     identity: Option<IdentitySource>,
@@ -144,6 +149,7 @@ impl SshRemoteTransport {
             endpoint: SshEndpoint::new(
                 format!("target '{}'", target.name),
                 &target.definition.transport,
+                None,
                 access,
             )?,
         })
@@ -156,11 +162,13 @@ impl SshRemoteTransport {
         self.endpoint.kept.as_ref().map(KeptConnection::socket)
     }
 
-    /// The transport to one node of a cluster target. Fails for a node whose
-    /// keys the repo does not record yet.
+    /// The transport to one node of a cluster target, at `address` when
+    /// this device sets one. Fails for a node whose keys the repo does not
+    /// record yet.
     pub fn for_node(
         target: &NamedTarget,
         node: &crate::domain::target::TargetNode,
+        address: Option<&crate::domain::target::NodeAddress>,
         access: ClientAccess<'_>,
     ) -> Result<Self, MmError> {
         validate_target_definition(&target.definition)
@@ -171,7 +179,12 @@ impl SshRemoteTransport {
             help: "Run `mm target setup plan`, apply it, then `mm target setup record`".to_owned(),
         })?;
         Ok(Self {
-            endpoint: SshEndpoint::new(format!("node '{}'", node.name), &transport, access)?,
+            endpoint: SshEndpoint::new(
+                format!("node '{}'", node.name),
+                &transport,
+                address.map(|address| address.dial(node)),
+                access,
+            )?,
         })
     }
 
@@ -248,63 +261,6 @@ impl SshEndpoint {
 }
 
 impl SshEndpoint {
-    fn new(
-        label: String,
-        transport: &TargetTransport,
-        ClientAccess { key, reuse, keys }: ClientAccess<'_>,
-    ) -> Result<Self, MmError> {
-        let TargetTransport::Ssh {
-            host,
-            port,
-            user,
-            host_key,
-            identity_file,
-            daemon_fingerprint,
-            ..
-        } = transport
-        else {
-            return Err(MmError::Target {
-                message: "remote transport requires an SSH target".to_owned(),
-            });
-        };
-        let host_key = host_key.clone().ok_or_else(|| MmError::Security {
-            message:
-                "SSH target has no enrolled host public key; update the target before remote use"
-                    .to_owned(),
-        })?;
-        let identity = key.source(identity_file.as_ref());
-        // Only the user's own key file is ever kept open: not the agent
-        // key, and not a key passed in the environment (`reuse.rs`).
-        let kept = match (key, &identity) {
-            (ClientKey::Default(_), Some(IdentitySource::File(path))) => reuse.connection(
-                &reuse::Peer {
-                    user,
-                    host,
-                    port: *port,
-                    host_key: &host_key,
-                },
-                path,
-                keys.manages(path),
-            ),
-            _ => None,
-        };
-        Ok(Self {
-            subject: format!("{label} ({host}:{port})"),
-            host: host.clone(),
-            port: *port,
-            user: user.clone(),
-            host_key,
-            identity,
-            agent_key: matches!(key, ClientKey::Only(_)),
-            daemon_fingerprint: daemon_fingerprint.clone().ok_or_else(|| MmError::Security {
-                message: "SSH target has no enrolled daemon fingerprint; update the target before remote use"
-                    .to_owned(),
-            })?,
-            kept,
-            keys: keys.clone(),
-        })
-    }
-
     /// `ssh` with only the options mm allows: the pinned host key, this
     /// endpoint's key, and nothing from `~/.ssh` or an agent. With
     /// `askpass`, the key is one mm keeps the passphrase of: `ssh` may ask
@@ -341,6 +297,8 @@ impl SshEndpoint {
             .arg("StrictHostKeyChecking=yes")
             .arg("-o")
             .arg(format!("UserKnownHostsFile={}", known_hosts.display()))
+            .arg("-o")
+            .arg(format!("HostKeyAlias={}", self.host_key_alias))
             .arg("-o")
             .arg("GlobalKnownHostsFile=/dev/null")
             .arg("-o")
@@ -401,39 +359,6 @@ impl SshEndpoint {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         Ok((command, inline_key))
-    }
-
-    /// Names the key `ssh` offers, and the helper that answers its
-    /// passphrase prompt when mm keeps the passphrase. Returns the file a
-    /// key from `MM_SSH_KEY` was written to, which lives as long as the
-    /// connection.
-    fn identify(
-        &self,
-        command: &mut Command,
-        askpass: Option<&Askpass>,
-    ) -> Result<Option<tempfile::NamedTempFile>, MmError> {
-        let inline_key = match &self.identity {
-            Some(IdentitySource::File(path)) => {
-                // A rotation in progress: the new key first, so a host
-                // that lists it uses it, and the current key for the
-                // hosts that do not yet.
-                if let Some(next) = self.keys.next_key(path) {
-                    command.arg("-i").arg(next);
-                }
-                command.arg("-i").arg(path);
-                None
-            }
-            Some(IdentitySource::Inline(key)) => {
-                let file = private_key_file(key)?;
-                command.arg("-i").arg(file.path());
-                Some(file)
-            }
-            None => None,
-        };
-        if let Some(askpass) = askpass {
-            command.envs(askpass.environment());
-        }
-        Ok(inline_key)
     }
 }
 
@@ -543,6 +468,7 @@ impl SshRemoteTransport {
     }
 }
 
+include!("client/endpoint.rs");
 include!("client/connect.rs");
 include!("client/transport.rs");
 include!("client/forward.rs");

@@ -303,6 +303,7 @@ fn cluster(
             name: Some(name.to_owned()),
             host: format!("203.0.113.{}", index + 1),
             port: 22,
+            repo_address: None,
             private_address: None,
             transport: Ok(Arc::clone(&node) as Arc<dyn RemoteTransport>),
             scope: RemoteScope {

@@ -370,6 +370,7 @@ fn cluster() -> Result<Cluster, Box<dyn std::error::Error>> {
             name: Some(fake.name.clone()),
             host: format!("203.0.113.{}", index + 1),
             port: 22,
+            repo_address: None,
             private_address: Some(Ipv4Addr::new(10, 90, 0, u8::try_from(index + 1)?)),
             transport: Ok(Arc::clone(fake) as Arc<dyn RemoteTransport>),
             scope: scope(&fake.name),

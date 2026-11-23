@@ -70,13 +70,14 @@ fn each_node_gets_its_own_connection_and_is_named_in_messages()
         reuse: &reuse,
         keys: &keys,
     };
-    let second = SshRemoteTransport::for_node(&target, &target.definition.nodes[1], access)?;
+    let second = SshRemoteTransport::for_node(&target, &target.definition.nodes[1], None, access)?;
     assert_eq!(second.endpoint.host, "10.0.0.2");
     assert_eq!(second.endpoint.subject, "node 'app-2' (10.0.0.2:22)");
     assert_eq!(second.endpoint.daemon_fingerprint, "b".repeat(64));
 
     // A node that was never set up has no keys to connect with.
-    let unrecorded = SshRemoteTransport::for_node(&target, &target.definition.nodes[2], access);
+    let unrecorded =
+        SshRemoteTransport::for_node(&target, &target.definition.nodes[2], None, access);
     assert!(
         matches!(&unrecorded, Err(crate::domain::error::MmError::Unreachable { subject, problem, help })
             if subject == "node 'app-3' (10.0.0.3:22)"
@@ -87,7 +88,7 @@ fn each_node_gets_its_own_connection_and_is_named_in_messages()
 
     target.definition.nodes[1].name = "app-1".to_owned();
     assert!(
-        SshRemoteTransport::for_node(&target, &target.definition.nodes[0], access).is_err(),
+        SshRemoteTransport::for_node(&target, &target.definition.nodes[0], None, access).is_err(),
         "duplicate node names"
     );
     Ok(())
@@ -347,6 +348,61 @@ fn a_newer_daemon_agrees_on_the_protocol_this_mm_speaks() -> Result<(), Box<dyn 
         format!(
             "target 'remote' (example.test:2222) has no remote protocol in common with this mm. {said}"
         )
+    );
+    Ok(())
+}
+
+#[test]
+fn a_device_address_changes_where_ssh_connects_and_not_the_pinned_host()
+-> Result<(), Box<dyn std::error::Error>> {
+    let mut target = ssh_target();
+    target.definition.nodes = vec![node("app-1", "203.0.113.1", true)];
+    let client_key = ClientKey::Default(None);
+    let reuse = ConnectionReuse::off();
+    let keys = ManagedKeys::none();
+    let access = ClientAccess {
+        key: &client_key,
+        reuse: &reuse,
+        keys: &keys,
+    };
+    let address = "[fd00::3]:2222".parse::<crate::domain::target::NodeAddress>()?;
+    let transport =
+        SshRemoteTransport::for_node(&target, &target.definition.nodes[0], Some(&address), access)?;
+    assert_eq!(
+        transport.endpoint.subject,
+        "node 'app-1' ([fd00::3]:2222, this device's address for it)"
+    );
+    let (command, _) =
+        transport
+            .endpoint
+            .ssh_command(std::path::Path::new("/known-hosts"), false, None)?;
+    let arguments = command
+        .as_std()
+        .get_args()
+        .map(|argument| argument.to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    assert!(arguments.contains(&"HostKeyAlias=203.0.113.1".to_owned()));
+    assert!(arguments.windows(2).any(|pair| pair == ["-p", "2222"]));
+    assert_eq!(arguments.last().map(String::as_str), Some("relay@fd00::3"));
+    let known_hosts = transport.endpoint.pinned_known_hosts()?;
+    assert_eq!(
+        std::fs::read_to_string(known_hosts.path())?,
+        format!("203.0.113.1 {KEY}\n")
+    );
+
+    let repo = SshRemoteTransport::for_node(&target, &target.definition.nodes[0], None, access)?;
+    let (command, _) =
+        repo.endpoint
+            .ssh_command(std::path::Path::new("/known-hosts"), false, None)?;
+    let arguments = command
+        .as_std()
+        .get_args()
+        .map(|argument| argument.to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    assert!(arguments.contains(&"HostKeyAlias=203.0.113.1".to_owned()));
+    assert_eq!(
+        arguments.last().map(String::as_str),
+        Some("relay@203.0.113.1")
     );
     Ok(())
 }

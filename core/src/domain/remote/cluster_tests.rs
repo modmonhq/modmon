@@ -256,6 +256,7 @@ fn node(name: &str, state: NodeState, version: Option<&str>, commit: Option<&str
         name: name.to_owned(),
         host: "203.0.113.11".to_owned(),
         port: 22,
+        repo_address: None,
         mesh_address: Some(Ipv4Addr::new(10, 90, 0, 1)),
         state,
         reachable: state == NodeState::Ready,

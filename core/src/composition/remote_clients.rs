@@ -47,9 +47,11 @@ pub(super) fn client_identity(
 pub(super) fn cluster_nodes(
     document: &ConfigDocument,
     target: &crate::domain::target::NamedTarget,
-    access: ClientAccess<'_>,
+    (access, home): (ClientAccess<'_>, &MmHome),
     scope: &crate::domain::remote::RemoteScope,
 ) -> Result<Vec<crate::app::RemoteNode>, MmError> {
+    let addresses =
+        super::super::node_addresses::device_node_addresses(home, document, &scope.environment)?;
     let names = target
         .definition
         .nodes
@@ -67,8 +69,9 @@ pub(super) fn cluster_nodes(
         .nodes
         .iter()
         .map(|node| {
+            let address = addresses.get(&node.name);
             let transport: Result<Arc<dyn crate::app::ports::RemoteTransport>, _> =
-                match SshRemoteTransport::for_node(target, node, access) {
+                match SshRemoteTransport::for_node(target, node, address, access) {
                     Ok(transport) => Ok(Arc::new(transport)),
                     Err(MmError::Unreachable {
                         subject,
@@ -91,10 +94,15 @@ pub(super) fn cluster_nodes(
                 &node.name,
             )
             .map_err(|message| MmError::Placement { message })?;
+            let (host, port) = address.map_or_else(
+                || (node.host.clone(), node.port),
+                |address| address.dial(node),
+            );
             Ok(crate::app::RemoteNode {
                 name: Some(node.name.clone()),
-                host: node.host.clone(),
-                port: node.port,
+                host,
+                port,
+                repo_address: address.map(|_| node.address()),
                 private_address: node.private_address,
                 transport,
                 scope: crate::domain::remote::RemoteScope {

@@ -396,6 +396,7 @@ fn cluster() -> Result<Cluster, MmError> {
                 name: Some(node.name.clone()),
                 host: "203.0.113.10".to_owned(),
                 port: 22,
+                repo_address: None,
                 private_address: None,
                 transport: Ok(Arc::clone(node) as Arc<dyn RemoteTransport>),
                 scope: scope(Some(&node.name)),
