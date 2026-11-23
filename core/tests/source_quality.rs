@@ -1,6 +1,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+mod test_items;
+
 #[test]
 fn production_source_has_no_silent_failure_or_panic_shortcuts() -> Result<(), std::io::Error> {
     let mut violations = Vec::new();
@@ -269,47 +271,23 @@ fn source_scanner_preserves_code_after_lifetimes() {
 
 #[test]
 fn source_scanner_skips_only_the_test_items() {
-    let source = "#[cfg(test)]\nfn helper() -> [u8; 2] { [0; 2] }\n\nfn shipped() { let _ = 1; }\n\n#[cfg(test)]\nmod tests;\n";
+    let source = "#[cfg(test)]\nfn helper() -> Result<[u8; 2], ()> { Ok([0; 2]) }\n\nfn shipped() { let _ = 1; }\n\n#[cfg(test)]\nmod tests;\n";
     let code = production_code(source);
-    assert!(!code.contains("helper"));
+    assert!(!code.contains("helper") && !code.contains("Ok("));
     assert!(!code.contains("mod tests"));
     assert_eq!(
         code.lines().position(|line| line.contains("let _ = 1")),
         Some(3)
     );
+    let fields = "struct Kept {\n    #[cfg(test)]\n    status: Option<u8>\n}\nenum Platform {\n    #[cfg(test)]\n    Test,\n    Linux,\n}\nfn pick(platform: Platform) -> u8 {\n    match platform {\n        #[cfg(test)]\n        Platform::Test => 0,\n        Platform::Linux => 1,\n    };\n    let _ = 2;\n}\n";
+    let code = production_code(fields);
+    assert!(!code.contains("status") && !code.contains("Test"));
+    assert!(code.contains("Linux,") && code.contains("Platform::Linux => 1"));
+    assert!(code.contains("let _ = 2"));
 }
 
 fn production_code(source: &str) -> String {
-    const TEST_ONLY: &str = "#[cfg(test)]";
-    let mut code = code_without_comments_or_literals(source);
-    while let Some(start) = code.find(TEST_ONLY) {
-        let end = item_end(&code, start + TEST_ONLY.len());
-        let blank = code[start..end]
-            .chars()
-            .map(|character| if character == '\n' { '\n' } else { ' ' })
-            .collect::<String>();
-        code.replace_range(start..end, &blank);
-    }
-    code
-}
-
-fn item_end(code: &str, from: usize) -> usize {
-    let mut depth = 0_i32;
-    for (offset, character) in code[from..].char_indices() {
-        match character {
-            '{' | '(' | '[' => depth += 1,
-            ')' | ']' => depth -= 1,
-            '}' => {
-                depth -= 1;
-                if depth == 0 {
-                    return from + offset + 1;
-                }
-            }
-            ';' if depth == 0 => return from + offset + 1,
-            _ => {}
-        }
-    }
-    code.len()
+    code_without_comments_or_literals(&test_items::without_test_items(source))
 }
 
 fn result_sensitive_path(path: &Path) -> bool {
