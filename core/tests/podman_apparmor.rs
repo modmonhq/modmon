@@ -4,7 +4,8 @@
 use mm::domain::diagnostic::Severity;
 use mm::domain::remote::{
     CONTAINER_PROFILES, ContainerAppArmor, EngineFacts, MM_CONTAINER_PROFILE,
-    MM_SHARED_PID_PROFILE, NodeReport, NodeState, engine_diagnostics, refuse_unconfined_shared_pid,
+    MM_SHARED_PID_PROFILE, NodeReport, NodeState, engine_diagnostics, refuse_unconfined_rendered,
+    refuse_unconfined_shared_pid,
 };
 use mm::domain::runtime::RuntimeKind;
 use mm::domain::target::{TargetTransport, bootstrap_requirements};
@@ -324,32 +325,63 @@ fn a_node_from_an_earlier_mmd_says_nothing_about_apparmor() -> Result<(), serde_
     Ok(())
 }
 
-#[test]
-fn every_podman_path_that_creates_containers_checks_the_rendered_files_first() {
-    let apply = include_str!("../src/adapters/runtime/podman_compose/apply.rs");
-    let rolling = include_str!("../src/adapters/runtime/podman_compose/rolling.rs");
-    let driver = include_str!("../src/adapters/runtime/operations/driver.rs");
-    let gate = "podman_apparmor::require_shared_pid_confined(";
-    for (file, creates, name) in [
-        (
-            apply,
-            apply.matches("\"up\".to_owned()").count(),
-            "apply.rs",
-        ),
-        (
-            rolling,
-            rolling.matches("\"up\".to_owned()").count(),
-            "rolling.rs",
-        ),
-        (
-            driver,
-            driver.matches("\"run\".to_owned()").count(),
-            "driver.rs",
-        ),
-    ] {
-        assert!(creates > 0, "{name}");
-        assert_eq!(file.matches(gate).count(), creates, "{name}");
+fn runtime_sources(
+    directory: &std::path::Path,
+    found: &mut Vec<(String, String)>,
+) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(directory)? {
+        let path = entry?.path();
+        let name = path.to_string_lossy().into_owned();
+        if path.is_dir() {
+            if !name.ends_with("/tests") {
+                runtime_sources(&path, found)?;
+            }
+        } else if name.ends_with(".rs") && !name.ends_with("tests.rs") {
+            found.push((name, std::fs::read_to_string(&path)?));
+        }
     }
+    Ok(())
+}
+
+#[test]
+fn every_podman_path_that_creates_containers_checks_the_rendered_files_first() -> std::io::Result<()>
+{
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/adapters/runtime");
+    let mut sources = Vec::new();
+    runtime_sources(&root, &mut sources)?;
+    let exempt = [
+        (
+            "/docker_compose/",
+            "Docker Engine: mm gives its containers no AppArmor profile",
+        ),
+        ("/podman_compose/cluster_network.rs", "creates a network"),
+        (
+            "/podman_compose/ownership.rs",
+            "creates a volume or a network",
+        ),
+        (
+            "/oci_runtime.rs",
+            "a throwaway probe of the OCI runtime, from no Compose file",
+        ),
+    ];
+    let gate = "podman_apparmor::require_shared_pid_confined(";
+    let mut gated = 0;
+    for (name, text) in &sources {
+        let creates = ["\"up\"", "\"run\"", "\"create\""]
+            .iter()
+            .map(|call| text.matches(call).count())
+            .sum::<usize>();
+        if creates == 0 || exempt.iter().any(|(path, _)| name.contains(path)) {
+            continue;
+        }
+        assert_eq!(text.matches(gate).count(), creates, "{name}");
+        gated += creates;
+    }
+    assert_eq!(
+        gated, 4,
+        "podman up (apply, start_more, start_beside_old) and the job run"
+    );
+    Ok(())
 }
 
 #[test]
@@ -392,4 +424,24 @@ fn rendered_files_that_leave_a_pid_sharing_service_to_podmans_default_are_refuse
         Ok(())
     );
     Ok(())
+}
+
+#[test]
+fn a_rendered_file_mm_cannot_read_or_parse_is_refused_while_the_gate_is_active() {
+    let path = std::path::PathBuf::from("/srv/mm/projects/p/compose/app/overlay.yaml");
+    let unread = refuse_unconfined_rendered(&[(path.clone(), None)])
+        .err()
+        .unwrap_or_default();
+    assert!(
+        unread.contains("'/srv/mm/projects/p/compose/app/overlay.yaml'")
+            && unread.contains("larger than 16 MiB")
+            && unread.contains("`mm deploy plan`"),
+        "{unread}"
+    );
+    let broken = refuse_unconfined_rendered(&[(path.clone(), Some(b"services: [".to_vec()))])
+        .err()
+        .unwrap_or_default();
+    assert!(broken.contains("overlay.yaml"), "{broken}");
+    let fine = b"services:\n  web: {image: example/web}\n".to_vec();
+    assert_eq!(refuse_unconfined_rendered(&[(path, Some(fine))]), Ok(()));
 }

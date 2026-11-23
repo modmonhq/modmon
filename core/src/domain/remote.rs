@@ -692,7 +692,9 @@ pub use apparmor::{
 };
 #[path = "remote/shared_pid.rs"]
 mod shared_pid;
-pub use shared_pid::{SharedPidService, refuse_unconfined_shared_pid, shared_pid_services};
+pub use shared_pid::{
+    SharedPidService, refuse_unconfined_rendered, refuse_unconfined_shared_pid, shared_pid_services,
+};
 #[path = "remote/engine.rs"]
 mod engine;
 pub use engine::{EngineFacts, PODMAN_MINIMUM, engine_diagnostics};

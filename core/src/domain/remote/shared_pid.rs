@@ -95,6 +95,34 @@ pub fn refuse_unconfined_shared_pid(files: Vec<Value>) -> Result<(), String> {
     Ok(())
 }
 
+/// [`refuse_unconfined_shared_pid`] over the rendered files a runtime is
+/// about to start, each as read (`None` when it could not be read). A file
+/// that cannot be read or parsed is refused, as Compose would read it whole.
+pub fn refuse_unconfined_rendered(
+    files: &[(std::path::PathBuf, Option<Vec<u8>>)],
+) -> Result<(), String> {
+    let mut models = Vec::new();
+    for (path, bytes) in files {
+        let unreadable = |cause: &str| {
+            format!(
+                "mm cannot read the rendered Compose file '{}' ({cause}) to check which AppArmor profile its pid-sharing services get on this host, whose containers get {}. Deploy the environment again (`mm deploy plan`)",
+                path.display(),
+                super::MM_CONTAINER_PROFILE
+            )
+        };
+        let Some(bytes) = bytes else {
+            return Err(unreadable("missing, unreadable, or larger than 16 MiB"));
+        };
+        let mut model = serde_yaml_ng::from_slice::<Value>(bytes)
+            .map_err(|error| unreadable(&error.to_string()))?;
+        model
+            .apply_merge()
+            .map_err(|error| unreadable(&error.to_string()))?;
+        models.push(model);
+    }
+    refuse_unconfined_shared_pid(models)
+}
+
 fn apparmor_option(service: &Value) -> Option<String> {
     service
         .get("security_opt")

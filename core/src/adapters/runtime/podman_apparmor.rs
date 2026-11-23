@@ -6,7 +6,7 @@ use std::path::Path;
 use crate::domain::error::MmError;
 use crate::domain::remote::{
     ContainerAppArmor, MM_CONTAINER_PROFILE, MM_SHARED_PID_PROFILE, SharedPidAppArmor,
-    refuse_unconfined_shared_pid,
+    refuse_unconfined_rendered,
 };
 use crate::domain::runtime::RuntimeTarget;
 
@@ -14,6 +14,7 @@ const ENABLED: &str = "/sys/module/apparmor/parameters/enabled";
 const LOADED: &str = "/sys/kernel/security/apparmor/profiles";
 const MAX_FILE_BYTES: u64 = 1024 * 1024;
 const MAX_DROP_INS: usize = 256;
+const MAX_COMPOSE_FILE_BYTES: usize = 16 * 1024 * 1024;
 
 /// The profile the containers of Podman `release` get, or `None` when the
 /// kernel does not run AppArmor.
@@ -70,21 +71,16 @@ pub(crate) fn require_shared_pid_confined(target: &RuntimeTarget) -> Result<(), 
     if !rustix::process::geteuid().is_root() || !gives_mm_profile() {
         return Ok(());
     }
-    let mut models = Vec::new();
-    for path in &target.compose_files {
-        let Some(text) = read(path) else {
-            continue;
-        };
-        let mut model = match serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&text) {
-            Ok(model) => model,
-            Err(_) => continue,
-        };
-        if model.apply_merge().is_err() {
-            continue;
-        }
-        models.push(model);
-    }
-    refuse_unconfined_shared_pid(models).map_err(|message| MmError::Remote {
+    let files = target
+        .compose_files
+        .iter()
+        .map(|path| {
+            let bytes = crate::domain::path_policy::read_regular_file(path, MAX_COMPOSE_FILE_BYTES)
+                .unwrap_or_default();
+            (path.clone(), bytes)
+        })
+        .collect::<Vec<_>>();
+    refuse_unconfined_rendered(&files).map_err(|message| MmError::Remote {
         code: "MM_PODMAN_APPARMOR",
         message,
     })
