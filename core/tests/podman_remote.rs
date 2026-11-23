@@ -706,6 +706,55 @@ fn a_file_mm_hands_a_podman_service_names_one_of_its_ids() -> TestResult {
     Ok(())
 }
 
+/// Podman picks the ids of a service whose Compose file sets its own
+/// `userns_mode` only when it creates a container: its files have to read
+/// the same for any owner.
+#[test]
+fn a_file_of_a_service_with_its_own_userns_mode_has_to_hold_for_any_owner() -> TestResult {
+    let files = [
+        ("api.conf", "listen 8080\n"),
+        (
+            "compose.yaml",
+            "services:\n  web:\n    image: example/web\n    volumes: [\"uploads:/data\"]\n  api:\n    image: example/api\n    userns_mode: auto\nvolumes:\n  uploads: {}\n",
+        ),
+    ];
+    let with = |api: &str| USERNS_CONFIG.replace("api: {stack: app}", api);
+    for readable in [
+        "api: {stack: app, secret-files: {token: {secret: api.token}}}",
+        "api: {stack: app, config-files: {/etc/api.conf: {file: api.conf, mode: 0o644}}}",
+    ] {
+        assert!(
+            user_namespace_findings_with(&with(readable), &files)?.is_empty(),
+            "{readable}"
+        );
+    }
+    let owned = with(
+        "api: {stack: app, config-files: {/etc/api.conf: {file: api.conf, mode: 0o600}}, secret-files: {token: {secret: api.token, uid: \"1000\", gid: \"1000\", mode: 0o400}}}",
+    );
+    let found = user_namespace_findings_with(&owned, &files)?;
+    assert_eq!(found.len(), 2, "{found:?}");
+    for part in [
+        "modules.shop.services.api.config-files.\"/etc/api.conf\"",
+        "modules.shop.services.api.secret-files.\"token\"",
+        "sets `userns_mode: auto`, so Podman picks them when it creates a container",
+        "Remove `userns_mode` from service 'api'",
+    ] {
+        assert!(
+            found.iter().any(|finding| finding.contains(part)),
+            "{part}: {found:?}"
+        );
+    }
+    let kept = owned.replace(
+        "api: {stack: app, ",
+        "api: {stack: app, host-user-namespace: its files belong to host users, ",
+    );
+    assert!(user_namespace_findings_with(&kept, &files)?.is_empty());
+    let compose = files[1].1.replace("userns_mode: auto", "userns_mode: host");
+    let host = [files[0], ("compose.yaml", compose.as_str())];
+    assert!(user_namespace_findings_with(&owned, &host)?.is_empty());
+    Ok(())
+}
+
 #[test]
 fn a_service_that_keeps_the_hosts_ids_runs_in_the_hosts_user_namespace() -> TestResult {
     let project = temp_dirs::tempdir()?;

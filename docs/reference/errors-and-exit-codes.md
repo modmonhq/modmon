@@ -70,7 +70,7 @@ Human output prints the corresponding quoted command. Other errors may have
 | `MM_APPLY_STOPPED`                |                       3 | A cluster deployment failed on a node. The message names the node, the service, and its last log lines, and says which nodes were rolled back, left changed, or never reached. |
 | `MM_DEPLOY_RUNNING`               |                       3 | Another deployment holds the environment. The message says who started it and when; `mm deploy status` shows where it is. |
 | `MM_REMOTE_SCHEDULES`             |                       3 | A schedule of a remote environment was to be reconciled, toggled, or started from this machine. Its deployment reconciles the schedules on the host; change them in `mm.yaml` and deploy. |
-| `MM_TIMEOUT`                      |                       3 | Something did not finish, or stopped showing progress, within its time: a step on a host past its deadline, a host that showed no progress for `deploy.progress-timeout`, a request a host did not answer in time, an engine that did not answer. The message names what, where, and for how long; `mm deploy status` shows what still runs. |
+| `MM_TIMEOUT`                      |                       3 | Something did not finish, or stopped showing progress, within its time: a step on a host past its deadline, a host that showed no progress for `deploy.progress-timeout`, an image pull past `deploy.pull-timeout`, a request a host did not answer in time, an engine that did not answer. The message names what, where, and for how long; `mm deploy status` shows what still runs. |
 | `MM_CANCELLED`                    |                       3 | An operation was stopped before it finished: by `mm deploy cancel` (the message names who), or because the client that started it went away or was not heard from for two minutes. Its child processes were ended. |
 | `MM_HOST_BUSY`                    |                       3 | A change to a remote host waited for another operation that is changing the same host and ran out of time. The message says whose operation and since when. Nothing was changed; run the command again. |
 | `MM_TUNNEL_TOKEN_MISSING`         |                       3 | An environment with `ingress.type: cloudflared` cannot plan: the secret its `cloudflared.token` names is not declared, has no value on an ingress node, or does not hold a Cloudflare Tunnel token. The message names the `mm secret set` command. |
@@ -143,7 +143,10 @@ message names the file, the service, and what to change.
 reason, and, on Podman hosts, where each service has [user ids of its
 own](../remote-daemon.md#run-podman-on-the-hosts), for two services with ids
 of their own that mount one volume and for a `uid` or `gid` of a config
-file or secret file outside the service's ids 0 to 65535. A plan on such a
+file or secret file outside the service's ids 0 to 65535, and for a config
+file or secret file that names an owner other than root or a mode not every
+user can read, of a service whose Compose file sets a `userns_mode` other than
+`host`. A plan on such a
 host fails with it when the host has no `mm-services` range in `/etc/subuid`
 (run `mm target setup`), when the range is full, and when a service on a
 shared volume cannot have the ids every other node gives it.

@@ -134,6 +134,8 @@ impl DeploymentService {
             return Ok(Ok(services));
         }
         let runtime_target = stack_runtime_target(plan, target, stack, environments, false);
+        self.pull_images(plan, &runtime_target, Some(&services))
+            .await?;
         // What the step replaces leaves first, as in a stack's apply.
         let others = stack
             .artifact

@@ -81,7 +81,7 @@ pub(super) fn validate_rollout(context: &ValidationContext<'_>, report: &mut Val
     }
 }
 
-/// The environment's `deploy:` keys: its two timeouts and its pinned
+/// The environment's `deploy:` keys: its timeouts and its pinned
 /// release of mm.
 fn validate_deploy_settings(context: &ValidationContext<'_>, report: &mut ValidationReport) {
     let document = context.document;
@@ -97,6 +97,7 @@ fn validate_deploy_settings(context: &ValidationContext<'_>, report: &mut Valida
             DeployConfig::convergence_timeout(deploy),
         ),
         ("progress-timeout", DeployConfig::progress_timeout(deploy)),
+        ("pull-timeout", DeployConfig::pull_timeout(deploy)),
     ] {
         if let Err(problem) = checked {
             report.push(

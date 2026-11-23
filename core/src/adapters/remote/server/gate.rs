@@ -313,8 +313,16 @@ impl RemoteDaemon {
     ) -> Result<T, MmError> {
         // The watch itself is one function for every kind of work.
         let mut outcome = None;
+        let running = pass.running();
         let finished = Box::pin(async {
-            outcome = Some(work.await);
+            outcome = Some(match running {
+                Some(running) => {
+                    let sink: crate::app::ports::DoingSink =
+                        Arc::new(move |doing| running.set_doing(doing));
+                    crate::app::ports::reporting_doing(sink, work).await
+                }
+                None => work.await,
+            });
         });
         self.watch(context, pass, timeout, finished).await?;
         outcome.ok_or_else(|| MmError::State {

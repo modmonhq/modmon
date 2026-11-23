@@ -5,6 +5,7 @@ pub mod engine_containers;
 pub mod engine_logs;
 mod factory;
 mod fake;
+mod image_pull;
 mod ingress_verifier;
 mod inspect;
 pub mod launch_failure;
