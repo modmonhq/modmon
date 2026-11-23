@@ -550,10 +550,9 @@ docker cp "$TMP/borrowed_key" "$(container app-2):/etc/ssh/ssh_host_ed25519_key"
 docker cp "$TMP/borrowed_key.pub" "$(container app-2):/etc/ssh/ssh_host_ed25519_key.pub"
 rm -f "$TMP/borrowed_key" "$TMP/borrowed_key.pub"
 restart_sshd() {
-  # shellcheck disable=SC2016 # expands on the node
-  on "$1" sh -c 'chown root:root /etc/ssh/ssh_host_* && chmod 600 /etc/ssh/ssh_host_*_key && pkill -x sshd
-    for _ in $(seq 1 100); do pgrep -x sshd >/dev/null || exit 0; sleep 0.1; done; exit 1' \
-    || fail "sshd on $1 did not stop within 10s"
+  on "$1" sh -c 'chown root:root /etc/ssh/ssh_host_* && chmod 600 /etc/ssh/ssh_host_*_key && pkill -x sshd'
+  on "$1" bash -c 'for _ in $(seq 1 100); do (exec 3<>/dev/tcp/127.0.0.1/22) 2>/dev/null || exit 0; sleep 0.1; done; exit 1' \
+    || fail "sshd on $1 still answers on port 22 after 10s"
   docker exec -d "$(container "$1")" sh -c '/usr/sbin/sshd -D -e >>/tmp/sshd.log 2>&1'
   on "$1" bash -c 'for _ in $(seq 1 100); do (exec 3<>/dev/tcp/127.0.0.1/22) 2>/dev/null && exit 0; sleep 0.1; done; exit 1' \
     || fail "sshd on $1 does not answer on port 22 within 10s"
