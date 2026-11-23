@@ -38,8 +38,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Processes in a container on a Podman host whose kernel runs AppArmor can
   signal each other again. `mm target setup` installs and loads the
   `mm-containers` profile, Podman's own plus signals and `ptrace (read)`
-  between peers, and points Podman at it; `mm doctor` warns about a host
-  whose containers run under Podman's default profile
+  between the processes a container sees, and points Podman at it. A
+  service that shares the host's or another container's process namespace
+  gets `mm-containers-shared-pid`, Podman's rules unchanged. `mm doctor`
+  warns about a host whose containers run under Podman's default profile
   (`MM_PODMAN_APPARMOR`).
 
 ## [0.1.1] - 2026-11-19

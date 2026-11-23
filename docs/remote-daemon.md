@@ -822,12 +822,26 @@ apparmor_profile = "mm-containers"
 
 The profile is Podman's own with two more rules, `signal (send,receive),`
 and `ptrace (read),`, so the processes of a container can signal each other
-and read each other's `/proc` entries again. A container has a PID namespace
-of its own (mm's guardrails refuse `pid: host`), so it reaches no process
-outside itself. The plan shows the step as `apparmor:` under remote access.
-Setup replaces the profile when a newer mm changes it, and removes the
-drop-in from a host whose kernel does not run AppArmor, where Podman refuses
-any profile.
+and read each other's `/proc` entries again. The rules name no peer, so
+they reach every process the container sees, and a container that sees only
+its own processes reaches nothing else.
+
+A container can also see processes beyond its own: with `pid: host`, which
+the workload guardrails refuse unless the host admin allows `pid-host` for
+the service (see [what a deploy may run](./remote-access.md#what-a-deploy-may-run)), with
+`pid: "container:NAME"`, or with `pid: "service:NAME"` of such a service.
+For those mm keeps Podman's own rules: setup also installs
+`/etc/apparmor.d/mm-containers-shared-pid`, Podman's profile unchanged
+under mm's name, and the Compose overlay gives each such service
+`security_opt: ["apparmor=mm-containers-shared-pid"]` on a host whose
+kernel holds it. Their processes may hit the same stacking problem, as they
+would without mm. A service that sets its own `apparmor=` option keeps it.
+
+The plan lists both profiles under remote access (`apparmor:` in the text
+and `apparmor-profiles` in `--output json`; the cluster plan shows them as
+`apparmor`). Setup replaces a profile when a newer mm changes it, loads one
+the kernel does not hold, and removes the drop-in from a host whose kernel
+does not run AppArmor, where Podman refuses any profile.
 
 Containers that were running before setup keep Podman's profile until they
 are created again, for example by the next deployment that changes them.
@@ -844,8 +858,13 @@ the host up again with `mm target setup plan` and its apply), and an error
 when Podman is pointed at `mm-containers` and the kernel has not loaded it,
 which stops every container from starting (on the node,
 `apparmor_parser --replace /etc/apparmor.d/mm-containers`). It reads the
-profile from `containers.conf` and its drop-ins, so it does not see a
-profile set with `CONTAINERS_CONF` or on a single container.
+profile from `containers.conf` and its drop-ins in the order the host's
+Podman applies them (Podman 5 reads `/usr/share/containers/containers.conf`,
+`/etc/containers/containers.conf` and `/etc/containers/containers.conf.d`;
+Podman 6 also reads the `containers.conf.d` and `containers.rootful.conf.d`
+directories under `/usr/share/containers` and `/etc/containers`). It does
+not see a profile set with `CONTAINERS_CONF`, in the configuration of the
+account `mmd` runs Podman as, or on a single container.
 
 Setup changes nothing for Docker Engine: mm runs its containers in the
 host's user namespace, and the stacking above comes with user namespaces.
