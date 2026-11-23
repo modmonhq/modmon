@@ -527,6 +527,20 @@ mm_as ops target trust cluster | tee "$TMP/trust.log"
 has "$TMP/trust.log" "app-1:" "app-2:" "app-3:"
 if grep -q 'member-' "$TMP/trust.log"; then fail "pins should name nodes"; fi
 
+step "a device address reaches a node elsewhere and still needs the node's recorded host key"
+ip_of() { docker inspect -f "{{(index .NetworkSettings.Networks \"$NETWORK\").IPAddress}}" "$(container "$1")"; }
+mm_as ops target preference set-address production app-1 "$(ip_of app-1)"
+mm_as ops --output json target nodes >"$TMP/nodes-address.json"
+[ "$(json '[(n["host"], n.get("repo_address"), n["state"]) for n in value["nodes"]][0]' <"$TMP/nodes-address.json")" \
+  = "('$(ip_of app-1)', '$(container app-1):22', 'ready')" ] || fail "app-1 should answer at its IP and name its host in targets.yaml"
+mm_as ops target preference set-address production app-1 "$(ip_of app-2)"
+if mm_as ops deploy status >"$TMP/address-other-node.log" 2>&1; then fail "another node's address was accepted for app-1"; fi
+has "$TMP/address-other-node.log" "MM_UNREACHABLE" "($(ip_of app-2):22, this device's address for it)" \
+  "presented an SSH host key that differs from the recorded one"
+mm_as ops target preference unset-address production app-1
+mm_as ops target nodes >"$TMP/nodes-address-unset.log"
+[ "$(grep -c ' ready ' "$TMP/nodes-address-unset.log")" = 3 ] || fail "app-1 should answer at its host again"
+
 step "the mesh: every node's mmd makes its own key and brings up mm0"
 # What cluster setup does on real hosts, by hand: read each node's public
 # key, then hand every node its interface and the other nodes as peers.

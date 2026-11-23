@@ -381,7 +381,26 @@ fn a_device_address_changes_where_ssh_connects_and_not_the_pinned_host()
         .get_args()
         .map(|argument| argument.to_string_lossy().into_owned())
         .collect::<Vec<_>>();
-    assert!(arguments.contains(&"HostKeyAlias=203.0.113.1".to_owned()));
+    for option in [
+        "StrictHostKeyChecking=yes",
+        "UpdateHostKeys=no",
+        "HostKeyAlias=203.0.113.1",
+        "GlobalKnownHostsFile=/dev/null",
+        "UserKnownHostsFile=/known-hosts",
+    ] {
+        assert!(
+            arguments
+                .windows(2)
+                .any(|pair| pair[0] == "-o" && pair[1] == option),
+            "{option}: {arguments:?}"
+        );
+    }
+    assert!(
+        !arguments
+            .iter()
+            .any(|argument| argument.contains("StrictHostKeyChecking=no")
+                || argument.contains("StrictHostKeyChecking=accept-new"))
+    );
     assert!(arguments.windows(2).any(|pair| pair == ["-p", "2222"]));
     assert_eq!(arguments.last().map(String::as_str), Some("relay@fd00::3"));
     let known_hosts = transport.endpoint.pinned_known_hosts()?;
