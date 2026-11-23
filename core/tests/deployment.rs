@@ -3527,6 +3527,45 @@ async fn docker_compose_runtime_secrets_are_staged_applied_reconciled_and_dispos
     Ok(())
 }
 
+/// Docker with `userns-remap` gives containers other ids than the host's:
+/// a secret file given to an entry's uid would be no user's in there.
+#[tokio::test]
+async fn a_secret_file_owner_docker_remaps_away_is_refused_with_what_to_change()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = Fixture::new(false)?;
+    fixture.configure_runtime_secret().await?;
+    fixture.runtime.remap_user_ids.store(true, Ordering::SeqCst);
+    fixture.service.plan(&fixture.selection).await?;
+    let config_path = fixture.project.join(".config/mm.yaml");
+    let config = fs::read_to_string(&config_path)?.replace(
+        "            secret: database.password\n",
+        "            secret: database.password\n            uid: \"1000\"\n            gid: \"1000\"\n            mode: 0o400\n",
+    );
+    fs::write(&config_path, config)?;
+    let error = fixture
+        .service
+        .plan(&fixture.selection)
+        .await
+        .err()
+        .ok_or("a 0400 secret file of uid 1000 was planned under userns-remap")?;
+    assert_eq!(error.code(), "MM_USER_NAMESPACE");
+    let message = error.to_string();
+    for part in [
+        "runs with userns-remap",
+        "secret file database-password of service 'web'",
+        "uid \"0\", gid \"0\" and a mode every user can read",
+        "/etc/docker/daemon.json",
+    ] {
+        assert!(message.contains(part), "{part}: {message}");
+    }
+    fixture
+        .runtime
+        .remap_user_ids
+        .store(false, Ordering::SeqCst);
+    fixture.service.plan(&fixture.selection).await?;
+    Ok(())
+}
+
 /// The user these tests run as, whom a workstation's secret files belong to.
 fn this_user() -> mm::domain::runtime_secret::HostIds {
     mm::domain::runtime_secret::HostIds::unprivileged()
@@ -5482,6 +5521,7 @@ struct FakeRuntime {
     support_direct: AtomicBool,
     report_non_rootless: AtomicBool,
     report_docker: AtomicBool,
+    remap_user_ids: AtomicBool,
     /// Running containers, as (service, id), whose configuration differs
     /// from the files about to be applied.
     outdated: Mutex<Vec<(String, String)>>,
@@ -5677,7 +5717,14 @@ impl RuntimeDriver for FakeRuntime {
             rootless: Some(!self.report_non_rootless.load(Ordering::SeqCst)),
             socket_path: None,
             capabilities,
-            diagnostics: Vec::new(),
+            diagnostics: if self.remap_user_ids.load(Ordering::SeqCst) {
+                vec![mm::domain::diagnostic::Diagnostic::info(
+                    mm::domain::runtime::DOCKER_USERNS_REMAP,
+                    "userns-remap",
+                )]
+            } else {
+                Vec::new()
+            },
         }
     }
 

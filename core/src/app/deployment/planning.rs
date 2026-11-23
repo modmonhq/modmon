@@ -117,6 +117,8 @@ impl DeploymentManager {
             compiled.selection.runtime,
             &environment_review.secret_revisions,
         )?;
+        self.secret_owners_hold(compiled.selection.runtime, &runtime_secret_items)
+            .await?;
         if let Some(required) = environment_review
             .delivery
             .mode
@@ -193,6 +195,44 @@ impl DeploymentManager {
             target_fingerprint,
             current,
             previous_dynamic_config,
+        })
+    }
+
+    /// Refuses secret files whose owner Docker's `userns-remap` hides.
+    async fn secret_owners_hold(
+        &self,
+        runtime: crate::domain::runtime::RuntimeKind,
+        items: &[crate::domain::runtime_secret::RuntimeSecretPlanItem],
+    ) -> Result<(), MmError> {
+        let owned = items
+            .iter()
+            .flat_map(|item| &item.consumers)
+            .filter(|consumer| {
+                !crate::domain::user_namespace::holds_in_any_namespace(
+                    Some(&consumer.uid),
+                    Some(&consumer.gid),
+                    consumer.mode,
+                )
+            })
+            .map(|consumer| {
+                format!(
+                    "secret file {} of service '{}'",
+                    consumer.target, consumer.service
+                )
+            })
+            .collect::<Vec<_>>();
+        if runtime != crate::domain::runtime::RuntimeKind::DockerCompose
+            || owned.is_empty()
+            || !self.runtime.probe().await.remaps_user_ids()
+        {
+            return Ok(());
+        }
+        Err(MmError::Remote {
+            code: "MM_USER_NAMESPACE",
+            message: format!(
+                "Docker on this host runs with userns-remap, so its containers do not have the host's user ids and {} would belong to an id they do not have. Give each of these `secret-files` entries uid \"0\", gid \"0\" and a mode every user can read, such as 0o444, or turn off `userns-remap` in /etc/docker/daemon.json and restart Docker",
+                owned.join(", ")
+            ),
         })
     }
 
