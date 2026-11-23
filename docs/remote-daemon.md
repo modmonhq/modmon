@@ -694,6 +694,17 @@ mm sets it to 0 on each service that has a network namespace of its own
 (not `network_mode: host`, `container:` or `service:`) and does not set it
 under `sysctls`, and the plan lists those services under `ports:`.
 
+Podman before 5.8 splits each argument of an exec-form health check at
+whitespace, so a check such as `["CMD", "node", "-e", "<script with
+spaces>"]` never passes there. `mm config validate` warns about it
+(`MM_HEALTHCHECK_ARGUMENTS`) and gives the same check in shell form, which
+needs `/bin/sh` in the image:
+
+```yaml
+healthcheck:
+  test: ["CMD-SHELL", "node -e 'require(\"http\").get(\"http://127.0.0.1:3000\")'"]
+```
+
 Requirements on each host:
 
 - Podman 5.0 or later: Debian 13, or Ubuntu 25.04 or later.

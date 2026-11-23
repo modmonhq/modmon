@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `mm config validate` warns (`MM_HEALTHCHECK_ARGUMENTS`) about a Compose
+  health check in exec form (`CMD`) with an argument that contains whitespace
+  or is empty, on Podman: Podman before 5.8 splits such an argument, so the
+  check never passes. The warning names the service and file and gives the
+  equivalent `CMD-SHELL` check.
+
 ## [0.1.1] - 2026-11-19
 
 Remote protocol: 1. This release is the baseline: from it on, `mm` and the

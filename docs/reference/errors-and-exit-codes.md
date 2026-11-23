@@ -153,6 +153,12 @@ file belongs to you: the entry names other ids than yours, and they can
 matter, either because they are not root's or because the `mode` lets no
 other user read the file. The default mode `0444` lets every user in the
 container read it. See [file delivery](../secret-delivery.md#file-delivery).
+`MM_HEALTHCHECK_ARGUMENTS` is the warning for a Compose `healthcheck:` whose
+`test` is in exec form (`["CMD", ...]`) with an argument that contains
+whitespace or is empty, in an environment that runs on Podman: Podman before
+5.8 splits such an argument at whitespace, so the check never passes. The help
+gives the same command as a `CMD-SHELL` check, quoted for the shell. See [run
+Podman on the hosts](../remote-daemon.md#run-podman-on-the-hosts).
 `MM_UPDATE_ORDER` is the finding for a service's `update:` that cannot work:
 `order: start-first` on a service that publishes a fixed host port, sets
 `container_name`, runs more than one container, or on Podman sets its own
