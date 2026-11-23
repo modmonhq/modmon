@@ -3,7 +3,9 @@
 use std::io::Read;
 use std::path::Path;
 
-use crate::domain::remote::{ContainerAppArmor, MM_SHARED_PID_PROFILE};
+use crate::domain::remote::{
+    ContainerAppArmor, MM_CONTAINER_PROFILE, MM_SHARED_PID_PROFILE, SharedPidAppArmor,
+};
 
 const ENABLED: &str = "/sys/module/apparmor/parameters/enabled";
 const LOADED: &str = "/sys/kernel/security/apparmor/profiles";
@@ -26,19 +28,38 @@ pub(crate) fn container_apparmor(release: Option<(u32, u32)>) -> Option<Containe
     .filter_map(|path| read(Path::new(path)))
     .collect::<Vec<_>>();
     let profile = ContainerAppArmor::configured_profile(files.iter().map(String::as_str));
-    let loaded = !profile.is_empty()
-        && read(Path::new(LOADED))
-            .is_some_and(|profiles| ContainerAppArmor::is_loaded(&profiles, &profile));
-    Some(ContainerAppArmor { profile, loaded })
+    let profiles = read(Path::new(LOADED)).unwrap_or_default();
+    let loaded = !profile.is_empty() && ContainerAppArmor::is_loaded(&profiles, &profile);
+    let shared_pid_loaded = (profile == MM_CONTAINER_PROFILE)
+        .then(|| ContainerAppArmor::is_loaded(&profiles, MM_SHARED_PID_PROFILE));
+    Some(ContainerAppArmor {
+        profile,
+        loaded,
+        shared_pid_loaded,
+    })
 }
 
-/// Whether the kernel runs AppArmor and holds the profile setup installs
-/// for containers that share a process namespace beyond their own.
+/// How this host confines a container that shares a process namespace
+/// beyond its own: with the shared-pid profile where the kernel holds it,
+/// and not at all when Podman's default is not mm-containers under either
+/// loader.
 #[must_use]
-pub(crate) fn holds_shared_pid_profile() -> bool {
-    read(Path::new(ENABLED)).is_some_and(|enabled| enabled.trim_start().starts_with('Y'))
-        && read(Path::new(LOADED))
-            .is_some_and(|profiles| ContainerAppArmor::is_loaded(&profiles, MM_SHARED_PID_PROFILE))
+pub(crate) fn shared_pid_apparmor() -> SharedPidAppArmor {
+    if !read(Path::new(ENABLED)).is_some_and(|enabled| enabled.trim_start().starts_with('Y')) {
+        return SharedPidAppArmor::NotConfined;
+    }
+    let profiles = read(Path::new(LOADED)).unwrap_or_default();
+    if ContainerAppArmor::is_loaded(&profiles, MM_SHARED_PID_PROFILE) {
+        return SharedPidAppArmor::Pin;
+    }
+    let gives_mm = [None, Some((6, 0))].into_iter().any(|release| {
+        container_apparmor(release).is_some_and(|apparmor| apparmor.profile == MM_CONTAINER_PROFILE)
+    });
+    if gives_mm {
+        SharedPidAppArmor::Missing
+    } else {
+        SharedPidAppArmor::NotConfined
+    }
 }
 
 fn drop_ins(directory: &str) -> Vec<String> {

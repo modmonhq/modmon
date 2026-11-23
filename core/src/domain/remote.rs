@@ -688,7 +688,7 @@ pub use cluster::{
 mod apparmor;
 pub use apparmor::{
     CONTAINER_PROFILES, ContainerAppArmor, MM_CONTAINER_PROFILE, MM_SHARED_PID_PROFILE,
-    apparmor_diagnostic,
+    SharedPidAppArmor, apparmor_diagnostic,
 };
 #[path = "remote/engine.rs"]
 mod engine;

@@ -227,6 +227,7 @@ fn profile(name: &str, loaded: bool) -> Option<ContainerAppArmor> {
     Some(ContainerAppArmor {
         profile: name.to_owned(),
         loaded,
+        shared_pid_loaded: (name == MM_CONTAINER_PROFILE).then_some(true),
     })
 }
 
@@ -279,6 +280,38 @@ fn doctor_warns_about_podmans_default_profile_and_a_profile_that_is_not_loaded()
         ),
         "{found:?}"
     );
+}
+
+#[test]
+fn doctor_warns_when_the_shared_pid_profile_is_not_loaded() {
+    let missing = Some(ContainerAppArmor {
+        profile: MM_CONTAINER_PROFILE.to_owned(),
+        loaded: true,
+        shared_pid_loaded: Some(false),
+    });
+    let found = engine_diagnostics(&[node(missing)]);
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].code, "MM_PODMAN_APPARMOR");
+    assert_eq!(found[0].severity, Severity::Warning);
+    assert!(
+        found[0]
+            .message
+            .contains("'app-1' has not loaded the AppArmor profile mm-containers-shared-pid"),
+        "{found:?}"
+    );
+    assert!(
+        found[0]
+            .help
+            .as_deref()
+            .is_some_and(|help| help.contains("mm target setup plan")),
+        "{found:?}"
+    );
+    let earlier = Some(ContainerAppArmor {
+        profile: MM_CONTAINER_PROFILE.to_owned(),
+        loaded: true,
+        shared_pid_loaded: None,
+    });
+    assert!(engine_diagnostics(&[node(earlier)]).is_empty());
 }
 
 #[test]

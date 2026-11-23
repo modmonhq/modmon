@@ -18,6 +18,7 @@ use mm::app::ports::{ProjectDocumentStore, RuntimeSecretDelivery, ServiceUserIds
 use mm::app::{StackManager, WorkspaceSelection};
 use mm::domain::operation::OperationId;
 use mm::domain::placement::NodeScope;
+use mm::domain::remote::SharedPidAppArmor;
 use mm::domain::runtime::RuntimeKind;
 use mm::domain::runtime_secret::{
     RuntimeSecretConsumer, RuntimeSecretMaterial, RuntimeSecretPlan, RuntimeSecretPlanItem,
@@ -533,9 +534,9 @@ fn each_service_runs_in_its_own_fixed_namespace_and_its_files_are_its_own() -> T
     Ok(())
 }
 
-/// A host whose kernel holds mm's AppArmor profiles.
+/// A host that confines containers sharing a process namespace as `.1` says.
 #[derive(Debug)]
-struct ConfinedHost(Arc<FilesystemServiceUserIds>);
+struct ConfinedHost(Arc<FilesystemServiceUserIds>, SharedPidAppArmor);
 
 impl ServiceUserIds for ConfinedHost {
     fn reserve(
@@ -552,8 +553,8 @@ impl ServiceUserIds for ConfinedHost {
         self.0.release(owners)
     }
 
-    fn confines_shared_pid(&self) -> bool {
-        true
+    fn shared_pid_apparmor(&self) -> SharedPidAppArmor {
+        self.1
     }
 }
 
@@ -579,6 +580,9 @@ fn a_service_that_shares_another_process_namespace_keeps_podmans_apparmor_rules(
   joined:
     image: example/joined
     pid: \"container:elsewhere\"
+  inherited:
+    extends: joined
+    image: example/inherited
   chosen:
     image: example/chosen
     pid: host
@@ -609,7 +613,7 @@ fn a_service_that_shares_another_process_namespace_keeps_podmans_apparmor_rules(
         &root,
         &temporary.path().join("confined"),
         "app-1",
-        Arc::new(ConfinedHost(host.ids.clone())),
+        Arc::new(ConfinedHost(host.ids.clone(), SharedPidAppArmor::Pin)),
     )?;
     let overlay = overlay_of(&confined)?;
     let options = |service: &str| {
@@ -626,7 +630,7 @@ fn a_service_that_shares_another_process_namespace_keeps_podmans_apparmor_rules(
             .unwrap_or_default()
     };
     let pinned = ["apparmor=mm-containers-shared-pid".to_owned()];
-    for service in ["monitor", "sidecar", "joined"] {
+    for service in ["monitor", "sidecar", "joined", "inherited"] {
         assert_eq!(options(service), pinned, "{service}: {overlay:?}");
     }
     for service in ["web", "peer", "chosen"] {
@@ -642,7 +646,51 @@ fn a_service_that_shares_another_process_namespace_keeps_podmans_apparmor_rules(
     let overlay = overlay_of(&unconfined)?;
     assert!(
         !serde_yaml_ng::to_string(&overlay)?.contains("mm-containers-shared-pid"),
-        "a host without the profile: {overlay:?}"
+        "a host without AppArmor: {overlay:?}"
+    );
+
+    let missing = compile_on(
+        &root,
+        &temporary.path().join("missing"),
+        "app-1",
+        Arc::new(ConfinedHost(host.ids.clone(), SharedPidAppArmor::Missing)),
+    )
+    .err()
+    .ok_or("a host that would give monitor mm-containers")?;
+    assert_eq!(missing.code(), "MM_PODMAN_APPARMOR");
+    let message = missing.to_string();
+    assert!(
+        message.contains("service 'inherited'")
+            && message.contains("`pid: container:elsewhere`")
+            && message.contains("has not loaded mm-containers-shared-pid")
+            && message.contains("`mm target setup plan`"),
+        "{message}"
+    );
+
+    let compose = root.join("compose.yaml");
+    let text = fs::read_to_string(&compose)?;
+    fs::write(
+        &compose,
+        text.replace(
+            "security_opt: [\"apparmor=custom\"]",
+            "security_opt: [\"apparmor:mm-containers\"]",
+        ),
+    )?;
+    let wide = compile_on(
+        &root,
+        &temporary.path().join("wide"),
+        "app-1",
+        Arc::new(ConfinedHost(host.ids.clone(), SharedPidAppArmor::Pin)),
+    )
+    .err()
+    .ok_or("a pid-sharing service that chooses mm-containers")?;
+    assert_eq!(wide.code(), "MM_PODMAN_APPARMOR");
+    let message = wide.to_string();
+    assert!(
+        message.contains("service 'chosen'")
+            && message.contains("apparmor=mm-containers")
+            && message.contains("Remove the option"),
+        "{message}"
     );
     Ok(())
 }

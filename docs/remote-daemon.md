@@ -834,8 +834,15 @@ For those mm keeps Podman's own rules: setup also installs
 `/etc/apparmor.d/mm-containers-shared-pid`, Podman's profile unchanged
 under mm's name, and the Compose overlay gives each such service
 `security_opt: ["apparmor=mm-containers-shared-pid"]` on a host whose
-kernel holds it. Their processes may hit the same stacking problem, as they
-would without mm. A service that sets its own `apparmor=` option keeps it.
+kernel holds it, also when the `pid` comes through `extends`. Their
+processes may hit the same stacking problem, as they would without mm. A
+service that sets its own `apparmor=` option keeps it, except
+`apparmor=mm-containers`, which mm refuses on such a service
+(`MM_PODMAN_APPARMOR`). On a host whose containers get `mm-containers` but
+whose kernel has not loaded `mm-containers-shared-pid`, for example one set
+up by an earlier mm, mm refuses to plan such a service and names
+`mm target setup plan` as the fix. Jobs of a service run from the same
+Compose files as the service, so they get the same profile.
 
 The plan lists both profiles under remote access (`apparmor:` in the text
 and `apparmor-profiles` in `--output json`; the cluster plan shows them as
@@ -857,7 +864,9 @@ reports `MM_PODMAN_APPARMOR`: a warning when it is Podman's default (set
 the host up again with `mm target setup plan` and its apply), and an error
 when Podman is pointed at `mm-containers` and the kernel has not loaded it,
 which stops every container from starting (on the node,
-`apparmor_parser --replace /etc/apparmor.d/mm-containers`). It reads the
+`apparmor_parser --replace /etc/apparmor.d/mm-containers`). It also warns
+when the kernel has not loaded `mm-containers-shared-pid` on a host whose
+containers get `mm-containers`. It reads the
 profile from `containers.conf` and its drop-ins in the order the host's
 Podman applies them (Podman 5 reads `/usr/share/containers/containers.conf`,
 `/etc/containers/containers.conf` and `/etc/containers/containers.conf.d`;

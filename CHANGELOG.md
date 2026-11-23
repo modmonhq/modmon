@@ -54,7 +54,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `mm-containers` profile, Podman's own plus signals and `ptrace (read)`
   between the processes a container sees, and points Podman at it. A
   service that shares the host's or another container's process namespace
-  gets `mm-containers-shared-pid`, Podman's rules unchanged. `mm doctor`
+  gets `mm-containers-shared-pid`, Podman's rules unchanged, and a plan
+  that would run such a service under `mm-containers` is refused. `mm doctor`
   warns about a host whose containers run under Podman's default profile
   (`MM_PODMAN_APPARMOR`).
 

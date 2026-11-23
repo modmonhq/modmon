@@ -191,8 +191,12 @@ impl ServiceUserIds for FilesystemServiceUserIds {
         Ok(())
     }
 
-    fn confines_shared_pid(&self) -> bool {
-        self.apparmor && crate::adapters::runtime::podman_apparmor::holds_shared_pid_profile()
+    fn shared_pid_apparmor(&self) -> crate::domain::remote::SharedPidAppArmor {
+        if self.apparmor {
+            crate::adapters::runtime::podman_apparmor::shared_pid_apparmor()
+        } else {
+            crate::domain::remote::SharedPidAppArmor::NotConfined
+        }
     }
 }
 

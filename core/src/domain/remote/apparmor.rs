@@ -28,6 +28,23 @@ pub struct ContainerAppArmor {
     pub profile: String,
     /// Whether the kernel holds a profile of that name.
     pub loaded: bool,
+    /// Whether the kernel holds `mm-containers-shared-pid`, asked where
+    /// Podman gives containers mm-containers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shared_pid_loaded: Option<bool>,
+}
+
+/// How a host confines a container that shares a process namespace beyond
+/// its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SharedPidAppArmor {
+    /// AppArmor does not run, or Podman's default is not mm-containers.
+    NotConfined,
+    /// The kernel holds `mm-containers-shared-pid`: give it to the service.
+    Pin,
+    /// Podman's default is mm-containers and the kernel lacks the shared-pid
+    /// profile: such a service would run under mm-containers.
+    Missing,
 }
 
 impl ContainerAppArmor {
@@ -160,6 +177,19 @@ pub fn apparmor_diagnostic(node: &str, apparmor: &ContainerAppArmor) -> Option<D
             )
             .with_help(
                 "on the node, `apparmor_parser --replace /etc/apparmor.d/mm-containers`; `mm target setup plan` and its apply install and load it",
+            ),
+        );
+    }
+    if apparmor.profile == MM_CONTAINER_PROFILE && apparmor.shared_pid_loaded == Some(false) {
+        return Some(
+            Diagnostic::warning(
+                "MM_PODMAN_APPARMOR",
+                format!(
+                    "'{node}' has not loaded the AppArmor profile {MM_SHARED_PID_PROFILE}, so mm refuses to plan a service there that sees processes beyond its own containers (`pid: host`, `container:` or `service:`)"
+                ),
+            )
+            .with_help(
+                "run `mm target setup plan` and its apply, which install and load it; on the node, `apparmor_parser --replace /etc/apparmor.d/mm-containers-shared-pid` loads an installed one",
             ),
         );
     }

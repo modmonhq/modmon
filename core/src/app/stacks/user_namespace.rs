@@ -127,10 +127,10 @@ impl<'a> ServiceHost<'a> {
             None => BTreeSet::new(),
         };
         let shared_pid = match self.user_ids {
-            Some(ids) if ids.confines_shared_pid() => {
-                super::shared_pid::services_sharing_pid(sources)?
+            Some(ids) => {
+                super::shared_pid::services_sharing_pid(sources, ids.shared_pid_apparmor())?
             }
-            _ => BTreeSet::new(),
+            None => BTreeSet::new(),
         };
         Ok(StackHost {
             user_ids,
