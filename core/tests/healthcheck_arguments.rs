@@ -46,10 +46,20 @@ const COMPOSE: &str = r#"services:
       test: ["CMD", "sh", "-c", "pg_isready -U app"]
 "#;
 
+const OVERRIDE: &str = r#"services:
+  api:
+    healthcheck:
+      test: ["CMD", "sh", "-c", "${CHECK}"]
+  probe:
+    healthcheck:
+      disable: true
+"#;
+
 fn write_project(root: &Path) -> TestResult {
     fs::create_dir_all(root.join(".config"))?;
     fs::create_dir_all(root.join("app"))?;
     fs::write(root.join("compose.yaml"), COMPOSE)?;
+    fs::write(root.join("compose.override.yaml"), OVERRIDE)?;
     fs::write(
         root.join(".config/mm.yaml"),
         "schema-version: 1
@@ -57,7 +67,7 @@ project: {id: 019c527b-6242-7b43-bfd4-bd60e27c1de3, name: shop, development-envi
 default-environment: local
 target: local
 runtime: {driver: podman-compose}
-stacks: {app: {files: [compose.yaml]}}
+stacks: {app: {files: [compose.yaml, compose.override.yaml]}}
 modules:
   app:
     path: app
@@ -153,11 +163,15 @@ fn config_validate_names_each_podman_cmd_check_with_whitespace_arguments() -> Te
         local[0].message
     );
     assert!(
-        local[1]
-            .message
-            .starts_with("services.probe.healthcheck.test"),
+        local[1].message.starts_with(
+            "services.api.healthcheck.test in compose.override.yaml (stack 'app') is a `CMD` check with an argument from `${CHECK}`"
+        ),
         "{}",
         local[1].message
+    );
+    assert_eq!(
+        local[1].path.as_deref(),
+        Some(project.join("compose.override.yaml").as_path())
     );
     assert_eq!(local[0].severity, Severity::Warning);
     assert_eq!(
@@ -173,7 +187,7 @@ fn config_validate_names_each_podman_cmd_check_with_whitespace_arguments() -> Te
     assert_eq!(
         local[1].help.as_deref(),
         Some(
-            r#"write `test: ["CMD-SHELL", "check ''"]` (it runs with /bin/sh in the container), or run Podman 5.8 or later"#
+            r#"write `test: ["CMD-SHELL", "sh -c '${CHECK}'"]` (it runs with /bin/sh in the container), or run Podman 5.8 or later"#
         )
     );
 

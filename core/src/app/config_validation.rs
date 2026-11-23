@@ -65,7 +65,9 @@ use environment_ingress::validate_environment_ingress;
 use environments::*;
 use hardening::validate_hardening;
 use health::validate_health;
-pub(crate) use healthcheck_arguments::validate_healthcheck_arguments;
+pub(crate) use healthcheck_arguments::{
+    healthcheck_argument_diagnostics, podman_checks, validate_healthcheck_arguments,
+};
 use host_network::validate_host_network;
 use ingress_mounts::*;
 use job_services::validate_job_services;
