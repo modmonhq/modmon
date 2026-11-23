@@ -72,6 +72,7 @@ impl FakeProcess {
             "mmd.service",
             "mm-mesh.service",
             "mm-network.service",
+            "mm-containers",
         ] {
             if !files.join(name).is_file() {
                 return Err(MmError::State {

@@ -17,6 +17,7 @@ const SSHD_DROP_IN: &str = include_str!("../../../../../packaging/sshd/90-mm-rel
 const MMD_SERVICE: &str = include_str!("../../../../../packaging/systemd/mmd.service");
 const MESH_SERVICE: &str = include_str!("../../../../../packaging/systemd/mm-mesh.service");
 const NETWORK_SERVICE: &str = include_str!("../../../../../packaging/systemd/mm-network.service");
+const CONTAINER_PROFILE: &str = include_str!("../../../../../packaging/apparmor/mm-containers");
 const MAX_REPORT_BYTES: usize = 64 * 1024;
 const COPY_BUFFER_BYTES: usize = 64 * 1024;
 
@@ -57,6 +58,7 @@ pub(super) fn stage(
         ("mmd.service", MMD_SERVICE),
         ("mm-mesh.service", MESH_SERVICE),
         ("mm-network.service", NETWORK_SERVICE),
+        ("mm-containers", CONTAINER_PROFILE),
         ("access.yml", ACCESS_PLAYBOOK),
     ] {
         super::write_private_file(&directory.join(name), contents.as_bytes())?;

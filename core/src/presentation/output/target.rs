@@ -261,6 +261,15 @@ pub(crate) fn write_target_bootstrap_plan(
     }
     if let Some(access) = &plan.access {
         write_bootstrap_access(&mut writer, access)?;
+        if plan.selected_runtime == crate::domain::runtime::RuntimeKind::PodmanCompose
+            && !plan.rootless
+        {
+            writeln!(
+                writer,
+                "    apparmor:        /etc/apparmor.d/mm-containers for Podman's containers, where the kernel runs AppArmor"
+            )
+            .map_err(output_error)?;
+        }
     }
     writeln!(
         writer,
