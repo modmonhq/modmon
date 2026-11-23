@@ -21,7 +21,10 @@ impl RemoteEnvironment {
     async fn mesh_node(&self, node: &RemoteNode) -> MeshNodeReport {
         let mut report = MeshNodeReport {
             name: self.name_of(node).to_owned(),
-            host: node.host.clone(),
+            host: node
+                .repo_address
+                .as_ref()
+                .map_or_else(|| node.host.clone(), |(host, _)| host.clone()),
             reachable: true,
             problem: None,
             status: None,

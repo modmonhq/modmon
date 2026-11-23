@@ -4898,6 +4898,8 @@ set edit:completion:arg-completer[mm] = {|@words|
             cand unset-runtime 'Remove a private runtime preference'
             cand set-target 'Persist a private target preference'
             cand unset-target 'Remove a private target preference'
+            cand set-address 'Connect this device to a cluster node at an address of its own, such as a VPN address, instead of the node''s host in targets.yaml. The node''s pinned host key and daemon identity must still match'
+            cand unset-address 'Connect to a cluster node at its host in targets.yaml again'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
         &'mm;target;preference;show'= {
@@ -4960,12 +4962,40 @@ set edit:completion:arg-completer[mm] = {|@words|
             cand -V 'Print version'
             cand --version 'Print version'
         }
+        &'mm;target;preference;set-address'= {
+            cand --root 'Project root or a path inside the project'
+            cand -e 'Environment to operate on (overrides MM_ENVIRONMENT and default-environment)'
+            cand --environment 'Environment to operate on (overrides MM_ENVIRONMENT and default-environment)'
+            cand --runtime 'Ephemeral runtime adapter for this invocation only'
+            cand --target 'Ephemeral target name for this invocation only'
+            cand --mm-home 'Directory containing mm''s local state and target catalog'
+            cand --output 'Human text or machine-readable JSON. JSON errors stay JSON'
+            cand -h 'Print help'
+            cand --help 'Print help'
+            cand -V 'Print version'
+            cand --version 'Print version'
+        }
+        &'mm;target;preference;unset-address'= {
+            cand --root 'Project root or a path inside the project'
+            cand -e 'Environment to operate on (overrides MM_ENVIRONMENT and default-environment)'
+            cand --environment 'Environment to operate on (overrides MM_ENVIRONMENT and default-environment)'
+            cand --runtime 'Ephemeral runtime adapter for this invocation only'
+            cand --target 'Ephemeral target name for this invocation only'
+            cand --mm-home 'Directory containing mm''s local state and target catalog'
+            cand --output 'Human text or machine-readable JSON. JSON errors stay JSON'
+            cand -h 'Print help'
+            cand --help 'Print help'
+            cand -V 'Print version'
+            cand --version 'Print version'
+        }
         &'mm;target;preference;help'= {
             cand show 'Show resolved private runtime and target preferences'
             cand set-runtime 'Persist a private runtime preference'
             cand unset-runtime 'Remove a private runtime preference'
             cand set-target 'Persist a private target preference'
             cand unset-target 'Remove a private target preference'
+            cand set-address 'Connect this device to a cluster node at an address of its own, such as a VPN address, instead of the node''s host in targets.yaml. The node''s pinned host key and daemon identity must still match'
+            cand unset-address 'Connect to a cluster node at its host in targets.yaml again'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
         &'mm;target;preference;help;show'= {
@@ -4977,6 +5007,10 @@ set edit:completion:arg-completer[mm] = {|@words|
         &'mm;target;preference;help;set-target'= {
         }
         &'mm;target;preference;help;unset-target'= {
+        }
+        &'mm;target;preference;help;set-address'= {
+        }
+        &'mm;target;preference;help;unset-address'= {
         }
         &'mm;target;preference;help;help'= {
         }
@@ -5242,6 +5276,8 @@ set edit:completion:arg-completer[mm] = {|@words|
             cand unset-runtime 'Remove a private runtime preference'
             cand set-target 'Persist a private target preference'
             cand unset-target 'Remove a private target preference'
+            cand set-address 'Connect this device to a cluster node at an address of its own, such as a VPN address, instead of the node''s host in targets.yaml. The node''s pinned host key and daemon identity must still match'
+            cand unset-address 'Connect to a cluster node at its host in targets.yaml again'
         }
         &'mm;target;help;preference;show'= {
         }
@@ -5252,6 +5288,10 @@ set edit:completion:arg-completer[mm] = {|@words|
         &'mm;target;help;preference;set-target'= {
         }
         &'mm;target;help;preference;unset-target'= {
+        }
+        &'mm;target;help;preference;set-address'= {
+        }
+        &'mm;target;help;preference;unset-address'= {
         }
         &'mm;target;help;setup'= {
             cand plan 'Produce a deterministic target setup plan. For a cluster target (`nodes:`), the plan also scans each node''s SSH host key'
@@ -6219,6 +6259,8 @@ set edit:completion:arg-completer[mm] = {|@words|
             cand unset-runtime 'Remove a private runtime preference'
             cand set-target 'Persist a private target preference'
             cand unset-target 'Remove a private target preference'
+            cand set-address 'Connect this device to a cluster node at an address of its own, such as a VPN address, instead of the node''s host in targets.yaml. The node''s pinned host key and daemon identity must still match'
+            cand unset-address 'Connect to a cluster node at its host in targets.yaml again'
         }
         &'mm;help;target;preference;show'= {
         }
@@ -6229,6 +6271,10 @@ set edit:completion:arg-completer[mm] = {|@words|
         &'mm;help;target;preference;set-target'= {
         }
         &'mm;help;target;preference;unset-target'= {
+        }
+        &'mm;help;target;preference;set-address'= {
+        }
+        &'mm;help;target;preference;unset-address'= {
         }
         &'mm;help;target;setup'= {
             cand plan 'Produce a deterministic target setup plan. For a cluster target (`nodes:`), the plan also scans each node''s SSH host key'
