@@ -400,7 +400,10 @@ than public build arguments.
 
 mm attempts to restore the previous successful stacks and routes. An interrupted
 deployment is checked again on the next apply. Use the same target and runtime
-as the interrupted operation.
+as the interrupted operation. A first deployment has no previous stacks: when
+one of its stacks fails, what it started keeps running for you to inspect, and
+the next deployment applies over it. See
+[if apply fails](plans-and-apply.md#if-apply-fails).
 
 Start with `mm doctor` and `mm service status`. Fix the reported problem, then
 review a new deployment plan. Rollback is not guaranteed; if it fails, the error
