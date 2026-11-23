@@ -38,6 +38,14 @@ pub struct GuardrailFinding {
     pub detail: String,
 }
 
+impl GuardrailFinding {
+    /// Whether a host exception can allow this finding.
+    #[must_use]
+    pub fn grantable(&self) -> bool {
+        self.feature != namespaces::CONTAINER_JOIN
+    }
+}
+
 impl std::fmt::Display for GuardrailFinding {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -49,8 +57,8 @@ impl std::fmt::Display for GuardrailFinding {
 }
 
 /// Findings for the services a project checkout runs in `environment`,
-/// minus host exceptions. Each Compose file is checked on its own: merging
-/// files only adds.
+/// minus host exceptions. Each Compose file is checked on its own, as
+/// merging files only adds, and `service:` joins across all of them.
 pub fn check_project(
     document: &crate::domain::config::ConfigDocument,
     environment: &str,
@@ -79,18 +87,19 @@ fn project_findings(
                     services.remove(left_out.service.as_str());
                 }
             }
-            sources.push(compose);
+            sources.push((file.display().to_string(), compose));
         }
-        let runs_a_service = sources.iter().any(|compose| {
+        let runs_a_service = sources.iter().any(|(_, compose)| {
             compose
                 .get("services")
                 .and_then(Value::as_mapping)
                 .is_some_and(|services| !services.is_empty())
         });
         if runs_a_service {
-            for compose in &sources {
-                findings.extend(compose_findings(stack, compose, &document.root));
+            for (file, compose) in &sources {
+                findings.extend(compose_findings(stack, file, compose, &document.root));
             }
+            namespaces::check_joins(stack, &sources, &mut findings);
         }
     }
     Ok(findings)
@@ -125,19 +134,27 @@ fn read_compose(path: &Path) -> Result<Mapping, crate::domain::error::MmError> {
 
 /// Whether a host exception covers `finding`.
 fn allows(allowed: &[GuardrailException], finding: &GuardrailFinding) -> bool {
-    allowed.iter().any(|exception| {
-        exception.service == finding.subject && exception.features.contains(&finding.feature)
-    })
+    finding.grantable()
+        && allowed.iter().any(|exception| {
+            exception.service == finding.subject && exception.features.contains(&finding.feature)
+        })
 }
 
-fn compose_findings(stack: &str, compose: &Mapping, project_root: &Path) -> Vec<GuardrailFinding> {
+fn compose_findings(
+    stack: &str,
+    file: &str,
+    compose: &Mapping,
+    project_root: &Path,
+) -> Vec<GuardrailFinding> {
     let mut findings = Vec::new();
     if let Some(services) = compose.get("services").and_then(Value::as_mapping) {
         for (name, service) in services {
             let (Some(name), Some(service)) = (name.as_str(), service.as_mapping()) else {
                 continue;
             };
-            check_service(&format!("{stack}/{name}"), service, &mut findings);
+            let subject = format!("{stack}/{name}");
+            check_service(&subject, service, &mut findings);
+            namespaces::check_service(&subject, file, service, &mut findings);
         }
     }
     check_project_resources(stack, compose, project_root, &mut findings);
@@ -191,18 +208,6 @@ fn check_service(subject: &str, service: &Mapping, findings: &mut Vec<GuardrailF
             "devices",
             "deploy.resources.reservations.devices is set".to_owned(),
         );
-    }
-    for (key, feature) in [
-        ("pid", "pid-host"),
-        ("ipc", "ipc-host"),
-        ("uts", "uts-host"),
-        ("userns_mode", "userns-host"),
-        ("cgroup", "cgroup-host"),
-        ("network_mode", "network-host"),
-    ] {
-        if service.get(key).and_then(Value::as_str) == Some("host") {
-            push(findings, subject, feature, format!("{key}: host"));
-        }
     }
     if service.get("cgroup_parent").is_some() {
         push(
@@ -372,6 +377,7 @@ fn is_empty(value: &Value) -> bool {
     }
 }
 
+mod namespaces;
 mod review;
 pub(super) use review::on_local_target;
 pub use review::remote_guardrail_diagnostics;

@@ -47,6 +47,10 @@ pub fn remote_guardrail_diagnostics(
                     )
                     .at_path(*path)
                 }
+                _ if !finding.grantable() => refused(document, environment, &finding)
+                    .with_help(
+                        "no host exception allows this; join a service of the same stack with `service:<service>`",
+                    ),
                 Some((path, _)) => refused(document, environment, &finding).with_help(format!(
                     "drop the feature, or allow it for {} under this project's `allow` in {}",
                     finding.subject,
