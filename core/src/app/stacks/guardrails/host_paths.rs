@@ -22,16 +22,13 @@ struct Mount {
     source: String,
     written: String,
     read_only: bool,
+    recursive_read_only: bool,
     propagation: Option<String>,
     relabels: bool,
     /// What makes the entry's effect unclear or unsafe, as the change to
     /// make.
     problem: Option<String>,
 }
-
-const PROPAGATIONS: [&str; 6] = [
-    "shared", "rshared", "slave", "rslave", "private", "rprivate",
-];
 
 impl HostBind {
     /// Why no host exception can allow the mount, as the change to make.
@@ -40,9 +37,20 @@ impl HostBind {
         if let Some(problem) = &mount.problem {
             Some(problem.clone())
         } else if !mount.read_only {
-            Some("writable; add `:ro`, or `read_only: true` in the long syntax".to_owned())
-        } else if matches!(mount.propagation.as_deref(), Some("shared" | "rshared")) {
-            Some("with shared propagation; use `rslave`, or leave propagation out".to_owned())
+            Some("writable; add `read_only: true`".to_owned())
+        } else if !mount.recursive_read_only {
+            Some(
+                "without `bind.recursive: readonly`, so the mounts under it stay writable; add it"
+                    .to_owned(),
+            )
+        } else if let Some(propagation) = mount
+            .propagation
+            .as_deref()
+            .filter(|propagation| !matches!(*propagation, "private" | "rprivate"))
+        {
+            Some(format!(
+                "with `{propagation}` propagation; leave propagation out"
+            ))
         } else if mount.relabels {
             Some("with an SELinux relabel; remove `z` or `Z`".to_owned())
         } else {
@@ -88,28 +96,17 @@ fn short_bind(text: &str) -> Option<Mount> {
     let mut parts = text.splitn(3, ':');
     let source = parts.next()?;
     parts.next()?;
-    let options = parts
-        .next()
-        .unwrap_or_default()
-        .split(',')
-        .collect::<Vec<_>>();
-    let access = options
-        .iter()
-        .filter(|option| matches!(**option, "ro" | "rw"))
-        .count();
-    let propagations = options
-        .iter()
-        .filter(|option| PROPAGATIONS.contains(option))
-        .collect::<Vec<_>>();
     Some(Mount {
         source: source.to_owned(),
         written: text.to_owned(),
-        read_only: options.contains(&"ro"),
-        propagation: propagations.first().map(|option| (**option).to_owned()),
-        relabels: options.iter().any(|option| matches!(*option, "z" | "Z")),
-        problem: (access > 1 || propagations.len() > 1).then(|| {
-            "with more than one access or propagation option, where the last wins; write each once".to_owned()
-        }),
+        read_only: false,
+        recursive_read_only: false,
+        propagation: None,
+        relabels: false,
+        problem: Some(
+            "in the short syntax, which cannot mount it recursively read-only; write it in the long syntax with `read_only: true` and `bind.recursive: readonly`"
+                .to_owned(),
+        ),
     })
 }
 
@@ -129,18 +126,18 @@ fn long_bind(long: &Mapping) -> Option<Mount> {
     let recursive = bind
         .and_then(|bind| bind.get("recursive"))
         .map(super::value_text);
+    let recursive_read_only = recursive.as_deref() == Some("readonly");
     Some(Mount {
         written: format!("{source}:{target}"),
         source,
         read_only,
+        recursive_read_only,
         propagation: text(bind.and_then(|bind| bind.get("propagation"))),
         relabels: text(bind.and_then(|bind| bind.get("selinux")))
             .is_some_and(|label| matches!(label.as_str(), "z" | "Z")),
         problem: recursive
             .filter(|recursive| recursive != "readonly")
-            .map(|recursive| {
-                format!("with `bind.recursive: {recursive}`; leave it out, or write `readonly`")
-            }),
+            .map(|recursive| format!("with `bind.recursive: {recursive}`; write `readonly`")),
     })
 }
 

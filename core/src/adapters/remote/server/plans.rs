@@ -68,7 +68,7 @@ impl RemoteDaemon {
             ),
             RemotePlanKind::TeamSync => None,
         };
-        refuse_unscoped_names(&document, &scope.environment, deployment.as_ref(), &allow)?;
+        refuse_after_plan(&document, scope, deployment.as_ref(), &allow)?;
         let access_hash = access.canonical_hash().map_err(|message| MmError::State { message })?;
         let deployment_hash = match (kind, &deployment) {
             (RemotePlanKind::TeamSync, _) => access_hash.clone(),
@@ -625,22 +625,26 @@ impl RemoteDaemon {
 /// A commit checked out for one environment: where, the access record it
 /// replaces, and the reconciled change.
 /// Refuses a deployment whose volume or network `name:` is outside its
-/// stack's Compose project name here.
-fn refuse_unscoped_names(
+/// stack's Compose project name here, or that mounts a host path on Podman.
+fn refuse_after_plan(
     document: &crate::domain::config::ConfigDocument,
-    environment: &str,
+    scope: &crate::domain::remote::RemoteScope,
     deployment: Option<&crate::domain::deployment::DeploymentPlan>,
     allow: &[crate::domain::host_policy::GuardrailException],
 ) -> Result<(), MmError> {
     let Some(plan) = deployment else {
         return Ok(());
     };
+    let environment = &scope.environment;
     let names = plan
         .stacks
         .iter()
         .map(|stack| (stack.stack.clone(), stack.compose_project_name.clone()))
         .collect();
-    let findings = crate::app::named_resource_guardrails(document, environment, &names, allow)?;
+    let mut findings = crate::app::named_resource_guardrails(document, environment, &names, allow)?;
+    if scope.runtime == crate::domain::runtime::RuntimeKind::PodmanCompose {
+        findings.extend(crate::app::unsupported_host_path_guardrails(document, environment, "Podman")?);
+    }
     refuse_findings(environment, &findings)
 }
 

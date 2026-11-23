@@ -92,28 +92,46 @@ pub fn check_named_resources(
     project_names: &std::collections::BTreeMap<String, String>,
     allowed: &[GuardrailException],
 ) -> Result<Vec<GuardrailFinding>, crate::domain::error::MmError> {
-    let mut findings = project_findings(document, environment)?;
-    findings.retain(|finding| {
-        let Some(name) = &finding.resource_name else {
-            return false;
-        };
-        let stack = finding.subject.split('/').next().unwrap_or_default();
-        project_names
-            .get(stack)
-            .is_some_and(|project| name != project && !name.starts_with(&format!("{project}_")))
-            && !allows(allowed, finding)
-    });
-    for finding in &mut findings {
-        let project = project_names
-            .get(finding.subject.split('/').next().unwrap_or_default())
-            .cloned()
-            .unwrap_or_default();
-        finding.detail = format!(
-            "{} is outside this stack's Compose project `{project}`; leaving `name:` out makes Compose create a new, empty one, so to keep an existing volume's data a host admin allows {} for {}",
-            finding.detail, finding.feature, finding.subject
-        );
-    }
-    Ok(findings)
+    Ok(project_findings(document, environment)?
+        .into_iter()
+        .filter_map(|mut finding| {
+            let name = finding.resource_name.as_deref()?;
+            let (stack, _) = finding.subject.split_once('/')?;
+            let project = project_names.get(stack)?;
+            if name == project
+                || name.starts_with(&format!("{project}_"))
+                || allows(allowed, &finding)
+            {
+                return None;
+            }
+            finding.detail = format!(
+                "{} is outside this stack's Compose project `{project}`; leaving `name:` out makes Compose create a new, empty one, so to keep an existing volume's data a host admin allows {} for {}",
+                finding.detail, finding.feature, finding.subject
+            );
+            Some(finding)
+        })
+        .collect())
+}
+
+/// Each host path a service bind-mounts in `environment`, refused outright:
+/// for a host whose engine mm cannot have mount it recursively read-only.
+pub fn check_host_paths_unsupported(
+    document: &crate::domain::config::ConfigDocument,
+    environment: &str,
+    engine: &str,
+) -> Result<Vec<GuardrailFinding>, crate::domain::error::MmError> {
+    Ok(project_findings(document, environment)?
+        .into_iter()
+        .filter(|finding| finding.host_path.is_some())
+        .map(|mut finding| {
+            finding.outright = true;
+            finding.detail = format!(
+                "{}; this host runs {engine}, which mm cannot yet have mount a host path recursively read-only, so no exception allows it here",
+                finding.detail
+            );
+            finding
+        })
+        .collect())
 }
 
 /// Every finding for the services active in `environment`, allowed or not.
