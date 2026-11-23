@@ -108,8 +108,8 @@ impl BuildManager {
     }
 
     /// Refuses a receipt built for another environment that has no image
-    /// of a module the selected environment runs. A checkout at another
-    /// commit than the receipt's is not checked.
+    /// of a module the selected environment runs. Only a checkout at the
+    /// receipt's commit with the configuration it was built from is checked.
     pub async fn check_receipt_covers(
         &self,
         selection: &WorkspaceSelection,
@@ -118,6 +118,7 @@ impl BuildManager {
         let document = self.documents.load_from(&selection.start)?;
         let environment = resolve_environment(&document, selection.environment.as_deref())?;
         if receipt.plan.environment == environment
+            || document.source_hash != receipt.plan.config_hash
             || self.source.inspect(&document.root).await?.commit != receipt.source_commit()
         {
             return Ok(());
@@ -258,9 +259,18 @@ fn refuse_missing_modules(
             "publish this commit again with `mm -e {built} build --publish`, which builds it for '{environment}', and write a new receipt with `mm -e {built} build receipt FILE`"
         )
     } else {
-        format!(
-            "a published build of '{built}' does not build it for '{environment}'; publish it with `mm -e {environment} build --publish`"
-        )
+        let secrets = document
+            .config
+            .modules
+            .get(&module)
+            .and_then(|module| module.build.as_ref())
+            .is_some_and(|build| reuse_policy_for(build) != BuildReusePolicy::Allowed);
+        let why = if secrets {
+            "it mounts build secrets whose values can differ between environments, so it is built in each environment that runs it".to_owned()
+        } else {
+            format!("a published build of '{built}' does not build it for '{environment}'")
+        };
+        format!("{why}; publish it with `mm -e {environment} build --publish`")
     };
     Err(MmError::Build {
         message: format!(

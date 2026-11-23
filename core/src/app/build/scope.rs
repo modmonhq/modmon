@@ -47,7 +47,7 @@ pub(super) fn modules_in_scope(document: &ConfigDocument, environment: &str) -> 
 
 /// The modules a published build of `environment` covers, each with the
 /// environments it is for: `environment`, and every other environment on a
-/// remote target that runs it and builds the same variant of it.
+/// remote target that runs it and could take it from the receipt.
 pub(super) fn publish_scope(
     document: &ConfigDocument,
     environment: &str,
@@ -68,7 +68,7 @@ pub(super) fn publish_scope(
             continue;
         }
         for module in modules_in_scope(document, other) {
-            if builds_same_variant(document, &module, (environment, other)) {
+            if promotable(document, &module, (environment, other)) {
                 scope.entry(module).or_default().insert(other.clone());
             }
         }
@@ -76,11 +76,10 @@ pub(super) fn publish_scope(
     scope
 }
 
-fn builds_same_variant(
-    document: &ConfigDocument,
-    module: &str,
-    (built, other): (&str, &str),
-) -> bool {
+/// Whether a build of `module` for `built` can be promoted to `other`: it
+/// mounts no build secret whose value can differ between environments, and
+/// builds the variant `other` selects.
+fn promotable(document: &ConfigDocument, module: &str, (built, other): (&str, &str)) -> bool {
     let Some(build) = document
         .config
         .modules
@@ -89,6 +88,9 @@ fn builds_same_variant(
     else {
         return true;
     };
+    if reuse_policy_for(build) != BuildReusePolicy::Allowed {
+        return false;
+    }
     let selected = |environment: &str| {
         let variant = document
             .config

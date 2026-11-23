@@ -490,6 +490,7 @@ const DEPLOY_ENVIRONMENTS: &str = r#"schema-version: 1
 project:
   id: 019c527b-6242-7b43-bfd4-bd60e27c1de4
   name: publish-scope
+  development-environment: dev
 default-environment: ci
 target: local
 stacks:
@@ -522,14 +523,50 @@ modules:
     build:
       image: registry.example.com/acme/photos
       targets: {production: "", development: development}
+  signer:
+    path: signer
+    services:
+      signer:
+        stack: app
+        environments: [staging]
+    build:
+      image: registry.example.com/acme/signer
+      secrets:
+        token: build.token
+  mailer:
+    path: mailer
+    services:
+      mailer:
+        stack: app
+        environments: [local]
+    build:
+      image: registry.example.com/acme/mailer
+  devtools:
+    path: devtools
+    services:
+      devtools:
+        stack: app
+        environments: [dev]
+    build:
+      image: registry.example.com/acme/devtools
+secrets:
+  build.token:
+    storage:
+      provider: env
+      location: BUILD_TEST_TOKEN
 environments:
   ci:
     build-variant: production
   local: {}
+  dev:
+    target: remote
   uat:
     target: remote
     build-variant: production
   production:
+    target: remote
+    build-variant: production
+  staging:
     target: remote
     build-variant: production
   preview:
@@ -537,20 +574,24 @@ environments:
     build-variant: development
 "#;
 
+const MODULES: [&str; 5] = ["backup", "photos", "signer", "mailer", "devtools"];
+
 fn deploy_environments(config: &str) -> Result<Project, Box<dyn std::error::Error>> {
     let project = Project::new(config)?;
     let root = project.root.path();
-    for module in ["backup", "photos"] {
+    let mut compose =
+        "services:\n  web:\n    image: registry.example.com/acme/web:old\n".to_owned();
+    for module in MODULES {
         fs::create_dir(root.join(module))?;
         fs::write(
             root.join(module).join("Dockerfile"),
             "FROM scratch AS production\nFROM scratch AS development\n",
         )?;
+        compose.push_str(&format!(
+            "  {module}:\n    image: registry.example.com/acme/{module}:old\n"
+        ));
     }
-    fs::write(
-        root.join("compose.yaml"),
-        "services:\n  web:\n    image: registry.example.com/acme/web:old\n  backup:\n    image: registry.example.com/acme/backup:old\n  photos:\n    image: registry.example.com/acme/photos:old\n",
-    )?;
+    fs::write(root.join("compose.yaml"), compose)?;
     Ok(project)
 }
 
@@ -562,6 +603,10 @@ fn modules(plan: &mm::domain::build::ImageBuildPlan) -> Vec<&str> {
         .collect::<Vec<_>>();
     modules.sort_unstable();
     modules
+}
+
+fn refused_with(result: &Result<(), MmError>, parts: &[&str]) -> bool {
+    matches!(result, Err(MmError::Build { message }) if parts.iter().all(|part| message.contains(part)))
 }
 
 #[tokio::test]
@@ -581,9 +626,11 @@ async fn a_published_build_covers_the_modules_of_the_environments_it_deploys_to(
     );
     assert_eq!(
         published_for["web"].iter().collect::<Vec<_>>(),
-        ["ci", "preview", "production", "uat"]
+        ["ci", "preview", "production", "staging", "uat"]
     );
-    assert!(!published_for.contains_key("photos"));
+    for left_out in ["photos", "signer", "mailer", "devtools"] {
+        assert!(!published_for.contains_key(left_out), "{left_out}");
+    }
 
     service.apply_reviewed(&ci, true, &plan.plan_hash).await?;
     let receipt = service.receipt(&ci)?;
@@ -599,9 +646,27 @@ async fn a_published_build_covers_the_modules_of_the_environments_it_deploys_to(
         .check_receipt_covers(&project.select("preview"), &receipt)
         .await;
     assert!(
-        matches!(&refused, Err(MmError::Build { message })
-            if message.contains("from environment 'ci' has no image of module 'photos', which 'preview' runs")
-                && message.contains("`mm -e preview build --publish`")),
+        refused_with(
+            &refused,
+            &[
+                "from environment 'ci' has no image of module 'photos', which 'preview' runs",
+                "`mm -e preview build --publish`",
+            ]
+        ),
+        "{refused:?}"
+    );
+    let refused = manager
+        .check_receipt_covers(&project.select("staging"), &receipt)
+        .await;
+    assert!(
+        refused_with(
+            &refused,
+            &[
+                "no image of module 'signer', which 'staging' runs",
+                "mounts build secrets",
+                "`mm -e staging build --publish`",
+            ]
+        ),
         "{refused:?}"
     );
     Ok(())
@@ -643,27 +708,32 @@ async fn a_receipt_without_a_module_the_environment_runs_is_refused_before_any_h
     assert_eq!(modules(&plan), ["web"]);
     service.apply_reviewed(&ci, true, &plan.plan_hash).await?;
     let receipt = service.receipt(&ci)?;
+    let manager = BuildManager::new(Arc::new(ConfigLoader), Arc::new(Source));
+    let refused = manager
+        .check_receipt_covers(&project.select("preview"), &receipt)
+        .await;
+    assert!(
+        refused_with(
+            &refused,
+            &["no image of module 'backup', which 'preview' runs"]
+        ),
+        "{refused:?}"
+    );
 
     fs::write(
         project.root.path().join(".config/mm.yaml"),
         DEPLOY_ENVIRONMENTS,
     )?;
-    let manager = BuildManager::new(Arc::new(ConfigLoader), Arc::new(Source));
-    let refused = manager
+    manager
         .check_receipt_covers(&project.select("uat"), &receipt)
-        .await;
-    assert!(
-        matches!(&refused, Err(MmError::Build { message })
-            if message.contains("from environment 'ci' has no image of module 'backup', which 'uat' runs")
-                && message.contains("`mm -e ci build --publish`")),
-        "{refused:?}"
-    );
+        .await?;
     let imported = service
         .review_import(&project.select("uat"), &receipt, false)
         .await;
     assert!(
         matches!(&imported, Err(MmError::Build { message })
-            if message.contains("no image of module 'backup'")),
+            if message.contains("from environment 'ci' has no image of module 'backup', which 'uat' runs")
+                && message.contains("`mm -e ci build --publish`")),
         "{imported:?}"
     );
     Ok(())
