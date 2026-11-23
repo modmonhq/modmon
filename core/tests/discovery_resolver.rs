@@ -774,9 +774,67 @@ async fn a_new_containers_first_lookup_settles_the_bridges_before_its_answer() -
         before,
         "a known container's lookup settles nothing"
     );
-    // 127.77.0.9 is in node a's slice and no container the node has seen.
-    becomes(Ipv4Addr::new(127, 77, 0, 9), server, "api", &[API_A]).await?;
+    // 127.77.0.9 is in node a's slice and no container the engine runs:
+    // its first lookup waits for the engine, the next ones do not.
+    let stranger = Ipv4Addr::new(127, 77, 0, 9);
+    let first = ask(stranger, server, "api", Duration::from_secs(3)).await?;
+    assert_eq!(first, Some((0, vec![API_A])));
     assert_eq!(settled(), before + 1);
+    let again = ask(stranger, server, "api", Duration::from_millis(300)).await?;
+    assert_eq!(again, Some((0, vec![API_A])));
+    Ok(())
+}
+
+/// A container that resolves its own `tasks.<service>` name as its
+/// entrypoint's first step finds itself in the first answer: before the
+/// engine's event for it arrives, and when the engine shows it only a
+/// moment after its first lookup.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_new_container_finds_itself_at_its_first_lookup() -> TestResult {
+    let directory = temp_dirs::tempdir()?;
+    let resolv_conf = directory.path().join("resolv.conf");
+    std::fs::write(&resolv_conf, format!("search .\nnameserver {UPSTREAM}\n"))?;
+    let options = ResolverOptions {
+        lookup_port: free_port(GATEWAY_A).await?,
+        exchange_port: free_port(MESH_A).await?,
+        upstream_port: free_port(UPSTREAM).await?,
+        resolv_conf,
+        address_patience: Duration::from_secs(30),
+    };
+    let engine = Engine::new(vec![container("api-1", "api", API_A, Health::Healthy)]);
+    let node = NameResolver::with_options(
+        Arc::new(Networks(networks("a")?)),
+        Arc::new(Mesh(mesh(MESH_A, "b", MESH_B))),
+        Arc::clone(&engine) as Arc<dyn RuntimeDriver>,
+        options.clone(),
+    );
+    tokio::spawn(Arc::clone(&node).run());
+    let server = SocketAddrV4::new(GATEWAY_A, options.lookup_port);
+    becomes(API_A, server, "api", &[API_A]).await?;
+
+    let unannounced = |added: ObservedContainer| -> TestResult {
+        engine
+            .containers
+            .lock()
+            .map_err(|_| "poisoned")?
+            .push(added);
+        Ok(())
+    };
+    let web = Ipv4Addr::new(127, 77, 0, 7);
+    unannounced(container("web-1", "web", web, Health::Starting))?;
+    let first = ask(web, server, "tasks.web", Duration::from_secs(2)).await?;
+    assert_eq!(first, Some((0, vec![web])));
+
+    let worker = Ipv4Addr::new(127, 77, 0, 8);
+    let late = Arc::clone(&engine);
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        if let Ok(mut containers) = late.containers.lock() {
+            containers.push(container("worker-1", "worker", worker, Health::Starting));
+        }
+    });
+    let first = ask(worker, server, "tasks.worker", Duration::from_secs(2)).await?;
+    assert_eq!(first, Some((0, vec![worker])));
     Ok(())
 }
 

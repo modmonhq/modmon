@@ -741,3 +741,61 @@ fn small_findings_name_the_place_and_the_next_step() -> TestResult {
     );
     Ok(())
 }
+
+#[test]
+fn the_pull_limit_is_twenty_minutes_unless_an_environment_sets_it() -> TestResult {
+    let unset = config(THREE, "{}", "      web: {stack: app}")?;
+    let default = RolloutPolicy::from_config(&unset, "production")?;
+    assert_eq!(
+        default.pull_timeout_seconds, None,
+        "the plan carries no default"
+    );
+    assert_eq!(default.pull_timeout().as_secs(), 20 * 60);
+
+    let set = config(
+        THREE,
+        "{deploy: {pull-timeout: 45m}}",
+        "      web: {stack: app}",
+    )?;
+    let longer = RolloutPolicy::from_config(&set, "production")?;
+    assert_eq!(longer.pull_timeout().as_secs(), 45 * 60);
+
+    let app = names(&["app"]);
+    let alone = ClusterRollout::of(&[NodeRolloutInput {
+        node: "app-1",
+        stacks: &app,
+        policy: &default,
+    }]);
+    assert_eq!(alone.pull_timeout_seconds, None);
+    assert_eq!(alone.pull_timeout().as_secs(), 20 * 60);
+    let mixed = ClusterRollout::of(&[
+        NodeRolloutInput {
+            node: "app-1",
+            stacks: &app,
+            policy: &default,
+        },
+        NodeRolloutInput {
+            node: "app-2",
+            stacks: &app,
+            policy: &longer,
+        },
+    ]);
+    assert_eq!(mixed.pull_timeout().as_secs(), 45 * 60);
+
+    for (window, problem) in [("slow", "duration"), ("0s", "at least 1s")] {
+        let config = self::config(
+            THREE,
+            &format!("{{deploy: {{pull-timeout: {window}}}}}"),
+            "      web: {stack: app}",
+        )?;
+        let error = RolloutPolicy::from_config(&config, "production")
+            .err()
+            .unwrap_or_default();
+        assert!(
+            error.contains("environments.production.deploy.pull-timeout"),
+            "{error}"
+        );
+        assert!(error.contains(problem), "{window}: {error}");
+    }
+    Ok(())
+}

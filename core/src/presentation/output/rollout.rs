@@ -291,10 +291,15 @@ pub(crate) fn job_lines(
 /// One operation that runs on a host right now.
 fn operation_line(operation: &OperationInFlight) -> String {
     format!(
-        "    running:  {}; at work {}, stopped at {} if not done{}",
+        "    running:  {}; at work {}, stopped at {} if not done{}{}",
         operation.describe(),
         utc_time(operation.alive_at_unix_ms),
         utc_time(operation.deadline_unix_ms),
+        operation
+            .doing
+            .as_deref()
+            .map(|doing| format!("; {doing}"))
+            .unwrap_or_default(),
         operation
             .stopping
             .as_deref()

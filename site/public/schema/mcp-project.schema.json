@@ -430,6 +430,13 @@
             "string",
             "null"
           ]
+        },
+        "pull-timeout": {
+          "description": "How long a host may take to pull the images of a stack, or of a\njob, before anything of it starts, such as `45m`. The default is\n`20m`; at least `1s`. Starting the containers keeps its own limit.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "additionalProperties": false

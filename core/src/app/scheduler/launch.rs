@@ -22,9 +22,11 @@ impl JobSchedulerService {
                     .mark_run_running(claim, &runtime_id, self.clock.now_unix_ms())?;
                 Ok(())
             }
-            Err(error @ (MmError::Launch { .. } | MmError::ProcessFailed { .. })) => {
-                self.not_started(target, claim, error).await
-            }
+            Err(
+                error @ (MmError::Launch { .. }
+                | MmError::ProcessFailed { .. }
+                | MmError::Timeout { .. }),
+            ) => self.not_started(target, claim, error).await,
             Err(error) => Err(error),
         }
     }
@@ -96,6 +98,19 @@ impl JobSchedulerService {
                 claim.run.fence_token.to_string(),
             ),
         ]);
+        let deploy = document
+            .config
+            .environments
+            .get(&claim.run.environment)
+            .and_then(|environment| environment.deploy.as_ref());
+        self.runtime
+            .pull_image(
+                &target,
+                &claim.job_definition.service,
+                crate::domain::config::DeployConfig::pull_timeout(deploy)
+                    .unwrap_or(crate::domain::config::DEFAULT_PULL_TIMEOUT),
+            )
+            .await?;
         self.runtime
             .launch(JobLaunch {
                 run_id: claim.run.id,
