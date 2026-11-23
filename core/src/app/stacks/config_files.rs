@@ -26,6 +26,37 @@ pub(crate) struct ConfigFileEntry<'a> {
     pub config: &'a ServiceConfigFileConfig,
 }
 
+/// Why a config file does not resolve: the sentence a user reads, and
+/// whether a release fact the deployment lacks is the cause.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ConfigFileError {
+    pub message: String,
+    pub release: bool,
+}
+
+impl From<String> for ConfigFileError {
+    fn from(message: String) -> Self {
+        Self {
+            message,
+            release: false,
+        }
+    }
+}
+
+impl From<ConfigFileError> for MmError {
+    fn from(error: ConfigFileError) -> Self {
+        if error.release {
+            Self::ReleaseInput {
+                message: error.message,
+            }
+        } else {
+            Self::Environment {
+                message: error.message,
+            }
+        }
+    }
+}
+
 /// A config file with its content as the environment's containers see it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ResolvedConfigFile {
@@ -96,7 +127,7 @@ impl ConfigFileEntry<'_> {
         }
     }
 
-    fn rendered(&self, source: &Path, bytes: Vec<u8>) -> Result<Vec<u8>, String> {
+    fn rendered(&self, source: &Path, bytes: Vec<u8>) -> Result<Vec<u8>, ConfigFileError> {
         let text = String::from_utf8(bytes).map_err(|_| {
             format!(
                 "{}: template '{}' is not UTF-8 text; ship it with `file:` to keep its bytes as they are",
@@ -111,7 +142,7 @@ impl ConfigFileEntry<'_> {
         .map_err(|problem| self.template_problem(source, &problem))
     }
 
-    fn template_problem(&self, source: &Path, problem: &TemplateProblem) -> String {
+    fn template_problem(&self, source: &Path, problem: &TemplateProblem) -> ConfigFileError {
         let place = format!(
             "{}: '{}' line {}",
             self.key(),
@@ -119,7 +150,13 @@ impl ConfigFileEntry<'_> {
             problem.line
         );
         let key = problem.key.as_deref().unwrap_or_default();
-        match &problem.problem {
+        if let Some(BindingProblem::Release(reason)) = &problem.problem {
+            return ConfigFileError {
+                message: format!("{place} uses `{{{{ {key} }}}}`, which has no value: {reason}"),
+                release: true,
+            };
+        }
+        ConfigFileError::from(match &problem.problem {
             None => format!(
                 "{place} has `{{{{` that does not start a placeholder. A placeholder is `{{{{ KEY }}}}` with a key from `bindings:`; a file that has to contain `{{{{` itself is shipped with `file:` instead of `template:`"
             ),
@@ -131,10 +168,10 @@ impl ConfigFileEntry<'_> {
                 "{place} uses `{{{{ {key} }}}}`, which is the secret '{secret}'. A config file is kept on the host as it is and its content names its version, so a template never takes a secret. Mount the secret with `secret-files` on the service (`secret-files: {{{name}: {{secret: {secret}}}}}` puts it at /run/secrets/{name}) and have the configuration read that file",
                 name = secret.replace('.', "-")
             ),
-            Some(BindingProblem::Unresolved(reason)) => {
+            Some(BindingProblem::Unresolved(reason) | BindingProblem::Release(reason)) => {
                 format!("{place} uses `{{{{ {key} }}}}`, which has no value: {reason}")
             }
-        }
+        })
     }
 }
 
@@ -142,9 +179,9 @@ impl ConfigFileEntry<'_> {
 /// the sentence a user reads: what is wrong, where, and what to write.
 pub(crate) fn resolve_config_file(
     entry: &ConfigFileEntry<'_>,
-) -> Result<ResolvedConfigFile, String> {
+) -> Result<ResolvedConfigFile, ConfigFileError> {
     if let Some(problem) = target_problem(entry.target) {
-        return Err(format!("{}: the path {problem}", entry.key()));
+        return Err(format!("{}: the path {problem}", entry.key()).into());
     }
     let config = entry.config;
     if config.mode == 0 || config.mode & !0o777 != 0 {
@@ -152,7 +189,8 @@ pub(crate) fn resolve_config_file(
             "{}: mode {} is not a file mode. Write it as a YAML integer from 1 to 511, such as 292 for 0444 or 420 for 0644",
             entry.key(),
             config.mode
-        ));
+        )
+        .into());
     }
     let uid = entry.owner("uid", config.uid.as_ref())?;
     let gid = entry.owner("gid", config.gid.as_ref())?;
@@ -337,12 +375,11 @@ pub(super) fn stack_config_files(
         {
             continue;
         }
-        let file = resolve_config_file(&entry)
-            .and_then(|file| match user_ids.get(&file.service) {
-                Some(ids) => file.given_to(ids),
+        let file =
+            resolve_config_file(&entry).and_then(|file| match user_ids.get(&file.service) {
+                Some(ids) => file.given_to(ids).map_err(ConfigFileError::from),
                 None => Ok(file),
-            })
-            .map_err(|message| MmError::Environment { message })?;
+            })?;
         let path = root.join(&file.version);
         files.push((file, path));
     }

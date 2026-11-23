@@ -26,6 +26,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- A plan whose config-file template reads a release input it was not given
+  fails with `MM_RELEASE_INPUT`, as one whose environment file does, instead
+  of `MM_ENVIRONMENT`.
 - A container that resolves its own `tasks.<service>` name as soon as it
   starts finds itself: `mmd` reads the engine for a lookup from a container it
   has not seen yet before answering it, instead of letting the name fall

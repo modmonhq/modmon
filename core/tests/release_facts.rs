@@ -102,7 +102,7 @@ fn a_config_file_template_renders_the_image_the_release_deploys() -> TestResult 
         ReleaseRequest::default(),
     ));
     match binding_text(&document.config, "local", "MM.IMAGE.api") {
-        Err(BindingProblem::Unresolved(reason)) => {
+        Err(BindingProblem::Release(reason)) => {
             assert!(reason.contains("--receipt FILE"), "{reason}");
         }
         other => return Err(format!("expected a refusal, got {other:?}").into()),
@@ -364,5 +364,48 @@ fn a_redeploy_keeps_the_release_the_hosts_run() -> TestResult {
             && refusal.contains("--release-input BUILD_ID=1 --nodes app-2"),
         "{refusal}"
     );
+    Ok(())
+}
+
+#[test]
+fn a_config_file_template_without_its_release_input_refuses_the_plan_as_one() -> TestResult {
+    use std::sync::Arc;
+
+    use mm::adapters::stack::FilesystemStackArtifactStore;
+    use mm::adapters::target::FilesystemTargetStore;
+    use mm::app::ports::TargetStore;
+    use mm::app::{StackManager, WorkspaceSelection};
+    use mm::domain::error::MmError;
+    use mm::domain::target::{TargetDefinition, TargetId};
+
+    let project = project(DECLARED, "build {{ RELEASE.BUILD_ID }}\n")?;
+    let home = temp_dirs::tempdir()?;
+    let store: Arc<dyn TargetStore> =
+        Arc::new(FilesystemTargetStore::new(home.path().join("targets.yaml")));
+    store.insert_target(
+        "local",
+        TargetDefinition::local(TargetId(uuid::Uuid::from_u128(7))),
+    )?;
+    let manager = StackManager::new(
+        Arc::new(ConfigLoader),
+        Arc::new(FilesystemStackArtifactStore::new(
+            home.path().join("compose"),
+        )),
+        store,
+    );
+    let selection = WorkspaceSelection::new(project.path(), None).with_release(Some(
+        ReleaseFacts::new(Some(COMMIT.to_owned()), ReleaseRequest::default()),
+    ));
+    match manager.compile(&selection) {
+        Err(MmError::ReleaseInput { message }) => assert!(
+            message.contains("release.conf.tmpl' line 1 uses `{{ RELEASE.BUILD_ID }}`")
+                && message.contains("--release-input BUILD_ID=VALUE"),
+            "{message}"
+        ),
+        other => return Err(format!("expected MM_RELEASE_INPUT, got {other:?}").into()),
+    }
+    let given = WorkspaceSelection::new(project.path(), None)
+        .with_release(Some(released(&[("BUILD_ID", "12")])));
+    manager.compile(&given)?;
     Ok(())
 }

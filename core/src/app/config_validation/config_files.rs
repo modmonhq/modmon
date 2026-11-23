@@ -15,9 +15,10 @@ pub(super) fn validate_config_files(
 ) {
     let document = context.document;
     for (_, entry) in config_file_entries(document, context.environment) {
-        if let Err(message) = resolve_config_file(&entry) {
+        if let Err(error) = resolve_config_file(&entry) {
             report.push(
-                Diagnostic::error("MM_CONFIG_FILE", message).at_path(document.source("modules")),
+                Diagnostic::error("MM_CONFIG_FILE", error.message)
+                    .at_path(document.source("modules")),
             );
         }
     }
