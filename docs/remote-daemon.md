@@ -1014,8 +1014,8 @@ mm --environment production deploy apply --plan "$PLAN" --yes
 
 `ci` needs no service of its own: `mm build --publish` builds every module the
 environments on remote targets run, when they select the same build variant
-of it. The
-host deploys the receipt's digests when production's configuration at that
+of it and it has no build secret outside `credential-only-secrets`. The host
+deploys the receipt's digests when production's configuration at that
 commit builds the same units as `ci` did: the same platforms, image
 repositories, variants, and build inputs for every module production runs.
 Otherwise it refuses and names the first module that differs; a module

@@ -23,8 +23,9 @@ with a service in that environment, and the modules whose images those build
 module's `build.image`. A published build also covers the modules that
 environments on remote targets run, so its receipt can be promoted to them;
 see [promote a build to another
-environment](#promote-a-build-to-another-environment). Without `--all`, no
-build includes a module that only runs on this machine.
+environment](#promote-a-build-to-another-environment). Without `--all`, a
+build never includes a module that only runs in another environment whose
+target is `local`, or only in the development environment.
 
 To build every module that has a build, whatever the environment runs, add
 `--all`:
@@ -268,8 +269,10 @@ every module an environment on a remote target runs when that environment
 selects the same [build variant](#build-dependencies-and-variants) of it, so a
 service limited to `environments: [uat, production]` is in a receipt built for
 `ci`. Environments whose target is `local`, and the development environment,
-are left out. A build without `--publish`, and `mm dev`, still build only what
-the environment runs.
+are left out, and so is a module with a build secret that is not listed under
+`credential-only-secrets`: it cannot be promoted, so each environment that
+runs it builds it. A build without `--publish`, and `mm dev`, still build only
+what the environment runs. A publish can therefore take longer than before.
 `mm build --publish plan` shows the environments each module is built for:
 
 ```text
@@ -285,7 +288,8 @@ contents. Modules in the receipt that the target environment does not run are
 left out of the promoted build. Otherwise it refuses and names
 the first module that differs and what differs, such as `build argument
 FEATURE`, with the command that builds for the target environment. From a
-checkout of the receipt's commit, `mm deploy plan --receipt` refuses a receipt
+checkout of the receipt's commit with the configuration it was built from,
+`mm deploy plan --receipt` refuses a receipt
 that lacks a module the target environment runs before it asks any host, and
 names the module and the command that publishes it. A module with build
 secrets is promoted only when every secret is listed under
