@@ -201,7 +201,7 @@ macro_rules! sqlite_deployments { () => {
                  WHERE workspaces.project_id = ?1
                    AND operations.environment = ?2
                    AND operations.kind = 'deploy'
-                   AND operations.state IN ('succeeded', 'running')
+                   AND operations.state IN ('succeeded', 'running', 'failed')
                  ORDER BY operations.requested_at_ms DESC, snapshots.rowid DESC",
             )
             .map_err(state_error)?;

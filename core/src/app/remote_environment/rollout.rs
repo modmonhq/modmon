@@ -384,6 +384,7 @@ fn outcome(node: &str, state: NodeApplyState) -> Outcome {
         stopped: Vec::new(),
         unchanged: false,
         code: None,
+        kept: false,
     }
 }
 
@@ -707,13 +708,25 @@ impl Walk<'_> {
 
     /// After a fault: the nodes that were changed return to what they ran
     /// before, newest change first, or stay as they are when the failed
-    /// service's `update.failure` is `pause`. Nodes that never began only
-    /// give up the lock.
-    async fn unwind(&self, outcomes: &mut [Outcome], fault: Fault) {
+    /// service's `update.failure` is `pause` or no node ever finished a
+    /// deployment of the environment. Nodes that never began only give up
+    /// the lock.
+    async fn unwind(&self, outcomes: &mut [Outcome], mut fault: Fault) {
         let pause = fault
             .stack
             .as_deref()
             .is_some_and(|stack| self.rollout.pauses(stack, fault.service.as_deref()));
+        let first = !pause
+            && !fault.undone
+            && tokio::time::timeout(LOCK_PATIENCE, self.environment.deployment_status())
+                .await
+                .is_ok_and(|status| status.never_deployed());
+        if first {
+            let environment = &self.environment.first().scope.environment;
+            let kept = super::reporting::kept_first(environment, fault.service.as_deref());
+            fault.text.push_str(&kept);
+        }
+        let pause = pause || first;
         for index in self.begun.iter().rev().copied() {
             let Some(outcome) = outcomes.get_mut(index) else {
                 continue;
@@ -772,6 +785,7 @@ impl Walk<'_> {
             outcome.rolled_back = outcome.rolled_back && !fault.preparing;
             outcome.unchanged = fault.preparing;
             outcome.code = fault.code;
+            outcome.kept = first;
         }
     }
 }

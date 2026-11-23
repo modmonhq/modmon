@@ -1346,6 +1346,13 @@ modules:
 The other keys only matter where there is more than one node or more than one
 stack.
 
+When no node has finished a deployment of the environment yet, a failure
+leaves every node as it is, as `pause` does, whatever `update.failure` says:
+there is nothing to return to. The report names the failed service and the
+commands to read its log and deploy again, and the next deployment applies
+over what runs. Once any node has finished a deployment, a failure rolls the
+changed nodes back as described above, a node that joined since included.
+
 #### Replace a container without a gap
 
 With `update.order: start-first`, a node starts the new container of the
