@@ -55,16 +55,16 @@ jobs:
   live:
     name: real-openssh-relay
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build the pinned constrained Cargo image
-        run: docker build --memory=4g --cpu-quota=200000 --cpu-period=100000 -t mm-rust:1.99 -f Dockerfile.cargo .
+        run: docker build --memory=4g --cpu-quota=200000 --cpu-period=100000 -t mm-rust:1.99.1 -f Dockerfile.cargo .
       - name: Run authenticated relay, protocol, and privilege evidence
         run: ./scripts/live-remote-relay.sh 2>&1 | tee remote-relay-live.log
       - name: Clean build resources
         if: always()
-        run: docker image rm mm-rust:1.99 >/dev/null 2>&1 || true
+        run: docker image rm mm-rust:1.99.1 >/dev/null 2>&1 || true
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

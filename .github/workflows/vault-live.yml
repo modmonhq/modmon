@@ -61,6 +61,13 @@ jobs:
           sudo apt-get install --yes podman podman-compose
           podman info
       - run: ./scripts/live-vault-provider.sh managed "${{ matrix.runtime }}" "${{ matrix.provider }}" 2>&1 | tee managed-live.log
+      - if: failure() && matrix.runtime == 'podman-compose'
+        run: |
+          sudo dmesg | grep -i -E 'apparmor|denied' | tail -40 || true
+          ls /etc/apparmor.d | grep -i -E 'pasta|passt|podman|slirp' || true
+          for f in /etc/apparmor.d/usr.bin.pasta /etc/apparmor.d/usr.bin.passt /etc/apparmor.d/abstractions/pasta /etc/apparmor.d/abstractions/passt /etc/apparmor.d/podman; do echo "--- $f"; cat "$f" 2>/dev/null; done
+          ps -eZ | grep -i -E 'pasta|podman|catatonit' || true
+          podman info --format '{{.Host.NetworkBackend}} {{.Host.RootlessNetworkCmd}}' || true
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
