@@ -28,8 +28,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   container's default route, which cut a container that is also on an
   ordinary network off from the internet and from the other nodes. Podman
   creates it with `no_default_route=true` and Docker Engine as an internal
-  network; the first deployment after upgrading creates an existing one
-  again and restarts the services on it.
+  network, where mm's firewall rules accept the traffic between its
+  containers on different nodes, replies included. The first deployment
+  after upgrading creates an existing one again and restarts the services on
+  it.
+- A network whose `internal` setting changes is created again with a reason
+  in the plan: `with a default route` or `without a default route` after its
+  old addresses, instead of the same addresses twice.
 - A host pulls the images a stack or a job lacks in a step of its own before
   anything starts, with the registry logins, under `deploy.pull-timeout`
   (default `20m`). A large image on a slow registry no longer fails the
