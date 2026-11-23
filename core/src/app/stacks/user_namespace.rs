@@ -246,7 +246,7 @@ fn compose_userns(models: &[Value]) -> BTreeMap<String, ComposeUserns> {
         .map(|model| {
             let mut model = model.clone();
             if let Some(mapping) = model.as_mapping_mut() {
-                super::guardrails::resolve_extends(mapping);
+                crate::domain::compose_extends::resolve_extends(mapping);
             }
             model
         })
