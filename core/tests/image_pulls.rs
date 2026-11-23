@@ -43,6 +43,12 @@ services:
     build: {context: .}
   local:
     image: mm.invalid/shop/local:production-0a1b2c3d4e5f6a7b8c9d
+  feed:
+    image: registry.example.com/shop/feed:3
+    pull_policy: daily
+  search:
+    image: registry.example.com/shop/search:5
+    pull_policy: if_not_present
 ";
 
 enum Pull {
@@ -55,6 +61,7 @@ struct Engine {
     present: BTreeSet<&'static str>,
     pull: Pull,
     records: Mutex<Vec<RedactedCommandRecord>>,
+    limits: Mutex<Vec<Duration>>,
 }
 
 impl Engine {
@@ -63,7 +70,15 @@ impl Engine {
             present: present.iter().copied().collect(),
             pull,
             records: Mutex::new(Vec::new()),
+            limits: Mutex::new(Vec::new()),
         })
+    }
+
+    fn limits(&self) -> Vec<Duration> {
+        self.limits
+            .lock()
+            .map(|limits| limits.clone())
+            .unwrap_or_default()
     }
 
     fn records(&self) -> Vec<RedactedCommandRecord> {
@@ -95,6 +110,12 @@ fn output(code: i32, stdout: &str, stderr: &str) -> CommandOutput {
 impl ProcessRunner for Engine {
     async fn run(&self, specification: CommandSpec) -> Result<CommandOutput, MmError> {
         let record = specification.redacted_record();
+        self.limits
+            .lock()
+            .map_err(|_| MmError::State {
+                message: "the fake engine's lock was poisoned".to_owned(),
+            })?
+            .push(specification.timeout_value());
         self.records
             .lock()
             .map_err(|_| MmError::State {
@@ -177,7 +198,12 @@ fn login() -> RegistryCredential {
 #[tokio::test]
 async fn podman_pulls_only_the_missing_images_by_their_full_names_with_the_logins() -> TestResult {
     let engine = Engine::new(
-        &["registry.example.com/shop/web:2", "redis:7"],
+        &[
+            "registry.example.com/shop/web:2",
+            "redis:7",
+            "registry.example.com/shop/feed:3",
+            "registry.example.com/shop/search:5",
+        ],
         Pull::Arrives,
     );
     PodmanComposeRuntime::with_executable(engine.clone(), "podman")
@@ -189,8 +215,9 @@ async fn podman_pulls_only_the_missing_images_by_their_full_names_with_the_login
             "registry.example.com/shop/api:1.4",
             "docker.io/library/redis:7",
             "docker.io/library-mirror/proxy:3",
+            "registry.example.com/shop/feed:3",
         ],
-        "web is there, api is pulled once for two services, cache always, and nothing is pulled for a built, local, or never-pulled image"
+        "web and search are there, api is pulled once for two services, cache and feed always, and nothing is pulled for a built, local, or never-pulled image"
     );
     for record in engine.records() {
         let pull = record.arguments.first().map(String::as_str) == Some("pull");
@@ -281,7 +308,7 @@ async fn a_refused_pull_says_which_image_and_why() -> TestResult {
 }
 
 #[tokio::test]
-async fn a_job_pulls_its_service_image_before_it_launches() -> TestResult {
+async fn a_job_pulls_its_service_image_with_the_registry_logins() -> TestResult {
     for kind in [RuntimeKind::PodmanCompose, RuntimeKind::DockerCompose] {
         let engine = Engine::new(&[], Pull::Arrives);
         RuntimeOperationsAdapter::new(kind, engine.clone(), Arc::new(NoStreams))
@@ -301,5 +328,41 @@ async fn a_job_pulls_its_service_image_before_it_launches() -> TestResult {
             "{kind:?}"
         );
     }
+    Ok(())
+}
+
+#[tokio::test]
+async fn looking_for_images_counts_against_the_pull_limit() -> TestResult {
+    let engine = Engine::new(&[], Pull::Arrives);
+    DockerComposeRuntime::new(engine.clone())
+        .pull_images(
+            &target(Vec::new()),
+            Some(&["web".to_owned()]),
+            Duration::from_secs(10),
+        )
+        .await?;
+    let limits = engine.limits();
+    assert_eq!(limits.len(), 3, "config, inspect, pull");
+    assert!(
+        limits.iter().all(|limit| *limit <= Duration::from_secs(10)),
+        "{limits:?}"
+    );
+
+    let engine = Engine::new(&[], Pull::Arrives);
+    let error = PodmanComposeRuntime::with_executable(engine.clone(), "podman")
+        .pull_images(&target(Vec::new()), None, Duration::ZERO)
+        .await
+        .err()
+        .ok_or("a pull with no time left succeeded")?;
+    assert_eq!(error.code(), "MM_TIMEOUT");
+    let message = error.to_string();
+    for part in [
+        "finding which images stack 'app' lacks",
+        "(deploy.pull-timeout)",
+        "`environments.production.deploy.pull-timeout`",
+    ] {
+        assert!(message.contains(part), "missing {part:?} in: {message}");
+    }
+    assert!(engine.records().is_empty());
     Ok(())
 }

@@ -38,7 +38,8 @@ impl Drop for Doing {
 }
 
 fn tell(what: Option<String>) {
-    match SINK.try_with(|sink| sink(what)) {
-        Ok(()) | Err(_) => {}
-    }
+    SINK.try_with(|sink| sink(what))
+        .unwrap_or_else(nobody_listens_outside_reporting_doing);
 }
+
+fn nobody_listens_outside_reporting_doing<NoSink>(_: NoSink) {}

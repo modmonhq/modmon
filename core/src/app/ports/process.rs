@@ -247,7 +247,8 @@ impl CommandSpec {
         self.current_dir.as_ref()
     }
 
-    pub(crate) const fn timeout_value(&self) -> Duration {
+    #[must_use]
+    pub const fn timeout_value(&self) -> Duration {
         self.timeout
     }
 
