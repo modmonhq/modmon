@@ -207,11 +207,16 @@ pub(super) enum UsernsSetting {
 }
 
 pub(super) fn userns_setting(service: &Value) -> UsernsSetting {
-    match service.get("userns_mode") {
+    setting_of(service.get("userns_mode"))
+}
+
+fn setting_of(value: Option<&Value>) -> UsernsSetting {
+    match value {
         None | Some(Value::Null) => UsernsSetting::Unset,
         Some(Value::String(mode)) if mode.trim().is_empty() => UsernsSetting::Unset,
         Some(Value::String(mode)) => UsernsSetting::Mode(mode.trim().to_owned()),
         Some(Value::Tagged(tagged)) if tagged.tag == "reset" => UsernsSetting::Reset,
+        Some(Value::Tagged(tagged)) => setting_of(Some(&tagged.value)),
         Some(other) => UsernsSetting::Mode(format!("{other:?}")),
     }
 }
@@ -232,11 +237,22 @@ impl ComposeUserns {
     }
 }
 
-/// Each service of the stack's Compose files, the last file that sets
+/// Each service of the stack's Compose files, with the services it
+/// `extends` in its own file merged under it, the last file that sets
 /// `userns_mode` winning, as Compose merges them.
 fn compose_userns(models: &[Value]) -> BTreeMap<String, ComposeUserns> {
+    let models = models
+        .iter()
+        .map(|model| {
+            let mut model = model.clone();
+            if let Some(mapping) = model.as_mapping_mut() {
+                super::guardrails::resolve_extends(mapping);
+            }
+            model
+        })
+        .collect::<Vec<_>>();
     let mut services = BTreeMap::<String, ComposeUserns>::new();
-    for (name, service) in compose_services(models) {
+    for (name, service) in compose_services(&models) {
         let entry = services.entry(name.to_owned()).or_default();
         entry.host_network |= super::host_network::on_host_network(service);
         match userns_setting(service) {
@@ -259,18 +275,25 @@ pub(crate) fn services_without_own_userns(models: &[Value]) -> BTreeSet<String> 
         .collect()
 }
 
+/// A `userns_mode` a Compose file sets that mm does not replace.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ChosenUserns {
+    pub mode: String,
+    pub host_network: bool,
+}
+
 /// The services whose Compose files set a `userns_mode` mm does not
-/// replace, other than `host`, with that mode: Podman chooses their user
-/// ids.
-pub(crate) fn chosen_user_namespaces(models: &[Value]) -> BTreeMap<String, String> {
+/// replace, other than `host`: Podman chooses their user ids.
+pub(crate) fn chosen_user_namespaces(models: &[Value]) -> BTreeMap<String, ChosenUserns> {
     compose_userns(models)
         .into_iter()
         .filter(|(_, userns)| !userns.gets_own_ids())
         .filter_map(|(name, userns)| {
+            let host_network = userns.host_network;
             userns
                 .mode
                 .filter(|mode| mode != "host")
-                .map(|mode| (name, mode))
+                .map(|mode| (name, ChosenUserns { mode, host_network }))
         })
         .collect()
 }
@@ -282,13 +305,19 @@ pub(crate) fn files_in_chosen_namespaces(
     document: &ConfigDocument,
     environment: &str,
     stack: &str,
-    chosen: &BTreeMap<String, String>,
+    chosen: &BTreeMap<String, ChosenUserns>,
 ) -> Vec<String> {
     let mut found = Vec::new();
     for (module, config) in &document.config.modules {
         for (service, config) in &config.services {
-            let Some(mode) = chosen.get(service) else {
+            let Some(chosen) = chosen.get(service) else {
                 continue;
+            };
+            let mode = &chosen.mode;
+            let instead = if chosen.host_network {
+                "(on the host's network it then keeps the host's ids, and the file its uid and gid)"
+            } else {
+                "or set it to plain `auto` (mm then gives it fixed ids of its own and the file to its uid and gid)"
             };
             if config.stack != stack
                 || config.host_user_namespace.is_some()
@@ -296,20 +325,58 @@ pub(crate) fn files_in_chosen_namespaces(
             {
                 continue;
             }
-            let secrets = config.secret_files_in(environment).map(|(path, file)| {
-                let holds = holds_in_any_namespace(Some(&file.uid), Some(&file.gid), file.mode);
-                ("secret-files", path, holds)
-            });
-            let configs = config.config_files_in(environment).map(|(path, file)| {
-                let holds =
-                    holds_in_any_namespace(file.uid.as_deref(), file.gid.as_deref(), file.mode);
-                ("config-files", path, holds)
-            });
-            for (key, path, _) in secrets.chain(configs).filter(|(_, _, holds)| !holds) {
+            for (key, path) in owned_files(config, environment) {
                 found.push(format!(
-                    "modules.{module}.services.{service}.{key}.\"{path}\" names an owner or a mode that holds only where mm knows the service's user ids, and its Compose file sets `userns_mode: {mode}`, so Podman picks them when it creates a container, after mm wrote the file. Remove `userns_mode` from service '{service}' or set it to plain `auto` (mm then gives it fixed ids of its own and the file to its uid and gid), or give the file uid \"0\", gid \"0\" and a mode every user can read, such as 0o444"
+                    "modules.{module}.services.{service}.{key}.\"{path}\" names an owner or a mode that holds only where mm knows the service's user ids, and its Compose file sets `userns_mode: {mode}`, so Podman picks them when it creates a container, after mm wrote the file. Remove `userns_mode` from service '{service}' {instead}, or give the file uid \"0\", gid \"0\" and a mode every user can read, such as 0o444"
                 ));
             }
+        }
+    }
+    found
+}
+
+/// The secret files and config files of a service that name an owner
+/// other than root or a mode not every user can read, by key.
+fn owned_files<'a>(
+    config: &'a crate::domain::config::ServiceConfig,
+    environment: &'a str,
+) -> impl Iterator<Item = (&'static str, &'a String)> + 'a {
+    let secrets = config.secret_files_in(environment).map(|(path, file)| {
+        let holds = holds_in_any_namespace(Some(&file.uid), Some(&file.gid), file.mode);
+        ("secret-files", path, holds)
+    });
+    let configs = config.config_files_in(environment).map(|(path, file)| {
+        let holds = holds_in_any_namespace(file.uid.as_deref(), file.gid.as_deref(), file.mode);
+        ("config-files", path, holds)
+    });
+    secrets
+        .chain(configs)
+        .filter(|(_, _, holds)| !holds)
+        .map(|(key, path, _)| (key, path))
+}
+
+/// The owned files (see [`owned_files`]) of `stack`'s services in
+/// `environment` that `models`, the Compose files the engine reads, do not
+/// run in the host's user namespace, each as its key.
+pub(super) fn files_outside_host_namespace(
+    document: &ConfigDocument,
+    environment: &str,
+    stack: &str,
+    models: &[Value],
+) -> Vec<String> {
+    let services = compose_userns(models);
+    let mut found = Vec::new();
+    for (module, config) in &document.config.modules {
+        for (service, config) in &config.services {
+            let outside = services
+                .get(service)
+                .is_some_and(|userns| userns.mode.as_deref() != Some("host"));
+            if config.stack != stack || !config.is_in_environment(environment) || !outside {
+                continue;
+            }
+            found.extend(owned_files(config, environment).map(|(key, path)| {
+                format!("modules.{module}.services.{service}.{key}.\"{path}\"")
+            }));
         }
     }
     found

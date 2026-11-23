@@ -117,8 +117,7 @@ impl DeploymentManager {
             compiled.selection.runtime,
             &environment_review.secret_revisions,
         )?;
-        self.secret_owners_hold(compiled.selection.runtime, &runtime_secret_items)
-            .await?;
+        self.owners_hold_under_remap(selection, &compiled).await?;
         if let Some(required) = environment_review
             .delivery
             .mode
@@ -198,39 +197,25 @@ impl DeploymentManager {
         })
     }
 
-    /// Refuses secret files whose owner Docker's `userns-remap` hides.
-    async fn secret_owners_hold(
+    /// Refuses owned files whose owner Docker's `userns-remap` hides.
+    async fn owners_hold_under_remap(
         &self,
-        runtime: crate::domain::runtime::RuntimeKind,
-        items: &[crate::domain::runtime_secret::RuntimeSecretPlanItem],
+        selection: &WorkspaceSelection,
+        compiled: &crate::app::stacks::DeploymentStackCompilation,
     ) -> Result<(), MmError> {
-        let owned = items
-            .iter()
-            .flat_map(|item| &item.consumers)
-            .filter(|consumer| {
-                !crate::domain::user_namespace::holds_in_any_namespace(
-                    Some(&consumer.uid),
-                    Some(&consumer.gid),
-                    consumer.mode,
-                )
-            })
-            .map(|consumer| {
-                format!(
-                    "secret file {} of service '{}'",
-                    consumer.target, consumer.service
-                )
-            })
-            .collect::<Vec<_>>();
-        if runtime != crate::domain::runtime::RuntimeKind::DockerCompose
-            || owned.is_empty()
-            || !self.runtime.probe().await.remaps_user_ids()
-        {
+        if compiled.selection.runtime != crate::domain::runtime::RuntimeKind::DockerCompose {
+            return Ok(());
+        }
+        let owned = self
+            .stacks
+            .files_outside_host_namespace(selection, compiled)?;
+        if owned.is_empty() || !self.runtime.probe().await.remaps_user_ids() {
             return Ok(());
         }
         Err(MmError::Remote {
             code: "MM_USER_NAMESPACE",
             message: format!(
-                "Docker on this host runs with userns-remap, so its containers do not have the host's user ids and {} would belong to an id they do not have. Give each of these `secret-files` entries uid \"0\", gid \"0\" and a mode every user can read, such as 0o444, or turn off `userns-remap` in /etc/docker/daemon.json and restart Docker",
+                "Docker on this host runs with userns-remap, so its containers do not have the host's user ids, and {} would belong to an id they do not have. Give each of these entries uid \"0\", gid \"0\" and a mode every user can read, such as 0o444, run the service in the host's user namespace (`userns_mode: host` in its Compose file), or turn off `userns-remap` in /etc/docker/daemon.json and restart Docker",
                 owned.join(", ")
             ),
         })

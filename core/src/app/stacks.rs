@@ -113,7 +113,7 @@ use manifest::*;
 mod shared_volumes;
 pub(crate) use shared_volumes::volume_users;
 pub(crate) use user_namespace::{
-    chosen_user_namespaces, files_in_chosen_namespaces, services_without_own_userns,
+    ChosenUserns, chosen_user_namespaces, files_in_chosen_namespaces, services_without_own_userns,
 };
 mod compose_environment;
 mod hardening;
@@ -272,6 +272,40 @@ impl StackManager {
         plan: &ImageBuildPlan,
     ) -> Result<DeploymentStackCompilation, MmError> {
         self.compile_selection(selection, false, Some(state), ImageSource::LocalBuild(plan))
+    }
+
+    /// The owned secret files and config files of the compiled stacks'
+    /// services that do not run in the host's user namespace, read from
+    /// the Compose files the engine gets.
+    pub(crate) fn files_outside_host_namespace(
+        &self,
+        selection: &WorkspaceSelection,
+        compiled: &DeploymentStackCompilation,
+    ) -> Result<Vec<String>, MmError> {
+        let document = self.documents.load_from(&selection.start)?;
+        let mut found = Vec::new();
+        for stack in &compiled.stacks {
+            let mut models = Vec::new();
+            for path in &stack.compose_files {
+                let bytes =
+                    crate::domain::path_policy::read_regular_file(path, MAX_COMPOSE_FILE_BYTES)?
+                        .unwrap_or_default();
+                let invalid = |cause: serde_yaml_ng::Error| MmError::Environment {
+                    message: format!("Compose file '{}': {cause}", path.display()),
+                };
+                let mut model: serde_yaml_ng::Value =
+                    serde_yaml_ng::from_slice(&bytes).map_err(invalid)?;
+                model.apply_merge().map_err(invalid)?;
+                models.push(model);
+            }
+            found.extend(user_namespace::files_outside_host_namespace(
+                &document,
+                &compiled.environment,
+                &stack.manifest.stack,
+                &models,
+            ));
+        }
+        Ok(found)
     }
 
     fn compile_selection(

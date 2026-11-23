@@ -805,6 +805,41 @@ fn the_last_compose_file_that_sets_userns_mode_decides_which_files_hold() -> Tes
     Ok(())
 }
 
+/// A tag such as `!override` stands for its value, a service takes the
+/// `userns_mode` of the service it `extends`, and a service on the host's
+/// network is not told that plain `auto` gives it ids of its own.
+#[test]
+fn tagged_extended_and_host_network_modes_are_read_as_compose_reads_them() -> TestResult {
+    let config = USERNS_CONFIG.replace(
+        "api: {stack: app}",
+        "api: {stack: app, secret-files: {token: {secret: api.token, uid: \"1000\", gid: \"1000\", mode: 0o400}}}",
+    );
+    let compose = |api: &str| {
+        format!(
+            "services:\n  web:\n    image: example/web\n    volumes: [\"uploads:/data\"]\n  base:\n    image: example/api\n    userns_mode: keep-id\n  api:\n    image: example/api\n{api}volumes:\n  uploads: {{}}\n"
+        )
+    };
+    let found = |api: &str| -> Result<Vec<String>, Box<dyn std::error::Error>> {
+        let compose = compose(api);
+        user_namespace_findings_with(&config, &[("compose.yaml", compose.as_str())])
+    };
+    assert!(found("    userns_mode: !override auto\n")?.is_empty());
+    let extended = found("    extends: base\n")?;
+    assert!(
+        extended.len() == 1 && extended[0].contains("sets `userns_mode: keep-id`"),
+        "{extended:?}"
+    );
+    assert!(found("    extends: base\n    userns_mode: host\n")?.is_empty());
+    let host_network = found("    network_mode: host\n    userns_mode: auto\n")?;
+    assert!(
+        host_network.len() == 1
+            && host_network[0].contains("keeps the host's ids")
+            && !host_network[0].contains("plain `auto`"),
+        "{host_network:?}"
+    );
+    Ok(())
+}
+
 #[test]
 fn a_service_that_keeps_the_hosts_ids_runs_in_the_hosts_user_namespace() -> TestResult {
     let project = temp_dirs::tempdir()?;
