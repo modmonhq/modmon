@@ -59,17 +59,20 @@ fn is_docker_internal(inspected: &serde_json::Value) -> bool {
     inspected["Internal"].as_bool() == Some(true)
 }
 
-/// The addressing of an inspected network, and its default route when
-/// `wanted` is internal and should have none.
+/// The addressing of an inspected network, and whether it carries a
+/// default route when `wanted` calls for the other.
 fn observed_cluster_addresses(
     inspected: &serde_json::Value,
     wanted: Option<&crate::domain::cluster_network::LocalNetwork>,
 ) -> String {
     let addresses = cluster_network_addresses(inspected);
-    if wanted.is_some_and(|wanted| wanted.internal) && !is_docker_internal(inspected) {
-        format!("{addresses}, with a default route")
-    } else {
-        addresses
+    let routed = !is_docker_internal(inspected);
+    match wanted {
+        Some(wanted) if wanted.internal == routed => {
+            let route = if routed { "with" } else { "without" };
+            format!("{addresses}, {route} a default route")
+        }
+        _ => addresses,
     }
 }
 
