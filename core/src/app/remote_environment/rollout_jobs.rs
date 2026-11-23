@@ -62,7 +62,9 @@ impl Walk<'_> {
                 stack: stage.stack.clone(),
                 job: planned.job.clone(),
             };
-            let patience = Duration::from_secs(planned.timeout_seconds) + STACK_OVERHEAD;
+            let patience = Duration::from_secs(planned.timeout_seconds)
+                + self.rollout.pull_timeout()
+                + STACK_OVERHEAD;
             match self.step(index, step, patience).await {
                 Ok(RolloutAnswer::JobRan(run)) => {
                     self.say(
@@ -96,8 +98,9 @@ impl Walk<'_> {
     /// Before a stage's jobs: on each node that runs them, the services the
     /// jobs' services depend on, healthy and resolved everywhere.
     async fn stage_ahead(&mut self, stage: &RolloutStage) -> Option<Fault> {
-        let patience =
-            Duration::from_secs(self.rollout.convergence_timeout_seconds) + STACK_OVERHEAD;
+        let patience = Duration::from_secs(self.rollout.convergence_timeout_seconds)
+            + self.rollout.pull_timeout()
+            + STACK_OVERHEAD;
         for name in &stage.ahead {
             let index = self
                 .nodes

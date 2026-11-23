@@ -132,6 +132,8 @@ impl DeploymentService {
             return Ok(Ok(services));
         }
         let runtime_target = stack_runtime_target(plan, target, stack, environments, false);
+        self.pull_images(plan, &runtime_target, Some(&services))
+            .await?;
         let started = self
             .ports
             .runtime
@@ -151,6 +153,24 @@ impl DeploymentService {
         )
     }
 
+    /// Pulls the images `services` of the target's stack (every service
+    /// with `None`) lack, before any of them starts or stops, within the
+    /// plan's `deploy.pull-timeout`.
+    pub(super) async fn pull_images(
+        &self,
+        plan: &DeploymentPlan,
+        runtime_target: &RuntimeTarget,
+        services: Option<&[String]>,
+    ) -> Result<(), MmError> {
+        if services.is_some_and(<[String]>::is_empty) {
+            return Ok(());
+        }
+        self.ports
+            .runtime
+            .pull_images(runtime_target, services, plan.rollout.pull_timeout())
+            .await
+    }
+
     /// Applies one stack and waits until it is healthy; `Some` says why it
     /// is not. An old container that `start_beside_old` replaced goes
     /// first, and on a cluster node it leaves (`domain::leaving`): out of
@@ -164,6 +184,12 @@ impl DeploymentService {
         environments: Option<&crate::domain::environment::PreparedEnvironmentBundle>,
     ) -> Result<Option<StepFailure>, MmError> {
         let runtime_target = stack_runtime_target(plan, target, stack, environments, false);
+        self.pull_images(
+            plan,
+            &runtime_target,
+            self.awaited_services(plan, stack).as_deref(),
+        )
+        .await?;
         let start_first = plan.rollout.start_first(&stack.stack);
         if !start_first.is_empty() {
             self.retire_replaced(plan, &runtime_target, &start_first)

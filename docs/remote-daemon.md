@@ -750,7 +750,14 @@ modules:
 ```
 
 A Compose file that sets `userns_mode` on a service keeps it (`host` needs the
-`userns-host` exception in the host policy). A [shared
+`userns-host` exception in the host policy). With a mode other than `host`,
+such as `auto`, Podman picks the service's ids when it creates a container,
+after mm wrote the service's files, so each config file and `secret-files`
+entry of that service has to read the same for any owner: `uid` and `gid` 0
+(or left out) and a mode every user can read, such as the default 0o444.
+`mm config validate` and the plan refuse an entry that asks for more
+(`MM_USER_NAMESPACE`). Remove `userns_mode` from the service to give it ids of
+its own, and the file is given to its `uid` and `gid` again. A [shared
 volume](#shared-volumes-across-nodes) has to reach a service with the same ids
 on every node: a node where another service already has that service's first
 choice refuses the plan and names that service.
@@ -1732,7 +1739,10 @@ another machine on the provider's network.
 
 Containers keep their way out to the internet, through their node's address.
 A network marked `internal: true` has none: its containers reach the members
-of the network and nothing else.
+of the network and nothing else. It never carries a container's default
+route, so a service on an internal network and an ordinary one keeps its way
+out through the ordinary one. The engine creates it that way: Podman with
+`--opt no_default_route=true`, Docker Engine with `--internal`.
 
 ```yaml
 networks:
@@ -1779,6 +1789,15 @@ The plan says so before anything happens:
 ```text
   networks:
     backend: created again on 10.64.0.0/24 of 10.64.0.0/20 (was 172.19.0.0/16); restarts web
+```
+
+An internal network that an earlier mm created with a default route is
+created again the same way, and the plan says `with a default route` after
+its old addresses:
+
+```text
+  networks:
+    vault: created again on 10.64.17.0/24 of 10.64.16.0/20, internal (was 10.64.16.0/20, range 10.64.17.2-10.64.17.254, with a default route); restarts api
 ```
 
 This happens once per network and node, at the first deployment after
@@ -2004,7 +2023,10 @@ Each node's `mmd` answers the lookups of the containers on its own node. It
 listens on the node's own address on each network (the first address of the
 node's slice, such as `10.64.0.1`), and the containers of the network's
 services get an `/etc/resolv.conf` that names that address. `mmd` knows the
-containers of its own node by watching the engine. It learns the containers of
+containers of its own node by watching the engine. A lookup from an address
+where `mmd` knows no container yet waits up to a second for the engine to show
+one there, so a container that resolves its own `tasks.<service>` name as its
+entrypoint's first step finds itself in the first answer. It learns the containers of
 the other nodes by asking each node every two seconds, over the mesh, what it
 runs. Nothing is stored and no deployment pushes anything: what runs decides
 the answers. Because each node answers its own containers, it can prefer the
