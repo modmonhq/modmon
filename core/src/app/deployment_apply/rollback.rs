@@ -18,7 +18,7 @@ impl DeploymentService {
             self.rollback_to_previous(plan, target, (previous, changes), environment_bundle)
                 .await?;
         } else {
-            self.rollback_initial_deployment(plan, target).await?;
+            self.rollback_initial_deployment(plan, target, None).await?;
         }
         Ok(())
     }
@@ -207,13 +207,34 @@ impl DeploymentService {
         }
     }
 
-    async fn rollback_initial_deployment(
+    /// Removes what `plan`, a first deployment, started. With `next`, the
+    /// plan applied right after, a stack or network `next` also has stays,
+    /// as do the networks of a stack that stays and, when `next` has an
+    /// ingress, the ingress.
+    pub(super) async fn rollback_initial_deployment(
         &self,
         plan: &DeploymentPlan,
         target: &NamedTarget,
+        next: Option<&DeploymentPlan>,
     ) -> Result<(), MmError> {
         let mut failures = Vec::new();
-        for stack in plan.stacks.iter().rev() {
+        let runs_next = |project: &str| {
+            next.is_some_and(|next| {
+                (next.stacks.iter()).any(|stack| stack.compose_project_name == project)
+            })
+        };
+        let kept = (plan.stacks.iter())
+            .filter(|stack| runs_next(&stack.compose_project_name))
+            .map(|stack| stack.stack.as_str())
+            .collect::<Vec<_>>();
+        let network_stays = |network: &crate::domain::stack::CanonicalNetworkIntent| {
+            next.is_some_and(|next| {
+                (next.networks.iter()).any(|known| known.physical_name == network.physical_name)
+            }) || (network.members.iter()).any(|member| kept.contains(&member.stack.as_str()))
+        };
+        for stack in
+            (plan.stacks.iter().rev()).filter(|stack| !runs_next(&stack.compose_project_name))
+        {
             if let Err(error) = self
                 .ports
                 .runtime
@@ -226,7 +247,7 @@ impl DeploymentService {
         for network in plan
             .networks
             .iter()
-            .filter(|network| !network.members.is_empty())
+            .filter(|network| !network.members.is_empty() && !network_stays(network))
         {
             if let Err(error) = self
                 .ports
@@ -242,58 +263,71 @@ impl DeploymentService {
             }
         }
         if let Some(ingress) = &plan.static_ingress
+            && next.is_none_or(|next| next.static_ingress.is_none())
             && !self.planner.installation_owns_ingress(plan.target_id)?
         {
-            if let Err(error) = self.ports.privileged.uninstall(ingress).await {
+            self.remove_initial_ingress(plan, target, (ingress, kept.is_empty()), &mut failures)
+                .await;
+        }
+        rollback_result(failures)
+    }
+
+    async fn remove_initial_ingress(
+        &self,
+        plan: &DeploymentPlan,
+        target: &NamedTarget,
+        (ingress, network): (&TargetIngressPlan, bool),
+        failures: &mut Vec<MmError>,
+    ) {
+        if let Err(error) = self.ports.privileged.uninstall(ingress).await {
+            failures.push(error);
+        }
+        if let Err(error) = self.ports.rootless.uninstall(ingress).await {
+            failures.push(error);
+        }
+        let exclusively_owned = plan.complete_route_claims.iter().all(|claim| {
+            claim.project_id == plan.project_id && claim.environment == plan.environment
+        });
+        if exclusively_owned {
+            if let Err(error) = self
+                .ports
+                .runtime
+                .remove(&ingress_runtime_target(plan, target, ingress))
+                .await
+            {
                 failures.push(error);
             }
-            if let Err(error) = self.ports.rootless.uninstall(ingress).await {
+            let manifest = &ingress.artifact.manifest;
+            if let Err(error) = self
+                .ports
+                .runtime
+                .remove_volume(
+                    target,
+                    &manifest.dynamic_config_volume_name,
+                    INGRESS_CONFIG_RESOURCE,
+                )
+                .await
+            {
                 failures.push(error);
             }
-            let exclusively_owned = plan.complete_route_claims.iter().all(|claim| {
-                claim.project_id == plan.project_id && claim.environment == plan.environment
-            });
-            if exclusively_owned {
-                if let Err(error) = self
-                    .ports
-                    .runtime
-                    .remove(&ingress_runtime_target(plan, target, ingress))
-                    .await
-                {
-                    failures.push(error);
-                }
-                let manifest = &ingress.artifact.manifest;
-                if let Err(error) = self
-                    .ports
-                    .runtime
-                    .remove_volume(
-                        target,
-                        &manifest.dynamic_config_volume_name,
-                        INGRESS_CONFIG_RESOURCE,
-                    )
-                    .await
-                {
-                    failures.push(error);
-                }
-                if let Err(error) = self
-                    .ports
-                    .runtime
-                    .remove_volume(target, &manifest.acme_volume_name, INGRESS_ACME_RESOURCE)
-                    .await
-                {
-                    failures.push(error);
-                }
-                if let Err(error) = self
+            if let Err(error) = self
+                .ports
+                .runtime
+                .remove_volume(target, &manifest.acme_volume_name, INGRESS_ACME_RESOURCE)
+                .await
+            {
+                failures.push(error);
+            }
+            if network
+                && let Err(error) = self
                     .ports
                     .runtime
                     .remove_network(target, &manifest.network_name, INGRESS_NETWORK_RESOURCE)
                     .await
-                {
-                    failures.push(error);
-                }
+            {
+                failures.push(error);
             }
         }
-        rollback_result(failures)
     }
 }
 
