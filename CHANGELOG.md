@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `compose up`, `compose down`, and stopping replaced containers no longer
+  stop after a fixed two minutes on Podman: the limit comes from the stack's
+  `stop_grace_period` values and the health checks other services wait for,
+  and a cluster rollout waits that long on top of its own steps.
+
 ## [0.1.1] - 2026-11-19
 
 Remote protocol: 1. This release is the baseline: from it on, `mm` and the

@@ -5,6 +5,22 @@
 use super::*;
 
 impl Walk<'_> {
+    /// How long a node may take for a stack: its convergence window, the
+    /// work around it, and what Compose waits for while containers stop
+    /// and dependencies become healthy.
+    pub(super) fn stack_patience(&self) -> Duration {
+        Duration::from_secs(self.rollout.convergence_timeout_seconds)
+            + STACK_OVERHEAD
+            + self.environment.compose_wait
+    }
+
+    /// How long a node may take to finish or roll back, which may start or
+    /// stop every stack again.
+    pub(super) fn undo_patience(&self) -> Duration {
+        let stacks = u32::try_from(self.rollout.stages.len()).unwrap_or(u32::MAX);
+        SETUP_PATIENCE + self.environment.compose_wait.saturating_mul(stacks)
+    }
+
     /// The jobs of a stage, one after the other on their nodes, before any
     /// node of the stage is replaced. A job that fails stops the rollout.
     pub(super) async fn stage_jobs(&mut self, stage: &RolloutStage) -> Option<Fault> {
@@ -96,8 +112,7 @@ impl Walk<'_> {
     /// Before a stage's jobs: on each node that runs them, the services the
     /// jobs' services depend on, healthy and resolved everywhere.
     async fn stage_ahead(&mut self, stage: &RolloutStage) -> Option<Fault> {
-        let patience =
-            Duration::from_secs(self.rollout.convergence_timeout_seconds) + STACK_OVERHEAD;
+        let patience = self.stack_patience();
         for name in &stage.ahead {
             let index = self
                 .nodes

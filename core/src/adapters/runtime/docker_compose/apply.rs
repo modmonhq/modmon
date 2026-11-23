@@ -358,6 +358,7 @@ impl LocalDeploymentRuntime for DockerComposeRuntime {
             &target.project_name,
             services,
             whole_project,
+            project_limit(target, DOCKER_FLOOR),
         )
         .await
     }
@@ -392,7 +393,12 @@ impl LocalDeploymentRuntime for DockerComposeRuntime {
         containers: &[String],
     ) -> Result<(), MmError> {
         require_local_target(target)?;
-        crate::adapters::runtime::project_services::remove_containers(self, containers).await
+        crate::adapters::runtime::project_services::remove_containers(
+            self,
+            containers,
+            project_limit(target, DOCKER_FLOOR),
+        )
+        .await
     }
 
     async fn remove(&self, target: &RuntimeTarget) -> Result<(), MmError> {
@@ -405,7 +411,7 @@ impl LocalDeploymentRuntime for DockerComposeRuntime {
             .run(
                 self.command_spec(args)
                     .current_dir(&target.root)
-                    .timeout(Duration::from_secs(300)),
+                    .timeout(project_limit(target, DOCKER_FLOOR)),
             )
             .await?;
         self.ensure_success(output)?;
@@ -454,7 +460,7 @@ impl DockerComposeRuntime {
                 auth.docker(self.command_spec(args))
                     .interpolation_environment(&target.interpolation_environment)
                     .current_dir(&target.root)
-                    .timeout(Duration::from_secs(300)),
+                    .timeout(project_limit(target, DOCKER_FLOOR)),
             )
             .await?;
         self.ensure_started(output, target, only)

@@ -731,6 +731,18 @@ number with `s`, `m`, or `h`, at least `1s`. The default is `10m`, and
 whose health check fails, fails at once without waiting for it. A container
 without a health check counts as healthy once it has run for five seconds.
 
+Starting or stopping a stack (`compose up`, `compose down`, and the stop of
+containers a deployment replaces) has its own limit, which comes from the
+stack's Compose files: the longest `depends_on` chain, each service counted
+with its `stop_grace_period` (Compose's default is `10s`) and, when another
+service waits for it with `condition: service_healthy`, its health check's
+`start_period` plus `retries` times its `interval` and `timeout`. One minute
+is added for the engine's own work, and the limit is never under two minutes
+on Podman or five minutes on Docker. A database with
+`stop_grace_period: 5m` gets six minutes to stop, with nothing to set in
+mm's configuration. A value Compose takes from a variable, such as `${GRACE}`, counts
+as the default.
+
 `deploy.progress-timeout` is how long `mm deploy apply` (and `mm team sync`)
 on a remote environment waits without any sign of progress from a host: the
 host does not answer, or its `mmd` no longer works on the step. The command

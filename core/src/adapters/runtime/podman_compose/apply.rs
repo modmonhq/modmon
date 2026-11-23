@@ -463,6 +463,7 @@ impl LocalDeploymentRuntime for PodmanComposeRuntime {
             &target.project_name,
             services,
             whole_project,
+            project_limit(target, STOP_FLOOR),
         )
         .await
     }
@@ -498,7 +499,12 @@ impl LocalDeploymentRuntime for PodmanComposeRuntime {
     ) -> Result<(), MmError> {
         require_local_target(target)?;
         self.require_local_engine_environment()?;
-        crate::adapters::runtime::project_services::remove_containers(self, containers).await
+        crate::adapters::runtime::project_services::remove_containers(
+            self,
+            containers,
+            project_limit(target, STOP_FLOOR),
+        )
+        .await
     }
 
     async fn remove(&self, target: &RuntimeTarget) -> Result<(), MmError> {
@@ -512,7 +518,7 @@ impl LocalDeploymentRuntime for PodmanComposeRuntime {
             .run(
                 self.command_spec(args)
                     .current_dir(&target.root)
-                    .timeout(Duration::from_secs(120)),
+                    .timeout(project_limit(target, COMPOSE_FLOOR)),
             )
             .await?;
         self.ensure_success(output)?;
@@ -564,7 +570,7 @@ impl PodmanComposeRuntime {
                 auth.podman(self.command_spec(args))
                     .interpolation_environment(&target.interpolation_environment)
                     .current_dir(&target.root)
-                    .timeout(Duration::from_secs(120)),
+                    .timeout(project_limit(target, COMPOSE_FLOOR)),
             )
             .await?;
         self.ensure_started(output, target, only)

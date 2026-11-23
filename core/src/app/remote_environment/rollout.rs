@@ -519,8 +519,7 @@ impl Walk<'_> {
                 return step;
             }
         }
-        let patience =
-            Duration::from_secs(self.rollout.convergence_timeout_seconds) + STACK_OVERHEAD;
+        let patience = self.stack_patience();
         let stack = || stage.stack.clone();
         let mut turns = Vec::new();
         if !stage.start_first.is_empty() {
@@ -679,7 +678,10 @@ impl Walk<'_> {
         }
         for index in 0..self.nodes.len() {
             self.say(index, ProgressStep::Finishing);
-            match self.step(index, RolloutStep::Finish, SETUP_PATIENCE).await {
+            match self
+                .step(index, RolloutStep::Finish, self.undo_patience())
+                .await
+            {
                 Ok(RolloutAnswer::Finished(result)) => {
                     if let Some(outcome) = outcomes.get_mut(index) {
                         outcome.state = NodeApplyState::Applied;
@@ -734,7 +736,7 @@ impl Walk<'_> {
             }
             self.say(index, ProgressStep::RollingBack);
             match self
-                .step(index, RolloutStep::Rollback, SETUP_PATIENCE)
+                .step(index, RolloutStep::Rollback, self.undo_patience())
                 .await
             {
                 // The node had changed nothing: it only gave up the lock,
