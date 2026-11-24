@@ -145,6 +145,8 @@ pub enum BindingProblem {
     Unknown,
     /// The binding is the named secret.
     Secret(String),
+    /// A release fact or input this deployment has no value for.
+    Release(String),
     Unresolved(String),
 }
 
@@ -157,7 +159,7 @@ pub fn binding_text(
     match release_value(config, environment, key) {
         Some(ReleaseValue::Known(value)) => return Ok(value),
         Some(ReleaseValue::Pending) => return Ok(String::new()),
-        Some(ReleaseValue::Missing(reason)) => return Err(BindingProblem::Unresolved(reason)),
+        Some(ReleaseValue::Missing(reason)) => return Err(BindingProblem::Release(reason)),
         None => {}
     }
     let binding = effective_binding(config, environment, key).ok_or(BindingProblem::Unknown)?;

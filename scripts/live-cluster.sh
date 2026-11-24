@@ -550,9 +550,12 @@ docker cp "$TMP/borrowed_key" "$(container app-2):/etc/ssh/ssh_host_ed25519_key"
 docker cp "$TMP/borrowed_key.pub" "$(container app-2):/etc/ssh/ssh_host_ed25519_key.pub"
 rm -f "$TMP/borrowed_key" "$TMP/borrowed_key.pub"
 restart_sshd() {
-  on "$1" sh -c 'chown root:root /etc/ssh/ssh_host_* && chmod 600 /etc/ssh/ssh_host_*_key && pkill -x sshd; sleep 1'
+  on "$1" sh -c 'chown root:root /etc/ssh/ssh_host_* && chmod 600 /etc/ssh/ssh_host_*_key && pkill -x sshd'
+  on "$1" bash -c 'for _ in $(seq 1 100); do (exec 3<>/dev/tcp/127.0.0.1/22) 2>/dev/null || exit 0; sleep 0.1; done; exit 1' \
+    || fail "sshd on $1 still answers on port 22 after 10s"
   docker exec -d "$(container "$1")" sh -c '/usr/sbin/sshd -D -e >>/tmp/sshd.log 2>&1'
-  sleep 1
+  on "$1" bash -c 'for _ in $(seq 1 100); do (exec 3<>/dev/tcp/127.0.0.1/22) 2>/dev/null && exit 0; sleep 0.1; done; exit 1' \
+    || fail "sshd on $1 does not answer on port 22 within 10s"
 }
 restart_sshd app-2
 if mm_as ops target nodes >"$TMP/address-other-daemon.log" 2>&1; then
@@ -698,7 +701,7 @@ SYNC=$(mm_as ops --output json team sync | json 'value["plan_hash"]')
 mm_as ops team sync --plan "$SYNC" --yes | tee "$TMP/sync.log"
 [ "$(grep -c ' applied ' "$TMP/sync.log")" = 3 ] || fail "the sync should apply on three nodes"
 for node in $NODES; do
-  on "$node" sh -c 'grep -c "^restrict," /etc/ssh/mm_authorized_keys' | grep -qx 2 \
+  on "$node" sh -c 'grep -c "^restrict," /etc/ssh/mm_authorized_keys' | grep -x 2 >/dev/null \
     || fail "$node: the sync should add alice's key"
 done
 
@@ -1044,8 +1047,8 @@ assert served == {'provided': 60}, served" || { ingress_diagnostics; fail "app-1
   extra=$(on app-1 engine run -d --network "$network" --label com.docker.compose.service=web \
     -v "$checkout:/www/cgi-bin:ro" --health-cmd 'wget -q -O /dev/null http://127.0.0.1:8080/cgi-bin/health' \
     --health-interval 1s "$WORKLOAD_IMAGE" httpd -f -p 8080 -h /www)
-  for _ in $(seq 1 30); do on app-1 engine logs "$extra" 2>&1 | grep -q '^request' && break; sleep 1; done
-  on app-1 engine logs "$extra" 2>&1 | grep -q '^request' || fail "the web added by hand gets no request"
+  for _ in $(seq 1 30); do on app-1 engine logs "$extra" 2>&1 | grep '^request' >/dev/null && break; sleep 1; done
+  on app-1 engine logs "$extra" 2>&1 | grep '^request' >/dev/null || fail "the web added by hand gets no request"
   # Slow requests to both of app-1's webs, then both leave.
   docker exec -d "$CLIENT" python3 /tmp/load.py slow "$INGRESS_HOST" 4 /tmp/load-slow.json
   sleep 3
@@ -1673,7 +1676,7 @@ health_stages() {
   mm_as alice service restart web | tee "$TMP/health-restart.log"
   for _ in $(seq 1 30); do routed app-2 "$flapping" && break; sleep 1; done
   routed app-2 "$flapping" || fail "mm service restart did not bring app-2's web back into the routes"
-  if mm_as alice service status | grep -q "restart limit web"; then fail "the status still reports the limit after mm service restart"; fi
+  if mm_as alice service status | grep "restart limit web" >/dev/null; then fail "the status still reports the limit after mm service restart"; fi
 
   step "health: no restart while a deployment holds the environment"
   JOB_LINES='jobs:
@@ -1729,7 +1732,7 @@ YAML
   low=$(on app-1 engine ps -q --filter label=com.docker.compose.service=low)
   [ -n "$low" ] || fail "low is not running on app-1"
   [ "$(on app-1 engine exec "$low" id -u)" = 1000 ] || fail "low should run as user 1000"
-  on app-1 engine exec "$low" sh -c 'wget -q -S -O /dev/null http://127.0.0.1:80/ 2>&1 || true' | grep -q 'HTTP/1' \
+  on app-1 engine exec "$low" sh -c 'wget -q -S -O /dev/null http://127.0.0.1:80/ 2>&1 || true' | grep 'HTTP/1' >/dev/null \
     || fail "low does not answer on port 80"
   printf '  ok   low runs as user 1000 and answers on port 80 on %s\n' "$ENGINE"
 }
@@ -2561,7 +2564,7 @@ YAML
   revision=$(json '[v["active"]["revision"] for n in value["nodes"] for v in n["values"] if v["key"] == "db.password"][0]' <"$TMP/store/status-2.json")
   mm_as ops -e production secret provider snapshot deploy-secrets --to /tmp/store.snap >"$TMP/store/snapshot.log" 2>&1 \
     || { cat "$TMP/store/snapshot.log"; fail "no snapshot was taken"; }
-  docker exec "$CLIENT" sh -c 'head -n 1 /tmp/store.snap' | grep -qx -- '-----BEGIN AGE ENCRYPTED FILE-----' || fail "the snapshot is not sealed"
+  docker exec "$CLIENT" sh -c 'head -n 1 /tmp/store.snap' | grep -x -- '-----BEGIN AGE ENCRYPTED FILE-----' >/dev/null || fail "the snapshot is not sealed"
   for node in $NODES; do
     unit "$node" stop
     stop_mmd "$node"
@@ -2629,7 +2632,7 @@ YAML
   unit app-3 stop
   [ "$(facts app-3 | json '(value["data"], value["record"]["initialized"])')" = "(True, True)" ] \
     || fail "app-3's member is down with its data, and its facts say otherwise"
-  store_status app-1 | json 'sorted(p["name"] for p in value["peers"])' | grep -qx "\['app-1', 'app-2', 'app-3'\]" \
+  store_status app-1 | json 'sorted(p["name"] for p in value["peers"])' | grep -x "\['app-1', 'app-2', 'app-3'\]" >/dev/null \
     || fail "app-3 left the Raft configuration while its member was only down"
   member_spec app-3 "$TMP/store/app-3.pem" | store app-3 member >"$TMP/store/app-3-down-member.json"
   [ "$(json '(value["initialized"], value["sealed"], value["changed"])' <"$TMP/store/app-3-down-member.json")" = "(True, False, False)" ] \
@@ -2788,13 +2791,13 @@ if mm_as alice deploy apply --plan "$SECTION" --yes >"$TMP/section.log" 2>&1; th
   fail "a node section was applied on its own"
 fi
 has "$TMP/section.log" "holds no reviewed cluster plan"
-on app-1 engine ps --format '{{.Names}}' | grep -q . && fail "the refused apply started a container"
+on app-1 engine ps --format '{{.Names}}' | grep . >/dev/null && fail "the refused apply started a container"
 
 step "apply walks the nodes and reports each one"
 mm_as alice deploy apply --plan "$PLAN" --yes 2>&1 | tee "$TMP/apply.log"
 has "$TMP/apply.log" "==> app-1" "==> app-2" "==> app-3" "runs nothing"
 [ "$(grep -c ' applied ' "$TMP/apply.log")" = 3 ] || fail "three nodes should report applied"
-on app-1 engine ps --format '{{.Names}}' | grep -q api || fail "app-1 should run the api container"
+on app-1 engine ps --format '{{.Names}}' | grep api >/dev/null || fail "app-1 should run the api container"
 for node in app-2 app-3; do
   [ -z "$(on "$node" engine ps -q)" ] || fail "$node should run nothing"
 done
@@ -2917,6 +2920,7 @@ rows_of() {
   awk -v service="$2" '
     $1 == "app" && $2 == service { inside = 1; print $5; next }
     inside && $1 ~ /^app-[0-9]+$/ { print $1; next }
+    $1 == "✓" || $1 == "✗" { next }
     { inside = 0 }' "$1" | tr '\n' ' ' | sed 's/ $//'
 }
 
@@ -2955,9 +2959,9 @@ mm_as alice deploy apply --plan "$PLACED" --yes 2>&1 | tee "$TMP/placed-apply.lo
 [ "$(services_on app-1)" = "api web" ] || fail "app-1 runs: $(services_on app-1)"
 [ "$(services_on app-2)" = "web worker" ] || fail "app-2 runs: $(services_on app-2)"
 [ "$(services_on app-3)" = "db web worker" ] || fail "app-3 runs: $(services_on app-3)"
-on app-3 engine volume ls --format '{{.Name}}' | grep -q dbdata || fail "app-3 should have db's volume"
+on app-3 engine volume ls --format '{{.Name}}' | grep dbdata >/dev/null || fail "app-3 should have db's volume"
 for node in app-1 app-2; do
-  if on "$node" engine volume ls --format '{{.Name}}' | grep -q dbdata; then fail "$node has a volume only db uses"; fi
+  if on "$node" engine volume ls --format '{{.Name}}' | grep dbdata >/dev/null; then fail "$node has a volume only db uses"; fi
 done
 
 step "a relative bind mount is the node's own checkout on every node"
@@ -3582,7 +3586,11 @@ mm_as alice deploy plan >/dev/null || fail "the plan still fails after the route
 printf '  ok   the plan names app-2, its route, and the key, and passes once the route is gone\n'
 
 step "a rule removed by hand is reported, shown by the plan, and repaired by its apply"
-on app-2 iptables -t "$FORWARD_TABLE" -D MM-CLUSTER 3
+BACKEND_IN=$(on app-2 iptables -t "$FORWARD_TABLE" -S MM-CLUSTER | grep -F -e ' -i mm0 -o mmn-' | grep -F -e '-production-backend" -j ACCEPT' || true)
+[ -n "$BACKEND_IN" ] && [ "$(printf '%s\n' "$BACKEND_IN" | wc -l)" = 1 ] \
+  || fail "app-2 should hold one rule that lets backend in from the mesh, not '$BACKEND_IN'"
+eval "BACKEND_RULE=($BACKEND_IN)"
+on app-2 iptables -t "$FORWARD_TABLE" -D "${BACKEND_RULE[@]:1}"
 cut_off_from app-1 api "$WEB_2" "web on app-2 while its rule is missing"
 mm_as alice service status >"$TMP/net-drift-status.log" 2>&1 || true
 has "$TMP/net-drift-status.log" "node app-2: cluster networks differ from the last deployment" "missing rule"
@@ -4005,7 +4013,7 @@ for _ in $(seq 1 60); do [ "$(rolling_on_1)" = running ] && break; sleep 1; done
 # Reads and a command in a container are answered while the step runs.
 mm_as bob service status >"$TMP/wedge-service.log" || { cat "$TMP/wedge-service.log" >&2; fail "service status failed during the step"; }
 has "$TMP/wedge-service.log" app-1 app-2 app-3
-mm_as alice service exec api -- echo in-the-step | grep -q in-the-step || fail "a command in a container did not run during the step"
+mm_as alice service exec api -- echo in-the-step | grep in-the-step >/dev/null || fail "a command in a container did not run during the step"
 SYNC=$(mm_as ops --output json team sync --nodes app-1 | json 'value["plan_hash"]')
 GONE=$(mm_as ops --output json team sync --nodes app-1 | json 'value["plan_hash"]')
 mm_as ops team sync --plan "$SYNC" --yes >"$TMP/wedge-sync.log" 2>&1 &
@@ -4024,7 +4032,11 @@ if grep -q locks_lock "$TMP/wedge-threads.log"; then cat "$TMP/wedge-threads.log
 
 # One of the waiting clients is killed. Its relay on app-1 leaves at once,
 # and the daemon gives the request up without ever running it.
-WAITING=$(steady_relays app-1)
+WAITING=0
+for _ in $(seq 1 30); do
+  WAITING=$(steady_relays app-1)
+  [ "$WAITING" -ge 3 ] && break
+done
 [ "$WAITING" -ge 3 ] || { relays app-1 >&2; fail "expected the relays of the step and of two waiting syncs on app-1"; }
 docker exec "$CLIENT" python3 -c '
 import os, signal, sys
@@ -4036,7 +4048,7 @@ for pid in filter(str.isdigit, os.listdir("/proc")):
     if os.path.basename(command[0]) == b"mm" and sys.argv[1].encode() in command:
         os.kill(int(pid), signal.SIGKILL)
         print("killed the client", pid)
-' "$GONE" | grep -q "killed the client" || fail "the waiting client was not there to be killed"
+' "$GONE" | grep "killed the client" >/dev/null || fail "the waiting client was not there to be killed"
 left=no
 for _ in $(seq 1 6); do
   [ "$(steady_relays app-1)" -lt "$WAITING" ] && { left=yes; break; }
@@ -4094,7 +4106,7 @@ wait_for() {
   fail "$what within $seconds s"
 }
 # in_step NODE: the node lists the stack step of a deployment as running.
-in_step() { mm_as bob deploy status 2>/dev/null | grep -q "running:  deployment (stack 'app')"; }
+in_step() { mm_as bob deploy status 2>/dev/null | grep "running:  deployment (stack 'app')" >/dev/null; }
 # kill_client TEXT: kills the mm client process whose arguments hold TEXT.
 kill_client() {
   docker exec "$CLIENT" python3 -c '
@@ -4107,7 +4119,7 @@ for pid in filter(str.isdigit, os.listdir("/proc")):
     if os.path.basename(command[0]) == b"mm" and sys.argv[1].encode() in command:
         os.kill(int(pid), signal.SIGKILL)
         print("killed the client", pid)
-' "$1" | grep -q "killed the client" || fail "the client of $1 was not there to be killed"
+' "$1" | grep "killed the client" >/dev/null || fail "the client of $1 was not there to be killed"
 }
 # environment_free: no node holds the environment for a deployment.
 environment_free() {
@@ -4195,7 +4207,7 @@ cat "$TMP/cancel-apply.log"
 has "$TMP/cancel-apply.log" "cancelled by bob"
 [ "$(web_command app-1)" = "$WEB_BEFORE" ] || fail "app-1 does not run what it ran before: $(web_command app-1)"
 on app-1 grep -q '"cancelled_by":"bob"' /var/lib/mm/audit.jsonl || fail "app-1's audit log does not name who cancelled"
-on app-1 grep '"result":"cancelled"' /var/lib/mm/audit.jsonl | grep -q '"started_by":"alice"' || fail "app-1's audit log does not name who started it"
+on app-1 grep '"result":"cancelled"' /var/lib/mm/audit.jsonl | grep '"started_by":"alice"' >/dev/null || fail "app-1's audit log does not name who started it"
 mm_as bob deploy status >"$TMP/cancel-after.log"
 has "$TMP/cancel-after.log" "No rollout is in progress."
 if grep -q 'running:' "$TMP/cancel-after.log"; then cat "$TMP/cancel-after.log" >&2; fail "something still runs after the cancellation"; fi
@@ -4381,7 +4393,7 @@ for node in app-2 app-3; do
   [ -z "$(on "$node" engine ps -aq)" ] || fail "$node should have no container left"
   [ -z "$(on "$node" engine network ls -q --filter label=com.docker.compose.project)" ] || fail "$node should have no project network left"
 done
-on app-3 engine volume ls --format '{{.Name}}' | grep -q dbdata || fail "a volume is never removed with its service"
+on app-3 engine volume ls --format '{{.Name}}' | grep dbdata >/dev/null || fail "a volume is never removed with its service"
 mm_as alice target nodes | tee "$TMP/nodes-empty.log"
 [ "$(grep -c 'runs nothing' "$TMP/nodes-empty.log")" = 2 ] || fail "two nodes should record that they run nothing"
 mm_as alice deploy plan | tee "$TMP/settled-plan.log"
@@ -4548,7 +4560,7 @@ OWNER=0
 # shellcheck disable=SC2016 # the inner command expands on the node
 on app-1 sh -c 'engine exec "$(engine ps -q --filter label=com.docker.compose.service=web)" sh -c "echo written-in-the-container > /data/a.txt"'
 [ "$(on app-1 cat "$STORAGE_DIR/a.txt")" = "written-in-the-container" ] || fail "what the container wrote is not in the storage node's directory"
-on app-1 engine volume ls --format '{{.Name}}' | grep -q '^mm-shared-.*-production-app-uploads-' || fail "the engine volume is not named after the shared volume"
+on app-1 engine volume ls --format '{{.Name}}' | grep '^mm-shared-.*-production-app-uploads-' >/dev/null || fail "the engine volume is not named after the shared volume"
 # shellcheck disable=SC2016 # the inner command expands on the node
 [ "$(on app-1 sh -c 'engine inspect --format "{{index .Config.Labels \"io.mm.shared-storage\"}}" "$(engine ps -q --filter label=com.docker.compose.service=web)"')" = local ] \
   || fail "web does not say where its storage is"
@@ -4695,7 +4707,7 @@ until [ "$(setting app-1 web '{{.State.Health.Status}}')" = healthy ]; do
   sleep 1; waited=$((waited + 1))
 done
 printf '  ok   web wrote to its tmpfs and its health check passes\n'
-in_service app-1 web "cat /etc/resolv.conf" | grep -q '^nameserver 10\.64\.' || fail "web does not ask the node's resolver"
+in_service app-1 web "cat /etc/resolv.conf" | grep '^nameserver 10\.64\.' >/dev/null || fail "web does not ask the node's resolver"
 name_becomes app-2 worker web "$(address_on app-1 web backend)" 30
 name_becomes app-1 web tasks.worker "$(sorted "$(address_on app-1 worker backend)" "$(address_on app-2 worker backend)" "$(address_on app-3 worker backend)")" 30
 in_service app-1 web "echo written-under-hardening > /data/h.txt" || fail "web cannot write to its shared volume"
@@ -4774,10 +4786,10 @@ if grep -q 'MM_RUNTIME_NOT_WORKING\|MM_RUNTIME_NOT_CHECKED' "$TMP/runtime-doctor
 UNTIL=$(($(date +%s) + 1))
 for node in $NODES; do
   if [ "$ENGINE" = podman ]; then
-    on "$node" engine events --since "$SINCE" --stream=false --filter event=start --format '{{.Image}}' | grep -q 'hello-world' \
+    on "$node" engine events --since "$SINCE" --stream=false --filter event=start --format '{{.Image}}' | grep 'hello-world' >/dev/null \
       || fail "doctor ran no container under the runtime $node offers"
   else
-    on "$node" engine events --since "$SINCE" --until "$UNTIL" --filter event=start --format '{{json .}}' | grep -q '"image":"hello-world"' \
+    on "$node" engine events --since "$SINCE" --until "$UNTIL" --filter event=start --format '{{json .}}' | grep '"image":"hello-world"' >/dev/null \
       || fail "doctor ran no container under the runtime $node offers"
   fi
 done
@@ -4874,7 +4886,7 @@ AFTER_3=$(started_at app-3 web)
 [ "$(seconds_between "$AFTER_1" "$AFTER_2")" -ge 3 ] || fail "app-2 restarted before app-1 was healthy ($AFTER_1, $AFTER_2)"
 [ "$(seconds_between "$AFTER_2" "$AFTER_3")" -ge 3 ] || fail "app-3 restarted before app-2 was healthy ($AFTER_2, $AFTER_3)"
 for node in $NODES; do
-  on "$node" grep '"result":"service-restarted"' /var/lib/mm/audit.jsonl | grep -q '"principal":"carol"' \
+  on "$node" grep '"result":"service-restarted"' /var/lib/mm/audit.jsonl | grep '"principal":"carol"' >/dev/null \
     || fail "$node has no audit record of carol's restart"
 done
 if mm_as carol deploy plan >"$TMP/operate-deploy.log" 2>&1; then
@@ -4889,7 +4901,7 @@ has "$TMP/job-run.log" "job=greet state=Succeeded attempt=1/1 exit=Some(0) node=
 [ "$(job_containers app-1)" = 0 ] || fail "the job's container is still on app-1"
 mm_as carol job history greet | tee "$TMP/job-history.log"
 has "$TMP/job-history.log" "job=greet state=Succeeded" "node=app-1"
-on app-1 grep '"result":"job-run"' /var/lib/mm/audit.jsonl | grep -q '"principal":"carol"' || fail "app-1 has no audit record of carol's job"
+on app-1 grep '"result":"job-run"' /var/lib/mm/audit.jsonl | grep '"principal":"carol"' >/dev/null || fail "app-1 has no audit record of carol's job"
 
 step "values: alice stages a secret on every node without root; web keeps its value until a redeploy"
 token_on() { in_service "$1" web 'printenv API_TOKEN || true'; }
@@ -4928,7 +4940,7 @@ if grep -q -e first-token -e second-token "$TMP/values-status.log" "$TMP/values-
 mm_as alice service restart web >"$TMP/values-restart.log" 2>&1 || { cat "$TMP/values-restart.log" >&2; fail "mm service restart web failed"; }
 for node in $NODES; do
   [ "$(token_on "$node")" = first-token ] || fail "$node: the running web changed before a deployment"
-  on "$node" grep -F '"values-staged"' /var/lib/mm/audit.jsonl | grep -qF '"principal":"alice"' || fail "$node: the stage is not audited"
+  on "$node" grep -F '"values-staged"' /var/lib/mm/audit.jsonl | grep -F '"principal":"alice"' >/dev/null || fail "$node: the stage is not audited"
   if on "$node" grep -rqs -e first-token -e second-token /var/lib/mm /tmp/mmd.log; then fail "$node: a value is in the clear on the node"; fi
 done
 mm_as alice deploy plan | tee "$TMP/values-plan.log"
@@ -5074,7 +5086,7 @@ publish
 SLOWJOB=$(mm_as alice --output json deploy plan | json 'value["plan_hash"]')
 mm_as alice deploy apply --plan "$SLOWJOB" --yes >"$TMP/jobs-killed.log" 2>&1 &
 KILLED=$!
-for _ in $(seq 1 60); do on app-1 engine ps --format '{{.Names}}' | grep -q '^mm-job-' && break; sleep 1; done
+for _ in $(seq 1 60); do on app-1 engine ps --format '{{.Names}}' | grep '^mm-job-' >/dev/null && break; sleep 1; done
 docker exec "$CLIENT" pkill -9 -f "deploy apply --plan $SLOWJOB" || true
 stop_mmd app-1
 wait "$KILLED" || true
@@ -5184,8 +5196,8 @@ for node in $NODES; do
   if on "$node" grep -rqs -e push-live-secret-value -e push-live-scratch-note /srv/mm /var/lib/mm /tmp/mmd.log; then
     fail "$node: something from the client's working tree is on the node"
   fi
-  on "$node" grep -F 'bundle-delivered' /var/lib/mm/audit.jsonl | grep -qF "$PUSH_BUNDLE" || fail "$node: the audit log does not record the bundle"
-  on "$node" grep -F '"planned"' /var/lib/mm/audit.jsonl | grep -qF "$PUSH_BUNDLE" || fail "$node: the plan's audit record does not name the bundle"
+  on "$node" grep -F 'bundle-delivered' /var/lib/mm/audit.jsonl | grep -F "$PUSH_BUNDLE" >/dev/null || fail "$node: the audit log does not record the bundle"
+  on "$node" grep -F '"planned"' /var/lib/mm/audit.jsonl | grep -F "$PUSH_BUNDLE" >/dev/null || fail "$node: the plan's audit record does not name the bundle"
   if on "$node" sh -c 'command -v git' >/dev/null 2>&1; then fail "$node: git is still on the node"; fi
 done
 

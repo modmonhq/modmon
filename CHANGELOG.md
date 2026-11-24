@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A plan whose config-file template reads a release input it was not given
+  fails with `MM_RELEASE_INPUT`, as one whose environment file does, instead
+  of `MM_ENVIRONMENT`.
+
 ## [0.1.2] - 2026-11-23
 
 Remote protocol: 1. Every change in this release is additive: `mm` 0.1.2
