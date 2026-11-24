@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-23
+
+Remote protocol: 1. Every change in this release is additive: `mm` 0.1.2
+works with hosts on 0.1.1, and hosts on 0.1.2 keep serving `mm` 0.1.1. Some
+features need the host upgraded too (`mm target setup plan --upgrade`), and
+remote hosts now refuse more Compose settings; see Changed and Fixed.
+
 ### Added
 
 - A host exception for host paths: `host-path` in an `allow` entry of

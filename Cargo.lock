@@ -2170,7 +2170,7 @@ dependencies = [
 
 [[package]]
 name = "mm"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "age",
  "argon2",
@@ -2236,7 +2236,7 @@ dependencies = [
 
 [[package]]
 name = "mm-domain"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "base64 0.23.1",
  "blake3",
