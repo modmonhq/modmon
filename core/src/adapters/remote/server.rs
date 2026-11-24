@@ -6,6 +6,7 @@ include!("server/operations.rs");
 include!("server/cancel.rs");
 include!("server/alive.rs");
 include!("server/plans.rs");
+include!("server/plan_guardrails.rs");
 include!("server/cluster.rs");
 include!("server/moves.rs");
 include!("server/autoscale.rs");
