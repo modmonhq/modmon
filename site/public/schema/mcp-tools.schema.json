@@ -1,6 +1,6 @@
 {
   "$comment": "Generated from the MCP tool router; run ./scripts/generate-artifacts.sh. Do not edit.",
-  "mm_version": "0.1.1",
+  "mm_version": "0.1.2",
   "project_schema_version": "mm-project-v1",
   "schema_version": "mm-mcp-tools-v1",
   "tools": [
