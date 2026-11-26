@@ -69,6 +69,7 @@ pub mod stored_state;
 pub mod target;
 pub mod target_ingress;
 pub mod traefik_dynamic;
+pub mod update_steps;
 pub mod user_namespace;
 pub mod users;
 pub mod version_pin;

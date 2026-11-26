@@ -3,7 +3,9 @@
 use super::*;
 use crate::domain::release::{ReleaseTag, UpdateCheckReport, UpdateStatus};
 use crate::domain::self_update::{Replacement, ReplacementKind, SelfUpdatePlan, SelfUpdateResult};
+use crate::domain::update_steps::{FollowUpPlan, ServiceOutcome, UpdateSummary};
 use crate::presentation::inline::{self, Progress};
+use serde::Serialize;
 
 #[derive(Debug, Clone, Args)]
 pub struct UpdateArgs {
@@ -18,12 +20,14 @@ pub struct UpdateArgs {
     /// release again, or replace an mm built from a checkout.
     #[arg(long)]
     force: bool,
-    /// Replace without asking. Needed when standard input is not a terminal.
+    /// Replace and restart without asking. Needed when standard input is not
+    /// a terminal.
     #[arg(long)]
     yes: bool,
 }
 
-pub(super) async fn run(args: &UpdateArgs, format: OutputFormat) -> Result<u8, MmError> {
+pub(super) async fn run(cli: &Cli, args: &UpdateArgs) -> Result<u8, MmError> {
+    let format = cli.output;
     if args.check {
         let report = composition::update_check_service()?
             .check(env!("CARGO_PKG_VERSION"))
@@ -41,8 +45,15 @@ pub(super) async fn run(args: &UpdateArgs, format: OutputFormat) -> Result<u8, M
         context: "locating this mm executable".to_owned(),
         source,
     })?;
-    let request = crate::app::self_update_request(executable, version, args.force);
+    let request = crate::app::self_update_request(executable.clone(), version, args.force);
     let service = composition::self_update_service()?;
+    let steps = composition::update_follow_up_service(
+        cli.root
+            .clone()
+            .map_or_else(super::terminal::current_directory, Ok)?,
+        cli.mm_home.clone(),
+        cli.environment.clone(),
+    )?;
     let progress = Progress::new(format);
     let plan = inline::step(
         &progress,
@@ -52,36 +63,100 @@ pub(super) async fn run(args: &UpdateArgs, format: OutputFormat) -> Result<u8, M
     )
     .await;
     progress.finish();
-    let replacement = match plan? {
-        SelfUpdatePlan::Replace(replacement) => replacement,
-        other => return write_unchanged(&other, format).map(|()| 0),
+    let plan = plan?;
+    let (replacement, version) = match &plan {
+        SelfUpdatePlan::Replace(replacement) => {
+            (Some(replacement.as_ref()), replacement.version.clone())
+        }
+        SelfUpdatePlan::UpToDate { current, .. }
+        | SelfUpdatePlan::InstalledNewer { current, .. } => (None, current.clone()),
     };
+    let installed = resolved(replacement.map_or(executable, |plan| plan.executable.clone()));
+    let progress = Progress::new(format);
+    let follow = inline::step(
+        &progress,
+        ("follow-up", "Reading local services and hosts"),
+        steps.plan(&installed, &version, replacement.is_some()),
+        |_| Some("Read local services and hosts".to_owned()),
+    )
+    .await;
+    progress.finish();
+    let follow = follow?;
+    if (replacement.is_some() || !follow.restart.is_empty())
+        && !confirmed(args, format, replacement, &follow)?
+    {
+        return Ok(1);
+    }
+    let result = match replacement {
+        Some(replacement) => {
+            let progress = Progress::new(format);
+            let result = service.apply(replacement, &progress).await;
+            progress.finish();
+            Some(result?)
+        }
+        None => None,
+    };
+    let progress = Progress::new(format);
+    let summary = inline::step(
+        &progress,
+        ("services", "Checking local services"),
+        async { Ok::<_, MmError>(steps.apply(&follow, &installed, &version).await) },
+        |_| Some("Checked local services".to_owned()),
+    )
+    .await?;
+    progress.finish();
+    let failed = summary.services.iter().any(|service| {
+        matches!(
+            service.outcome,
+            ServiceOutcome::Unhealthy | ServiceOutcome::RestartFailed { .. }
+        )
+    });
+    write_outcome(&plan, result.as_ref(), &summary, format)?;
+    Ok(u8::from(failed))
+}
+
+fn confirmed(
+    args: &UpdateArgs,
+    format: OutputFormat,
+    replacement: Option<&Replacement>,
+    follow: &FollowUpPlan,
+) -> Result<bool, MmError> {
     if format == OutputFormat::Json && !args.yes {
         return Err(MmError::Terminal {
             message: "JSON mm update requires --yes".to_owned(),
         });
     }
     if format == OutputFormat::Human {
-        for line in plan_lines(&replacement) {
+        let mut lines = replacement.map(plan_lines).unwrap_or_default();
+        lines.extend(
+            follow
+                .restart
+                .iter()
+                .map(|name| format!("Restarts {name}, which runs mm, so it runs the new release.")),
+        );
+        for line in lines {
             crate::outln!("{}", output::terminal_safe(&line));
         }
     }
-    if !args.yes {
-        if !std::io::stdin().is_terminal() {
-            return Err(MmError::Terminal {
-                message:
-                    "mm update replaces binaries; pass --yes when standard input is not a terminal"
-                        .to_owned(),
-            });
-        }
-        if !super::terminal::confirm(&format!("Update mm to {}?", replacement.version))? {
-            return Ok(1);
-        }
+    if args.yes {
+        return Ok(true);
     }
-    let progress = Progress::new(format);
-    let result = service.apply(&replacement, &progress).await;
-    progress.finish();
-    write_result(&result?, format).map(|()| 0)
+    if !std::io::stdin().is_terminal() {
+        return Err(MmError::Terminal {
+            message:
+                "mm update replaces binaries and restarts services; pass --yes when standard input is not a terminal"
+                    .to_owned(),
+        });
+    }
+    let question = match replacement {
+        Some(replacement) => format!("Update mm to {}?", replacement.version),
+        None => "Restart these services?".to_owned(),
+    };
+    super::terminal::confirm(&question)
+}
+
+fn resolved(executable: std::path::PathBuf) -> std::path::PathBuf {
+    std::fs::canonicalize(&executable).unwrap_or(executable)
 }
 
 fn write_check(report: &UpdateCheckReport, format: OutputFormat) -> Result<(), MmError> {
@@ -92,22 +167,50 @@ fn write_check(report: &UpdateCheckReport, format: OutputFormat) -> Result<(), M
     Ok(())
 }
 
-fn write_unchanged(plan: &SelfUpdatePlan, format: OutputFormat) -> Result<(), MmError> {
+#[derive(Serialize)]
+struct Outcome<'a, T: Serialize> {
+    #[serde(flatten)]
+    outcome: &'a T,
+    summary: &'a UpdateSummary,
+}
+
+fn write_outcome(
+    plan: &SelfUpdatePlan,
+    result: Option<&SelfUpdateResult>,
+    summary: &UpdateSummary,
+    format: OutputFormat,
+) -> Result<(), MmError> {
     if format == OutputFormat::Json {
-        return output::write_json(plan);
+        return match result {
+            Some(result) => output::write_json(&Outcome {
+                outcome: result,
+                summary,
+            }),
+            None => output::write_json(&Outcome {
+                outcome: plan,
+                summary,
+            }),
+        };
     }
-    match plan {
-        SelfUpdatePlan::UpToDate { current, .. } => {
-            crate::outln!("mm {current} is up to date.");
-        }
-        SelfUpdatePlan::InstalledNewer { current, latest } => {
-            crate::outln!(
-                "mm {current} is newer than the latest stable release, {latest}; nothing was changed."
-            );
-        }
-        SelfUpdatePlan::Replace(_) => {}
+    let mut lines = match result {
+        Some(result) => result_lines(result),
+        None => unchanged_lines(plan),
+    };
+    lines.extend(output::update_summary_lines(summary));
+    for line in lines {
+        crate::outln!("{}", output::terminal_safe(&line));
     }
     Ok(())
+}
+
+fn unchanged_lines(plan: &SelfUpdatePlan) -> Vec<String> {
+    match plan {
+        SelfUpdatePlan::UpToDate { current, .. } => vec![format!("mm {current} is up to date.")],
+        SelfUpdatePlan::InstalledNewer { current, latest } => vec![format!(
+            "mm {current} is newer than the latest stable release, {latest}; nothing was changed."
+        )],
+        SelfUpdatePlan::Replace(_) => Vec::new(),
+    }
 }
 
 fn plan_lines(plan: &Replacement) -> Vec<String> {
@@ -136,10 +239,7 @@ fn plan_lines(plan: &Replacement) -> Vec<String> {
     lines
 }
 
-fn write_result(result: &SelfUpdateResult, format: OutputFormat) -> Result<(), MmError> {
-    if format == OutputFormat::Json {
-        return output::write_json(result);
-    }
+fn result_lines(result: &SelfUpdateResult) -> Vec<String> {
     let mut lines = vec![format!(
         "Updated mm {} to {} in {}: {}.",
         result.previous,
@@ -154,11 +254,7 @@ fn write_result(result: &SelfUpdateResult, format: OutputFormat) -> Result<(), M
         );
         lines.push(format!("  {command}"));
     }
-    lines.push(result.hosts.clone());
-    for line in lines {
-        crate::outln!("{}", output::terminal_safe(&line));
-    }
-    Ok(())
+    lines
 }
 
 /// A directory under the home directory as `~/…`.

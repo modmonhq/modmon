@@ -94,6 +94,8 @@ mod services;
 pub(crate) use services::*;
 mod target;
 pub(crate) use target::*;
+mod update;
+pub(crate) use update::update_summary_lines;
 mod workspace;
 pub(crate) use workspace::*;
 

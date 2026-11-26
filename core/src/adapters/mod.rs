@@ -19,6 +19,7 @@ pub mod kept_sockets;
 pub mod keys;
 pub mod launchd;
 pub mod leaving;
+pub mod local_services;
 pub mod macos_host;
 pub mod managed_service_runtime;
 pub mod mcp;
