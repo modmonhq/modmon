@@ -16,8 +16,12 @@ impl JobSchedulerService {
         claim: &ClaimedJobRun,
         output_limit: usize,
     ) -> Result<(), MmError> {
+        let prepared = match self.prepare(selection, target, claim).await {
+            Ok(prepared) => prepared,
+            Err(error) => return self.refused(claim, error),
+        };
         let (launched, released) = self
-            .launch_claim(document, selection, target, claim, output_limit)
+            .launch_claim(document, target, prepared, claim, output_limit)
             .await;
         let recorded = match launched {
             Ok(Some(runtime_id)) => self
@@ -55,28 +59,49 @@ impl JobSchedulerService {
         }
     }
 
+    async fn prepare(
+        &self,
+        selection: &WorkspaceSelection,
+        target: &crate::domain::runtime::RuntimeTarget,
+        claim: &ClaimedJobRun,
+    ) -> Result<Option<crate::app::ports::PreparedJobTarget>, MmError> {
+        match &self.launch_targets {
+            Some(targets) => {
+                targets
+                    .prepare(selection, &target.stack_name, claim.run.id)
+                    .await
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Ends a run whose container could not be prepared as failed, with why
+    /// as its output.
+    fn refused(&self, claim: &ClaimedJobRun, error: MmError) -> Result<(), MmError> {
+        self.complete(
+            claim,
+            RunCompletion {
+                state: JobRunState::Failed,
+                exit_code: None,
+                error_code: Some(error.code()),
+                diagnostic_code: None,
+                output: error.agent_message(),
+                output_truncated: false,
+            },
+        )?;
+        Err(error)
+    }
+
     /// The started container's ID (`None` when the claim lost the run),
     /// and whether what was staged for it went.
     async fn launch_claim(
         &self,
         document: &ConfigDocument,
-        selection: &WorkspaceSelection,
         target: &crate::domain::runtime::RuntimeTarget,
+        prepared: Option<crate::app::ports::PreparedJobTarget>,
         claim: &ClaimedJobRun,
         output_limit: usize,
     ) -> (Result<Option<String>, MmError>, Result<(), MmError>) {
-        let prepared = match &self.launch_targets {
-            Some(targets) => {
-                match targets
-                    .prepare(selection, &target.stack_name, claim.run.id)
-                    .await
-                {
-                    Ok(prepared) => prepared,
-                    Err(error) => return (Err(error), Ok(())),
-                }
-            }
-            None => None,
-        };
         let (target, release) = match prepared {
             Some(prepared) => (prepared.target, Some(prepared.release)),
             None => (target.clone(), None),

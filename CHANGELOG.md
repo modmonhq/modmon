@@ -35,6 +35,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `--downgrade`, `--commit`, and `--trust-new-host-keys` when the plan
   replaces a host key. A `--format json` plan lists them under `flags`.
 
+- A job run that could not be prepared, such as a manual run started after the
+  environment's values changed, no longer stays `launching` and blocks every
+  later deployment and `mm job history` with `MM_STATE`: it ends `failed` with
+  the reason as its output. A deployment's sweep and reads of the runs go on
+  past a run they cannot move on, and `mm job cancel` ends a run at once.
+- A rollback no longer checks the routes of stacks it left alone, so a stack
+  that was already stopped no longer turns a failed deployment into "mutation
+  state: unknown".
+
 ## [0.1.2] - 2026-11-23
 
 Remote protocol: 1. Every change in this release is additive: `mm` 0.1.2

@@ -925,3 +925,5 @@ fn ordered(setup: &Setup) -> Result<Vec<String>, MmError> {
 mod cases;
 #[path = "job_scheduler/pulls.rs"]
 mod pulls;
+#[path = "job_scheduler/stuck_runs.rs"]
+mod stuck_runs;

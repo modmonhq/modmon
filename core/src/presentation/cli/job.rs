@@ -175,7 +175,7 @@ async fn run_job_command(
             Ok(0)
         }
         JobCommand::Cancel { run_id } => {
-            output::write_job_run(&gateway.cancel(run_id, &approval)?, format)?;
+            output::write_job_run(&gateway.cancel(run_id, &approval).await?, format)?;
             Ok(0)
         }
         JobCommand::Retry { run_id, no_wait } => {
@@ -219,7 +219,7 @@ async fn follow_job(
                 eprintln!("{}", output::terminal_safe(&note));
                 return Ok(130);
             }
-            if let Err(error) = gateway.cancel(run.id, approval) {
+            if let Err(error) = gateway.cancel(run.id, approval).await {
                 eprintln!("{}", output::terminal_safe(&error.to_string()));
                 return Ok(130);
             }
@@ -350,7 +350,7 @@ pub(super) async fn wait_for_job(
 ) -> Result<u8, MmError> {
     loop {
         if cancellation.is_cancelled() {
-            manager.cancel_run(selection, run_id, approval)?;
+            manager.cancel_run(selection, run_id, approval).await?;
         }
         manager.cycle(selection, approval).await?;
         let run = manager.show_run(selection, run_id, approval)?;

@@ -49,7 +49,14 @@ mm job cancel RUN_UUID
 mm job retry RUN_UUID
 ```
 
-Replace `RUN_UUID` with a run ID from the run command or history. Output is
+Replace `RUN_UUID` with a run ID from the run command or history.
+`mm job cancel` stops a run on this machine right away and records it as
+`cancelled`. A run whose container cannot be prepared, for example because the
+environment's values or secrets changed since its last deployment, ends
+`failed` with the reason as its output: deploy the change, then
+`mm job retry RUN_UUID`. A deployment's `before-deploy` jobs run with the plan
+being applied, and a run left over from before does not stop the deployment.
+Output is
 limited in size and redacted against the environment's secrets, as
 [service logs are](./runtime-observability.md#secret-values-are-replaced). A job
 whose output cannot be redacted, because a secret the environment hands out

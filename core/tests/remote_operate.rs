@@ -564,7 +564,7 @@ async fn a_project_without_jobs_reads_no_runs_and_asks_no_host() -> TestResult {
             && note.contains(&format!("`mm job status {id}`")),
         "{note}"
     );
-    assert!(gateway.cancel(id, &approval).is_err());
+    assert!(gateway.cancel(id, &approval).await.is_err());
     assert!(calls(&journal).is_empty(), "no host was asked");
     let Err(error) = gateway
         .run(JobRunRequest::manual("migrate", true), &approval)

@@ -666,7 +666,7 @@ impl McpUseCases for McpApplicationAdapter {
             McpJobAction::RunSchedule { name } => {
                 json_value(scheduler.run_schedule_now(&selection, &name, &approval)?)
             }
-            McpJobAction::Cancel { run_id } => json_value(jobs()?.cancel(run_id, &approval)?),
+            McpJobAction::Cancel { run_id } => json_value(jobs()?.cancel(run_id, &approval).await?),
             McpJobAction::Retry { run_id } => {
                 json_value(jobs()?.retry(run_id, false, &approval).await?)
             }

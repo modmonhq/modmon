@@ -228,34 +228,6 @@ impl JobSchedulerService {
         })
     }
 
-    pub fn cancel_run(
-        &self,
-        selection: &WorkspaceSelection,
-        run_id: Uuid,
-        approval: &ApprovalContext,
-    ) -> Result<JobRun, MmError> {
-        let run = self.show_run(selection, run_id, approval)?;
-        let (document, environment) = self.context(selection)?;
-        self.authorize(
-            &document,
-            &environment,
-            approval,
-            RuntimeOperation::JobCancel,
-        )?;
-        self.repository.request_cancel(
-            run.id,
-            &audit(
-                &document,
-                &environment,
-                approval,
-                self.clock.now_unix_ms(),
-                "cancel",
-                "run",
-                run.id.to_string(),
-            ),
-        )
-    }
-
     pub fn set_schedule_enabled(
         &self,
         selection: &WorkspaceSelection,
@@ -412,14 +384,13 @@ impl JobSchedulerService {
     ) -> Result<bool, MmError> {
         let (_, _, targets) = self.application.runtime_operation_context(selection)?;
         let target = job_target(document, &targets, &claim.job_definition)?;
-        let redactions = self.redactions(document, &claim.run.environment).await?;
-        let output_limit = usize::try_from(claim.job_definition.output_limit_bytes)
-            .unwrap_or(crate::domain::scheduler::MAX_JOB_OUTPUT_BYTES as usize);
-
         if claim.run.cancellation_requested || claim.run.state == JobRunState::Cancelling {
             self.cancel_claim(target, &claim).await?;
             return Ok(false);
         }
+        let redactions = self.redactions(document, &claim.run.environment).await?;
+        let output_limit = usize::try_from(claim.job_definition.output_limit_bytes)
+            .unwrap_or(crate::domain::scheduler::MAX_JOB_OUTPUT_BYTES as usize);
 
         let observed = self
             .runtime
@@ -645,7 +616,7 @@ impl JobSchedulerService {
         Ok(())
     }
 
-    fn complete(
+    pub(super) fn complete(
         &self,
         claim: &ClaimedJobRun,
         completion: RunCompletion<'_>,
