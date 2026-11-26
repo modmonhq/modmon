@@ -80,6 +80,8 @@ pub(crate) mod restarts;
 mod scaling;
 mod secret;
 pub(crate) use secret::*;
+mod secret_set;
+pub(crate) use secret_set::{set_summary, write_secret_rows};
 mod secret_store;
 pub(crate) use secret_store::write_cluster_store_report;
 mod values;

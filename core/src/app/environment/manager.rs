@@ -136,6 +136,7 @@ impl EnvironmentManager {
                         revision: None,
                         created_at_unix_ms: None,
                         candidate_revision: None,
+                        set_by: None,
                     })
             } else {
                 SecretMetadata {
@@ -143,6 +144,7 @@ impl EnvironmentManager {
                     revision: None,
                     created_at_unix_ms: None,
                     candidate_revision: None,
+                    set_by: None,
                 }
             };
             if inspect_providers {
@@ -157,6 +159,8 @@ impl EnvironmentManager {
                 status: metadata.status,
                 revision: metadata.revision,
                 defaulted: false,
+                set_at_unix_ms: metadata.created_at_unix_ms,
+                set_by: metadata.set_by,
             });
         }
         self.mark_defaults(&document, &environment, &runtime_metadata, &mut secrets);
@@ -730,6 +734,7 @@ impl EnvironmentManager {
                     revision: None,
                     created_at_unix_ms: None,
                     candidate_revision: None,
+                    set_by: None,
                 })
             };
             match result {
@@ -755,6 +760,7 @@ impl EnvironmentManager {
                             revision: None,
                             created_at_unix_ms: None,
                             candidate_revision: None,
+                            set_by: None,
                         },
                     );
                     refusals.push((reference.scheme().to_owned(), error));

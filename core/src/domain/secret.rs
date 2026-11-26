@@ -14,7 +14,7 @@ mod file;
 pub use bundle::{
     BundledDeployKey, BundledSecret, DeployKeyImport, MAX_SECRET_BUNDLE_BYTES,
     SECRET_BUNDLE_VERSION, SecretBundle, SecretImportEntry, SecretImportSummary,
-    validate_secret_revision,
+    validate_secret_revision, validate_set_by,
 };
 pub use file::{FileSecretLocation, file_secret_location};
 
@@ -275,6 +275,7 @@ pub struct SecretMetadata {
     pub revision: Option<String>,
     pub created_at_unix_ms: Option<i64>,
     pub candidate_revision: Option<String>,
+    pub set_by: Option<String>,
 }
 
 impl SecretMetadata {
@@ -336,6 +337,12 @@ pub struct SecretBindingStatus {
     /// falls back to a non-empty `.env.example` default.
     #[serde(default)]
     pub defaulted: bool,
+    /// When the active revision was written, where the provider reports it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub set_at_unix_ms: Option<i64>,
+    /// Who mm recorded as writing the active revision.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub set_by: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

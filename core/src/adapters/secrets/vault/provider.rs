@@ -7,6 +7,7 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use zeroize::Zeroizing;
 
+use crate::adapters::secrets::kv_author::{author_metadata, recorded_author};
 use crate::app::ports::{
     SecretCreator, SecretMaterialResolver, SecretMetadataInspector, SecretRemover, SecretReplacer,
 };
@@ -233,6 +234,41 @@ impl VaultSecretStore {
                 .await?,
         )
     }
+
+    /// Records who wrote `version` in the secret's custom metadata. A store
+    /// whose policy refuses the metadata write keeps the version without it.
+    async fn record_author(
+        &self,
+        connection: &VaultConnection,
+        token: &str,
+        data_path: &str,
+        (version, set_by): (u64, Option<&str>),
+    ) {
+        let Some(set_by) = set_by else {
+            return;
+        };
+        let path = data_path.replacen("/data/", "/metadata/", 1);
+        let body = author_metadata(version, set_by);
+        match self
+            .transport
+            .request(connection, Method::POST, &path, Some(token), Some(&body))
+            .await
+        {
+            Ok(response) if (200..300).contains(&response.status) => {}
+            Ok(response) => {
+                tracing::debug!(
+                    status = response.status,
+                    "Vault kept no writer for this secret version"
+                );
+            }
+            Err(error) => {
+                tracing::debug!(
+                    code = error.code(),
+                    "Vault kept no writer for this secret version"
+                );
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -308,6 +344,7 @@ impl SecretCreator for VaultSecretStore {
         reference: &SecretReference,
         material: SecretMaterial,
         now_unix_ms: i64,
+        set_by: Option<&str>,
     ) -> Result<SecretWriteResult, MmError> {
         validate_material(&material)?;
         self.authenticated(scope, reference, async |connection, token, path| {
@@ -324,11 +361,13 @@ impl SecretCreator for VaultSecretStore {
                     if matches!(response.status, 400 | 409) { return Err(lifecycle_conflict()); }
                     require_success(&response, "secret recreation")?;
                     let write: WriteResponse = parse_json(&response, "Vault KV v2 write response")?;
+                    self.record_author(connection, token, &path, (write.data.version, set_by)).await;
                     return Ok(SecretWriteResult { revision: write.data.version.to_string(), changed: true });
                 }
             }
             require_success(&response, "secret create")?;
             let write: WriteResponse = parse_json(&response, "Vault KV v2 write response")?;
+            self.record_author(connection, token, &path, (write.data.version, set_by)).await;
             Ok(SecretWriteResult { revision: write.data.version.to_string(), changed: true })
         }).await
     }
@@ -343,6 +382,7 @@ impl SecretReplacer for VaultSecretStore {
         material: SecretMaterial,
         expected: SecretExpectedState,
         now_unix_ms: i64,
+        set_by: Option<&str>,
     ) -> Result<String, MmError> {
         validate_material(&material)?;
         let version = expected_version(&expected)?;
@@ -352,6 +392,7 @@ impl SecretReplacer for VaultSecretStore {
             if matches!(response.status, 400 | 409) { return Err(lifecycle_conflict()); }
             require_success(&response, "secret replacement")?;
             let write: WriteResponse = parse_json(&response, "Vault KV v2 write response")?;
+            self.record_author(connection, token, &path, (write.data.version, set_by)).await;
             Ok(write.data.version.to_string())
         }).await
     }
@@ -473,11 +514,14 @@ fn metadata_state_from_response(
         return Ok((metadata(SecretStatus::Unset, None, None), Some(current)));
     }
     Ok((
-        metadata(
-            SecretStatus::Set,
-            Some(current.to_string()),
-            version.and_then(|value| parse_timestamp(&value.created_time)),
-        ),
+        SecretMetadata {
+            set_by: recorded_author(response.data.custom_metadata.as_ref(), current),
+            ..metadata(
+                SecretStatus::Set,
+                Some(current.to_string()),
+                version.and_then(|value| parse_timestamp(&value.created_time)),
+            )
+        },
         Some(current),
     ))
 }
@@ -576,6 +620,7 @@ fn metadata(
         revision,
         created_at_unix_ms,
         candidate_revision: None,
+        set_by: None,
     }
 }
 
@@ -625,6 +670,8 @@ struct MetadataResponse {
 struct MetadataData {
     current_version: u64,
     versions: std::collections::BTreeMap<String, MetadataVersion>,
+    #[serde(default)]
+    custom_metadata: Option<std::collections::BTreeMap<String, String>>,
 }
 #[derive(Deserialize)]
 struct MetadataVersion {

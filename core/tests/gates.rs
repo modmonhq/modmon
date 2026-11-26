@@ -1092,6 +1092,7 @@ impl SecretCreator for MemorySecrets {
         reference: &SecretReference,
         material: SecretMaterial,
         _now_unix_ms: i64,
+        _set_by: Option<&str>,
     ) -> Result<SecretWriteResult, MmError> {
         let value = material.expose(str::to_owned);
         if self
@@ -1165,5 +1166,6 @@ fn metadata(present: bool) -> SecretMetadata {
         revision: present.then(|| "revision-1".to_owned()),
         created_at_unix_ms: present.then_some(1_700_000_000_000),
         candidate_revision: None,
+        set_by: None,
     }
 }

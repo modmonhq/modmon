@@ -771,8 +771,11 @@ const fn default_exec_seconds() -> u64 {
     30
 }
 
+/// The MCP principal when `mcp.json` names none.
+pub const DEFAULT_MCP_PRINCIPAL: &str = "agent";
+
 fn default_principal() -> String {
-    "agent".to_owned()
+    DEFAULT_MCP_PRINCIPAL.to_owned()
 }
 
 mod restart;

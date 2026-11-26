@@ -1017,6 +1017,7 @@ impl Fixture {
                 &reference,
                 SecretMaterial::new("runtime-secret-material".to_owned())?,
                 900,
+                None,
             )
             .await?;
         Ok(())
@@ -3991,6 +3992,7 @@ async fn a_rotated_file_secret_keeps_its_old_revision_until_the_deployment_succe
                 candidate_revision: None,
             },
             1_100,
+            None,
         )
         .await?;
     let rotation = fixture.service.plan(&fixture.selection).await?;
@@ -5645,6 +5647,7 @@ impl Fixture {
                 &reference,
                 SecretMaterial::new("runtime-secret-material".to_owned())?,
                 900,
+                None,
             )
             .await?;
         Ok(())

@@ -15,6 +15,8 @@ fn secret(locator: &str, revision: &str, value: &str) -> Result<BundledSecret, S
         reference: format!("age://{locator}").parse()?,
         revision: revision.to_owned(),
         material: SecretMaterial::new(value.to_owned())?,
+        set_at_unix_ms: None,
+        set_by: None,
     })
 }
 
@@ -122,6 +124,8 @@ async fn mirror_rejects_invalid_batches_without_writing() -> Result<(), Box<dyn 
             reference: "vault://a".parse()?,
             revision: "r1".to_owned(),
             material: SecretMaterial::new("v1".to_owned())?,
+            set_at_unix_ms: None,
+            set_by: None,
         }],
     ] {
         assert!(store.mirror(&scope, batch, 1).is_err());

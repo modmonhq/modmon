@@ -84,7 +84,7 @@ pub(crate) fn write_direct_secret_rotation_plan(
 const SECRET_DEFAULT_HINT: &str = "default: not stored; services use their .env.example default. \
     Store a value with mm secret set KEY.";
 
-const fn secret_binding_status(
+pub(crate) const fn secret_binding_status(
     secret: &crate::domain::secret::SecretBindingStatus,
 ) -> &'static str {
     if secret.defaulted {
@@ -110,23 +110,11 @@ pub(crate) fn write_secret_status(
         terminal_safe(&snapshot.environment)
     )
     .map_err(output_error)?;
-    writeln!(
-        writer,
-        "  {:<28} {:<12} {:<12} LOCATION",
-        "KEY", "PROVIDER", "STATUS"
-    )
-    .map_err(output_error)?;
-    for secret in &snapshot.secrets {
-        writeln!(
-            writer,
-            "  {:<28} {:<12} {:<12} {}",
-            terminal_safe(&secret.key),
-            terminal_safe(&secret.provider),
-            secret_binding_status(secret),
-            terminal_safe(secret.location.as_deref().unwrap_or("-"))
-        )
-        .map_err(output_error)?;
-    }
+    write_secret_rows(
+        &mut writer,
+        &snapshot.secrets,
+        chrono::Utc::now().timestamp_millis(),
+    )?;
     if snapshot.secrets.iter().any(|secret| secret.defaulted) {
         writeln!(writer, "  {SECRET_DEFAULT_HINT}").map_err(output_error)?;
     }

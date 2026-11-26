@@ -80,6 +80,8 @@ fn bundle(
             reference: "age://database-password".parse()?,
             revision: revision.to_owned(),
             material: SecretMaterial::new(format!("value-{revision}"))?,
+            set_at_unix_ms: None,
+            set_by: None,
         }],
         deploy_key: deploy_key.map(|(private, public)| BundledDeployKey {
             private_key: Zeroizing::new(private.to_vec()),

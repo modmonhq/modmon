@@ -8,9 +8,7 @@ use crate::adapters::command_log::FileCommandLog;
 use crate::adapters::config::ConfigLoader;
 use crate::adapters::state::MmHome;
 use crate::app::CommandHistory;
-use crate::domain::command_log::{
-    CommandOutcome, CommandPrincipal, CommandRecord, redact_arguments,
-};
+use crate::domain::command_log::{CommandOutcome, CommandRecord, redact_arguments};
 use crate::domain::error::MmError;
 use crate::presentation::cli::{Cli, Command, OutputFormat};
 use crate::presentation::record;
@@ -105,7 +103,7 @@ impl CommandRecording {
             environment,
             target: self.target,
             runtime: self.runtime,
-            principal: principal(),
+            principal: super::user_principal(self.home.as_deref(), &document.config.users),
             started_at_unix_ms: recorded.started_unix_ms,
             finished_at_unix_ms: unix_ms(),
             outcome,
@@ -136,14 +134,6 @@ impl CommandRecording {
 /// command leaves an empty or missing home as it found it.
 fn holds_state(root: &Path) -> bool {
     std::fs::read_dir(root).is_ok_and(|mut entries| entries.next().is_some())
-}
-
-fn principal() -> CommandPrincipal {
-    let name = ["USER", "LOGNAME", "USERNAME"]
-        .iter()
-        .find_map(|name| std::env::var(name).ok().filter(|value| !value.is_empty()))
-        .unwrap_or_else(|| "unknown".to_owned());
-    CommandPrincipal::User { name }
 }
 
 fn unix_ms() -> i64 {

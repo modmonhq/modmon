@@ -167,8 +167,11 @@ mm env review
 mm deploy plan --output json
 ```
 
-These views omit credentials and secret values. Host and container-engine
-administrators can still access secrets used by workloads.
+These views omit credentials and secret values. `mm secret status` shows when
+each secret's current revision was set and who set it; see
+[when a secret was set](./concepts/environments-and-secrets.md#see-when-a-secret-was-set-and-who-set-it).
+Host and container-engine administrators can still access secrets used by
+workloads.
 
 In `mm secret status`, `default` means the secret is not stored, and every
 service that reads it falls back to the default in its `.env.example`. Store a

@@ -45,6 +45,15 @@ mm secret provider add team-secrets --driver vault --mode external --scope proje
 mm secret provider test team-secrets
 ```
 
+mm records who wrote each version in the secret's KV v2 custom metadata
+(`mm_set_by` and `mm_set_version`), which `mm secret status` shows as `BY`.
+The AppRole policy mm creates allows `update` on each secret's `metadata/`
+path for this. A connection set up by mm 0.1.2 or earlier lacks it: its
+writes still succeed and show `BY` as `—`. Run the `mm secret provider add`
+command above again for the environment to update the policy. If you manage
+the policy yourself, grant `["read", "update"]` on `MOUNT/metadata/mm/*`
+paths, or leave it out and go without `BY`.
+
 ## Managed configuration
 
 ```yaml

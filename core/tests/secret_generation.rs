@@ -471,6 +471,7 @@ impl SecretCreator for Unconnected {
         _: &SecretReference,
         _: SecretMaterial,
         _: i64,
+        _: Option<&str>,
     ) -> Result<SecretWriteResult, MmError> {
         self.refuse(scope)
     }
@@ -485,6 +486,7 @@ impl SecretReplacer for Unconnected {
         _: SecretMaterial,
         _: SecretExpectedState,
         _: i64,
+        _: Option<&str>,
     ) -> Result<String, MmError> {
         self.refuse(scope)
     }

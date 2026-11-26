@@ -358,6 +358,8 @@ pub(super) fn status_modules(
                                     line: 1,
                                     column: 1,
                                 },
+                                set_at_unix_ms: None,
+                                set_by: None,
                             });
                         }
                     }
@@ -563,6 +565,8 @@ fn secret_status(
         value: None,
         provider: Some(provider.to_owned()),
         revision: metadata.and_then(|metadata| metadata.revision.clone()),
+        set_at_unix_ms: metadata.and_then(|metadata| metadata.created_at_unix_ms),
+        set_by: metadata.and_then(|metadata| metadata.set_by.clone()),
         location: declaration.location.clone(),
     }
 }
@@ -580,6 +584,8 @@ fn missing_status(declaration: &VariableDeclaration, status: ResolutionStatus) -
         provider: None,
         revision: None,
         location: declaration.location.clone(),
+        set_at_unix_ms: None,
+        set_by: None,
     }
 }
 
@@ -604,6 +610,8 @@ pub(super) fn public_status(
         provider: None,
         revision: None,
         location: declaration.location.clone(),
+        set_at_unix_ms: None,
+        set_by: None,
     }
 }
 

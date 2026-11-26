@@ -218,6 +218,7 @@ impl AgeSecretStore {
         &self,
         replacements: Vec<SecretReplacement>,
         now_unix_ms: i64,
+        set_by: Option<&str>,
     ) -> Result<Vec<String>, MmError> {
         if replacements.is_empty() {
             return Ok(Vec::new());
@@ -256,7 +257,7 @@ impl AgeSecretStore {
 
         let mut revisions = Vec::with_capacity(replacements.len());
         for replacement in replacements {
-            let next = stored_secret(replacement.material, now_unix_ms);
+            let next = stored_secret(replacement.material, now_unix_ms, set_by);
             revisions.push(next.revision.clone());
             let key = storage_key(&replacement.scope, &replacement.reference);
             let entry = document
@@ -288,6 +289,7 @@ impl SecretMetadataInspector for AgeSecretStore {
                 revision: None,
                 created_at_unix_ms: None,
                 candidate_revision: None,
+                set_by: None,
             });
         }
         let _lock = self.exclusive_lock()?;
@@ -319,6 +321,7 @@ impl SecretMetadataInspector for AgeSecretStore {
                     revision: None,
                     created_at_unix_ms: None,
                     candidate_revision: None,
+                    set_by: None,
                 })
                 .collect());
         }
@@ -351,6 +354,7 @@ impl SecretMaterialResolver for AgeSecretStore {
                     revision: None,
                     created_at_unix_ms: None,
                     candidate_revision: None,
+                    set_by: None,
                 },
                 material: None,
             });
@@ -367,6 +371,7 @@ impl SecretMaterialResolver for AgeSecretStore {
                     revision: None,
                     created_at_unix_ms: None,
                     candidate_revision: None,
+                    set_by: None,
                 },
                 material: None,
             });
@@ -377,6 +382,7 @@ impl SecretMaterialResolver for AgeSecretStore {
             .map(|candidate| candidate.revision.clone());
         let revision = entry.active.revision;
         let created_at_unix_ms = entry.active.created_at_unix_ms;
+        let set_by = entry.active.set_by;
         if entry.active.value.is_empty() || !is_safe_environment_value(&entry.active.value) {
             return Ok(SecretResolution {
                 metadata: SecretMetadata {
@@ -384,6 +390,7 @@ impl SecretMaterialResolver for AgeSecretStore {
                     revision: Some(revision),
                     created_at_unix_ms: Some(created_at_unix_ms),
                     candidate_revision,
+                    set_by,
                 },
                 material: None,
             });
@@ -394,6 +401,7 @@ impl SecretMaterialResolver for AgeSecretStore {
                 revision: Some(revision),
                 created_at_unix_ms: Some(created_at_unix_ms),
                 candidate_revision,
+                set_by,
             },
             material: Some(
                 SecretMaterial::from_zeroizing(entry.active.value)
@@ -411,6 +419,7 @@ impl SecretCreator for AgeSecretStore {
         reference: &SecretReference,
         material: SecretMaterial,
         now_unix_ms: i64,
+        set_by: Option<&str>,
     ) -> Result<SecretWriteResult, MmError> {
         ensure_age(reference)?;
         ensure_initialized(self)?;
@@ -424,7 +433,7 @@ impl SecretCreator for AgeSecretStore {
                 changed: false,
             });
         }
-        let active = stored_secret(material, now_unix_ms);
+        let active = stored_secret(material, now_unix_ms, set_by);
         let revision = active.revision.clone();
         document.entries.insert(
             key,
@@ -452,6 +461,7 @@ impl SecretReplacer for AgeSecretStore {
         material: SecretMaterial,
         expected: SecretExpectedState,
         now_unix_ms: i64,
+        set_by: Option<&str>,
     ) -> Result<String, MmError> {
         self.replace_many(
             vec![SecretReplacement {
@@ -461,6 +471,7 @@ impl SecretReplacer for AgeSecretStore {
                 expected,
             }],
             now_unix_ms,
+            set_by,
         )?
         .into_iter()
         .next()
@@ -476,8 +487,9 @@ impl SecretBatchReplacer for AgeSecretStore {
         &self,
         replacements: Vec<SecretReplacement>,
         now_unix_ms: i64,
+        set_by: Option<&str>,
     ) -> Result<Vec<String>, MmError> {
-        self.replace_many(replacements, now_unix_ms)
+        self.replace_many(replacements, now_unix_ms, set_by)
     }
 }
 
@@ -490,6 +502,7 @@ impl SecretCandidateLifecycle for AgeSecretStore {
         material: SecretMaterial,
         expected: SecretExpectedState,
         now_unix_ms: i64,
+        set_by: Option<&str>,
     ) -> Result<String, MmError> {
         ensure_age(reference)?;
         ensure_initialized(self)?;
@@ -508,7 +521,7 @@ impl SecretCandidateLifecycle for AgeSecretStore {
             .entries
             .get_mut(&key)
             .ok_or_else(lifecycle_conflict)?;
-        let candidate = stored_secret(material, now_unix_ms);
+        let candidate = stored_secret(material, now_unix_ms, set_by);
         let revision = candidate.revision.clone();
         entry.candidate = Some(candidate);
         self.save_document(&document)?;

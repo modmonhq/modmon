@@ -62,6 +62,8 @@ struct StoredSecret {
     value: Zeroizing<String>,
     revision: String,
     created_at_unix_ms: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    set_by: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -104,6 +106,7 @@ impl std::fmt::Debug for StoredSecret {
             .field("value", &"[REDACTED]")
             .field("revision", &self.revision)
             .field("created_at_unix_ms", &self.created_at_unix_ms)
+            .field("set_by", &self.set_by)
             .finish()
     }
 }
@@ -133,11 +136,16 @@ fn validate_material(material: &SecretMaterial) -> Result<(), MmError> {
     }
 }
 
-fn stored_secret(material: SecretMaterial, created_at_unix_ms: i64) -> StoredSecret {
+fn stored_secret(
+    material: SecretMaterial,
+    created_at_unix_ms: i64,
+    set_by: Option<&str>,
+) -> StoredSecret {
     StoredSecret {
         value: material.into_zeroizing(),
         revision: Uuid::new_v4().to_string(),
         created_at_unix_ms,
+        set_by: set_by.map(str::to_owned),
     }
 }
 
@@ -155,6 +163,7 @@ fn stored_metadata(entry: &SecretEntry) -> SecretMetadata {
             .candidate
             .as_ref()
             .map(|candidate| candidate.revision.clone()),
+        set_by: entry.active.set_by.clone(),
     }
 }
 
@@ -164,6 +173,7 @@ fn unset_metadata() -> SecretMetadata {
         revision: None,
         created_at_unix_ms: None,
         candidate_revision: None,
+        set_by: None,
     }
 }
 

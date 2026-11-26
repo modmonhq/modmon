@@ -64,7 +64,7 @@ impl RecordingAudit {
     }
 
     fn record(&self, entry: &crate::domain::mcp::McpAuditRecord) -> Result<(), MmError> {
-        use crate::domain::command_log::{CommandOutcome, CommandPrincipal, CommandRecord};
+        use crate::domain::command_log::{CommandOutcome, CommandRecord};
         let started = self
             .started
             .lock()
@@ -74,6 +74,10 @@ impl RecordingAudit {
         let succeeded = entry.outcome_code == "OK";
         let time = chrono::DateTime::from_timestamp_millis(started).unwrap_or_default();
         let history = super::command_history(&entry.project_root, Some(&self.mm_home))?;
+        let users = crate::adapters::config::ConfigLoader
+            .load_from(&entry.project_root)
+            .map(|document| document.config.users)
+            .unwrap_or_default();
         history.record(CommandRecord {
             id: format!(
                 "{}-{}",
@@ -84,9 +88,7 @@ impl RecordingAudit {
             environment: Some(entry.environment.clone()),
             target: (!entry.target.is_empty()).then(|| entry.target.clone()),
             runtime: None,
-            principal: CommandPrincipal::Agent {
-                name: entry.principal.clone(),
-            },
+            principal: super::agent_principal(&entry.principal, Some(&self.mm_home), &users),
             started_at_unix_ms: started,
             finished_at_unix_ms: entry.occurred_at_unix_ms,
             outcome: if succeeded {

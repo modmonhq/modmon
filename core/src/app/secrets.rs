@@ -37,6 +37,7 @@ pub struct SecretManager {
     storage_capabilities: Arc<dyn SecretStorageCapabilityCatalog>,
     delivery_capabilities: Arc<dyn SecretDeliveryCapabilityCatalog>,
     clock: Arc<dyn Clock>,
+    author: Option<String>,
 }
 
 #[derive(Clone)]
@@ -73,7 +74,15 @@ impl SecretManager {
             storage_capabilities: dependencies.storage_capabilities,
             delivery_capabilities: dependencies.delivery_capabilities,
             clock: dependencies.clock,
+            author: None,
         }
+    }
+
+    /// Records `author` as the writer of every revision this manager writes.
+    #[must_use]
+    pub fn written_by(mut self, author: String) -> Self {
+        self.author = Some(author);
+        self
     }
 
     #[must_use]
@@ -141,7 +150,13 @@ impl SecretManager {
             SecretStatus::Unset => {
                 let result = self
                     .creator
-                    .create(&scope, &reference, material, now_unix_ms)
+                    .create(
+                        &scope,
+                        &reference,
+                        material,
+                        now_unix_ms,
+                        self.author.as_deref(),
+                    )
                     .await?;
                 if !result.changed {
                     return Err(lifecycle_changed());
@@ -159,6 +174,7 @@ impl SecretManager {
                         material,
                         metadata.expected_state(),
                         now_unix_ms,
+                        self.author.as_deref(),
                     )
                     .await?
             }
@@ -255,6 +271,7 @@ impl SecretManager {
                 material,
                 expected,
                 self.clock.now_unix_ms(),
+                self.author.as_deref(),
             )
             .await?;
         Ok(SecretRotationResultItem {
@@ -411,7 +428,7 @@ impl SecretManager {
         }
         let revisions = self
             .batch_replacer
-            .replace_batch(replacements, now_unix_ms)
+            .replace_batch(replacements, now_unix_ms, self.author.as_deref())
             .await?;
         if revisions.len() != pending.len() {
             return Err(MmError::Secret {

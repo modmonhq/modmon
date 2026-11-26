@@ -115,6 +115,38 @@ To enter an existing password instead, use `mm secret set database.password`.
 The prompt hides your input. Other stores are described in
 [secret providers](../secret-providers.md).
 
+## See when a secret was set and who set it
+
+mm never shows a secret's value, but `mm secret status` shows when its current
+revision was written and who wrote it:
+
+```text
+minimal [local]
+  KEY                PROVIDER  STATUS  SET                      BY    LOCATION
+  database.password  age       set     3 days ago (2026-11-21)  alex  local/database-password
+  stripe.key         env       set     —                        —     STRIPE_KEY
+```
+
+- `SET` is the time the provider reports for the current revision. `env` and
+  `file` secrets have none and show `—`.
+- `BY` is who mm recorded as the writer when `mm secret set`, `generate` or
+  `rotate` wrote the revision: your team user (the `users:` entry that lists
+  this device's mm key) when there is exactly one, else your login name. A
+  write by an agent through `mm mcp` reads `agent:NAME (USER)`, for example
+  `agent:claude (alex)`. A revision written outside mm or by mm 0.1.2 or
+  earlier shows `—`; mm never guesses. mm 0.1.2 reads an Age store this
+  release wrote, but when it writes to the store it drops every recorded
+  writer, so all its secrets show `—` until they are set again. Long names are cut in the table.
+- A host's copy of an environment's secrets, which `mm target setup` imports,
+  keeps the original writer and time. A value staged on hosts names the user
+  the host authenticated.
+- `--output json` adds `set_at_unix_ms` and `set_by` to a secret only when they
+  are known.
+
+`BY` is a hint for finding who to ask, not a tamper-proof audit trail: anyone
+who can write the store can write any name. A rotation that is only staged
+keeps showing the active revision's time and writer until it is promoted.
+
 ## Set a workstation-only value
 
 ```sh

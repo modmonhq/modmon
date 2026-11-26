@@ -132,11 +132,20 @@ impl McpApplicationAdapter {
         &self,
         context: &McpRequestContext,
     ) -> Result<crate::composition::EnvironmentServices, MmError> {
-        crate::composition::environment_services(
+        let mut services = crate::composition::environment_services(
             &context.project_root,
             Some(&self.mm_home),
             self.runtime().clock(),
-        )
+        )?;
+        let users = crate::adapters::config::ConfigLoader
+            .load_from(&context.project_root)?
+            .config
+            .users;
+        services.secrets = services.secrets.written_by(
+            crate::composition::agent_principal(&context.principal, Some(&self.mm_home), &users)
+                .author(),
+        );
+        Ok(services)
     }
 
     async fn secret_setup_plan(

@@ -115,9 +115,10 @@ impl SecretCreator for DashboardGateSecrets {
         reference: &SecretReference,
         material: SecretMaterial,
         now_unix_ms: i64,
+        set_by: Option<&str>,
     ) -> Result<SecretWriteResult, MmError> {
         self.registry(scope, reference)?
-            .create(scope, reference, material, now_unix_ms)
+            .create(scope, reference, material, now_unix_ms, set_by)
             .await
     }
 }

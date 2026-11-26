@@ -248,6 +248,11 @@ impl ClusterSetupService {
                 reference,
                 revision: planned.revision.clone(),
                 material,
+                set_at_unix_ms: resolution.metadata.created_at_unix_ms,
+                set_by: resolution
+                    .metadata
+                    .set_by
+                    .filter(|set_by| crate::domain::secret::validate_set_by(set_by).is_ok()),
             });
         }
         let deploy_key = if plan.deploy_key.is_none() {

@@ -3,6 +3,7 @@ mod bundle;
 mod environment;
 mod file;
 mod host_connection;
+mod kv_author;
 mod openbao;
 mod registry;
 mod runtime_delivery;

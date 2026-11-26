@@ -208,6 +208,7 @@ async fn provider_contract_is_scoped_versioned_cas_and_redacted()
             &reference,
             SecretMaterial::new(SENTINEL.to_owned())?,
             1,
+            None,
         )
         .await?;
     assert_eq!(created.revision, "1");
@@ -232,6 +233,7 @@ async fn provider_contract_is_scoped_versioned_cas_and_redacted()
                 candidate_revision: None,
             },
             2,
+            None,
         )
         .await;
     assert!(stale.is_err());
@@ -245,6 +247,7 @@ async fn provider_contract_is_scoped_versioned_cas_and_redacted()
                 candidate_revision: None,
             },
             2,
+            None,
         )
         .await?;
     assert_eq!(next, "2");
@@ -260,6 +263,7 @@ async fn provider_contract_is_scoped_versioned_cas_and_redacted()
                 candidate_revision: None,
             },
             3,
+            None,
         ),
         right.replace(
             &integration,
@@ -270,6 +274,7 @@ async fn provider_contract_is_scoped_versioned_cas_and_redacted()
                 candidate_revision: None,
             },
             3,
+            None,
         )
     );
     assert_ne!(left_result.is_ok(), right_result.is_ok());

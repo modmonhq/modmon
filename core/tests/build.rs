@@ -176,6 +176,7 @@ fn secret_metadata() -> SecretMetadata {
         revision: Some("revision-1".to_owned()),
         created_at_unix_ms: Some(1),
         candidate_revision: None,
+        set_by: None,
     }
 }
 

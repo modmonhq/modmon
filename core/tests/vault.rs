@@ -176,6 +176,7 @@ async fn vault_contract_has_independent_cas_path_and_redaction()
             &reference,
             SecretMaterial::new(SENTINEL.to_owned())?,
             1,
+            None,
         )
         .await?;
     assert_eq!(created.revision, "1");
@@ -200,14 +201,16 @@ async fn vault_contract_has_independent_cas_path_and_redaction()
             &reference,
             SecretMaterial::new("left".to_owned())?,
             expected.clone(),
-            2
+            2,
+            None
         ),
         store.replace(
             &integration,
             &reference,
             SecretMaterial::new("right".to_owned())?,
             expected,
-            2
+            2,
+            None
         )
     );
     assert_ne!(left.is_ok(), right.is_ok());
@@ -231,6 +234,7 @@ async fn vault_contract_has_independent_cas_path_and_redaction()
             &reference,
             SecretMaterial::new("recreated".to_owned())?,
             3,
+            None,
         )
         .await?;
     assert!(recreated.changed);

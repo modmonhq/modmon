@@ -378,7 +378,7 @@ impl GateManager {
         let created = self
             .dependencies
             .secret_creator
-            .create(&scope, &reference, random_secret()?, now)
+            .create(&scope, &reference, random_secret()?, now, None)
             .await?;
         if !created.changed {
             return Err(MmError::State {

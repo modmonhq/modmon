@@ -109,6 +109,7 @@ impl SecretMetadataInspector for ControlledSecrets {
                 .then(|| "revision-1".to_owned()),
             created_at_unix_ms: Some(1),
             candidate_revision: None,
+            set_by: None,
         })
     }
 }
@@ -131,6 +132,7 @@ impl SecretMaterialResolver for ControlledSecrets {
                 revision: Some("revision-1".to_owned()),
                 created_at_unix_ms: Some(1),
                 candidate_revision: None,
+                set_by: None,
             },
             material: if self.missing_material.load(Ordering::SeqCst) {
                 None

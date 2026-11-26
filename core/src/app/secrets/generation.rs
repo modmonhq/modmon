@@ -52,7 +52,13 @@ impl SecretManager {
             let provider = reference.scheme().to_owned();
             let item = match self
                 .creator
-                .create(&scope, &reference, material, now_unix_ms)
+                .create(
+                    &scope,
+                    &reference,
+                    material,
+                    now_unix_ms,
+                    self.author.as_deref(),
+                )
                 .await
             {
                 Ok(written) => SecretGenerationItem {

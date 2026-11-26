@@ -24,6 +24,7 @@ use crate::domain::workspace::ProjectId;
 
 use super::connection_store::{OpenBaoConnection, OpenBaoConnectionStore, OpenBaoMode};
 use super::http::{OpenBaoHttpResponse, OpenBaoHttpTransport};
+use crate::adapters::secrets::kv_author::recorded_author;
 
 const MAX_OPENBAO_SECRET_BYTES: usize = 512 * 1024;
 
@@ -310,6 +311,7 @@ impl SecretMaterialResolver for OpenBaoSecretStore {
                         revision: Some(revision),
                         created_at_unix_ms,
                         candidate_revision: None,
+                        set_by: None,
                     },
                     material: None,
                 });
@@ -320,6 +322,7 @@ impl SecretMaterialResolver for OpenBaoSecretStore {
                     revision: Some(revision),
                     created_at_unix_ms,
                     candidate_revision: None,
+                    set_by: None,
                 },
                 material: Some(
                     SecretMaterial::from_zeroizing(value)
@@ -339,6 +342,7 @@ impl SecretCreator for OpenBaoSecretStore {
         reference: &SecretReference,
         material: SecretMaterial,
         now_unix_ms: i64,
+        set_by: Option<&str>,
     ) -> Result<SecretWriteResult, MmError> {
         validate_material(&material)?;
         self.authenticated(scope, reference, async |connection, token, path| {
@@ -365,6 +369,8 @@ impl SecretCreator for OpenBaoSecretStore {
             }
             require_success(&response, "secret create")?;
             let write = parse_json::<WriteResponse>(&response, "secret write response")?;
+            self.record_author(connection, token, &path, (write.data.version, set_by))
+                .await;
             Ok(SecretWriteResult {
                 revision: write.data.version.to_string(),
                 changed: true,
@@ -383,6 +389,7 @@ impl SecretReplacer for OpenBaoSecretStore {
         material: SecretMaterial,
         expected: SecretExpectedState,
         now_unix_ms: i64,
+        set_by: Option<&str>,
     ) -> Result<String, MmError> {
         validate_material(&material)?;
         let version = expected_version(&expected)?;
@@ -401,12 +408,12 @@ impl SecretReplacer for OpenBaoSecretStore {
                 return Err(lifecycle_conflict());
             }
             require_success(&response, "secret replacement")?;
-            Ok(
-                parse_json::<WriteResponse>(&response, "secret write response")?
-                    .data
-                    .version
-                    .to_string(),
-            )
+            let version = parse_json::<WriteResponse>(&response, "secret write response")?
+                .data
+                .version;
+            self.record_author(connection, token, &path, (version, set_by))
+                .await;
+            Ok(version.to_string())
         })
         .await
     }
@@ -530,6 +537,7 @@ fn metadata_from_response(response: OpenBaoHttpResponse) -> Result<SecretMetadat
         revision: Some(current.to_string()),
         created_at_unix_ms: version.and_then(|version| parse_timestamp(&version.created_time)),
         candidate_revision: None,
+        set_by: recorded_author(metadata.data.custom_metadata.as_ref(), current),
     })
 }
 
@@ -649,6 +657,7 @@ fn unavailable_metadata() -> SecretMetadata {
         revision: None,
         created_at_unix_ms: None,
         candidate_revision: None,
+        set_by: None,
     }
 }
 
@@ -658,6 +667,7 @@ fn unset_metadata() -> SecretMetadata {
         revision: None,
         created_at_unix_ms: None,
         candidate_revision: None,
+        set_by: None,
     }
 }
 
@@ -667,6 +677,7 @@ fn access_denied_metadata() -> SecretMetadata {
         revision: None,
         created_at_unix_ms: None,
         candidate_revision: None,
+        set_by: None,
     }
 }
 
@@ -699,6 +710,8 @@ struct MetadataResponse {
 struct MetadataData {
     current_version: u64,
     versions: std::collections::BTreeMap<String, MetadataVersion>,
+    #[serde(default)]
+    custom_metadata: Option<std::collections::BTreeMap<String, String>>,
 }
 
 #[derive(Deserialize)]
@@ -753,6 +766,8 @@ struct WriteData {
     version: u64,
 }
 
+#[path = "provider/author.rs"]
+mod author;
 #[path = "provider/live.rs"]
 mod live;
 

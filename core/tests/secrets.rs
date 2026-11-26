@@ -124,6 +124,7 @@ async fn replacement_batches_validate_every_revision_before_publishing()
             &first,
             SecretMaterial::new("first".to_owned())?,
             1_000,
+            None,
         )
         .await?;
     let second_created = store
@@ -132,6 +133,7 @@ async fn replacement_batches_validate_every_revision_before_publishing()
             &second,
             SecretMaterial::new("second".to_owned())?,
             1_000,
+            None,
         )
         .await?;
 
@@ -152,6 +154,7 @@ async fn replacement_batches_validate_every_revision_before_publishing()
                 },
             ],
             2_000,
+            None,
         )
         .await;
     assert!(failed.is_err());
@@ -181,6 +184,7 @@ async fn replacement_batches_validate_every_revision_before_publishing()
                 },
             ],
             2_000,
+            None,
         )
         .await?;
     assert_eq!(revisions.len(), 2);
@@ -291,6 +295,7 @@ async fn environment_scopes_isolate_secret_values() -> Result<(), Box<dyn std::e
             &reference,
             SecretMaterial::new("integration-secret".to_owned())?,
             1_000,
+            None,
         )
         .await?;
     store
@@ -299,6 +304,7 @@ async fn environment_scopes_isolate_secret_values() -> Result<(), Box<dyn std::e
             &reference,
             SecretMaterial::new("uat-secret".to_owned())?,
             1_000,
+            None,
         )
         .await?;
 

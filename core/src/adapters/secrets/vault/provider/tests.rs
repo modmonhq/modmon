@@ -317,7 +317,8 @@ async fn authenticated_vault_lifecycle_covers_reads_recreation_cas_and_deletion(
                 &scope,
                 &reference,
                 SecretMaterial::new("created".to_owned())?,
-                1
+                1,
+                None
             )
             .await?
             .changed
@@ -335,7 +336,8 @@ async fn authenticated_vault_lifecycle_covers_reads_recreation_cas_and_deletion(
                 &scope,
                 &reference,
                 SecretMaterial::new("existing".to_owned())?,
-                1
+                1,
+                None
             )
             .await?
             .changed
@@ -354,6 +356,7 @@ async fn authenticated_vault_lifecycle_covers_reads_recreation_cas_and_deletion(
             &reference,
             SecretMaterial::new("recreated".to_owned())?,
             1,
+            None,
         )
         .await?;
     assert!(recreated.changed);
@@ -376,6 +379,7 @@ async fn authenticated_vault_lifecycle_covers_reads_recreation_cas_and_deletion(
                 SecretMaterial::new("replacement".to_owned())?,
                 expected.clone(),
                 2,
+                None,
             )
             .await
             .is_err()
@@ -394,6 +398,7 @@ async fn authenticated_vault_lifecycle_covers_reads_recreation_cas_and_deletion(
                 SecretMaterial::new("replacement".to_owned())?,
                 expected.clone(),
                 2,
+                None,
             )
             .await?,
         "3"

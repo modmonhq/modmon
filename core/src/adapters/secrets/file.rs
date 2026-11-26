@@ -103,6 +103,7 @@ impl FileSecretStore {
             revision,
             created_at_unix_ms: None,
             candidate_revision: None,
+            set_by: None,
         }
     }
 }

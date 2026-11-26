@@ -92,7 +92,8 @@ pub(crate) fn environment_services(
         storage_capabilities,
         delivery_capabilities,
         clock,
-    });
+    })
+    .written_by(super::user_principal(explicit_home, &document.config.users).author());
     Ok(EnvironmentServices {
         manager,
         secrets,

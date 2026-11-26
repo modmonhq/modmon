@@ -28,6 +28,7 @@ pub const SECRET_BUNDLE_VERSION: u32 = 1;
 pub const MAX_SECRET_BUNDLE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_DEPLOY_KEY_BYTES: usize = 16 * 1024;
 const MAX_REVISION_BYTES: usize = 128;
+const MAX_SET_BY_BYTES: usize = 255;
 
 /// Everything one host receives for one project environment.
 pub struct SecretBundle {
@@ -38,11 +39,14 @@ pub struct SecretBundle {
 }
 
 /// One age secret: its reference as the store keys it within the
-/// environment, its revision in the sender's store, and its value.
+/// environment, its revision in the sender's store, its value, and when and
+/// by whom that revision was written.
 pub struct BundledSecret {
     pub reference: SecretReference,
     pub revision: String,
     pub material: SecretMaterial,
+    pub set_at_unix_ms: Option<i64>,
+    pub set_by: Option<String>,
 }
 
 /// The environment's read-only git deploy key.
@@ -71,6 +75,9 @@ impl SecretBundle {
             }
             validate_secret_revision(&secret.revision)
                 .map_err(|message| format!("{display}: {message}"))?;
+            if let Some(set_by) = &secret.set_by {
+                validate_set_by(set_by).map_err(|message| format!("{display}: {message}"))?;
+            }
             if !secret.material.expose(is_safe_environment_value) {
                 return Err(format!(
                     "{display}: secret values may not contain control characters"
@@ -99,6 +106,8 @@ impl SecretBundle {
                     value: secret
                         .material
                         .expose(|value| Zeroizing::new(value.to_owned())),
+                    set_at_unix_ms: secret.set_at_unix_ms,
+                    set_by: secret.set_by.clone(),
                 })
                 .collect(),
             deploy_key: self.deploy_key.as_ref().map(|key| WireDeployKey {
@@ -147,6 +156,8 @@ impl SecretBundle {
                     })?,
                     reference: secret.reference,
                     revision: secret.revision,
+                    set_at_unix_ms: secret.set_at_unix_ms,
+                    set_by: secret.set_by,
                 })
             })
             .collect::<Result<Vec<_>, String>>()?;
@@ -224,6 +235,18 @@ pub fn validate_secret_revision(revision: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Who wrote a revision, as a store records it: 1-255 bytes of text
+/// without control characters.
+pub fn validate_set_by(set_by: &str) -> Result<(), String> {
+    if set_by.is_empty() || set_by.len() > MAX_SET_BY_BYTES || set_by.chars().any(char::is_control)
+    {
+        return Err(format!(
+            "the writer's name must be 1-{MAX_SET_BY_BYTES} bytes without control characters"
+        ));
+    }
+    Ok(())
+}
+
 /// A serde error can quote the input it rejected, so only its kind and
 /// position are kept.
 fn redacted_json_error(error: &serde_json::Error) -> String {
@@ -257,6 +280,10 @@ struct WireSecret {
     reference: SecretReference,
     revision: String,
     value: Zeroizing<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    set_at_unix_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    set_by: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -308,6 +335,8 @@ impl fmt::Debug for BundledSecret {
             .field("reference", &self.reference)
             .field("revision", &self.revision)
             .field("material", &"[REDACTED]")
+            .field("set_at_unix_ms", &self.set_at_unix_ms)
+            .field("set_by", &self.set_by)
             .finish()
     }
 }

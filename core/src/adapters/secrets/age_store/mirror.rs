@@ -72,7 +72,8 @@ impl AgeSecretStore {
             let next = StoredSecret {
                 value: secret.material.into_zeroizing(),
                 revision: secret.revision,
-                created_at_unix_ms: now_unix_ms,
+                created_at_unix_ms: secret.set_at_unix_ms.unwrap_or(now_unix_ms),
+                set_by: secret.set_by,
             };
             let revision = next.revision.clone();
             let entry_changed = match document.entries.get_mut(&key) {

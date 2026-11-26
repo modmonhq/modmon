@@ -41,6 +41,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   own. See
   `docs/how-to/metrics.md`.
 
+- `mm secret status` shows when each secret's current revision was set and
+  who set it, in `SET` and `BY` columns, and as `set_at_unix_ms` and `set_by`
+  in JSON when known. mm records the writer (team user, login name, or
+  `agent:NAME (USER)` through `mm mcp`) in the Age store and in OpenBao and
+  Vault custom metadata; the terminal UI shows the same for a selected
+  secret variable. mm 0.1.2 still reads an Age store this release wrote.
+
 ### Fixed
 
 - `mm_read` kind `secrets` for an environment on this machine returned every

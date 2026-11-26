@@ -76,6 +76,7 @@ impl OpenBaoSecretStore {
                 revision: Some(read.revision()),
                 created_at_unix_ms: parse_timestamp(&read.data.metadata.created_time),
                 candidate_revision: None,
+                set_by: None,
             })
         })
         .await
