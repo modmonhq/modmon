@@ -25,6 +25,7 @@ export const docsNav: DocsNavGroup[] = [
     title: "Clusters and remote hosts",
     pages: [
       "how-to/cluster",
+      "how-to/metrics",
       "how-to/cloudflare-tunnel",
       "how-to/change-a-variable",
       "how-to/upgrade",

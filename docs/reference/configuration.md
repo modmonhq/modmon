@@ -130,7 +130,7 @@ show the relevant settings and are not complete projects unless noted.
 | `target`               | yes      | Default target name.                                                                                          |
 | `runtime`              | no       | `{driver?}`; driver is `podman-compose` or `docker-compose`.                                                  |
 | `build`                | no       | `{platforms, tag-strategy}`; defaults to `linux/amd64`, `linux/arm64`, and `auto`. `immutable` is also valid. |
-| `networks`             | no       | Map of network names to `{}` or `{internal: true}`. Stacks and modules attach names from this catalog.        |
+| `networks`             | no       | Map of network names to `{}`, `{internal: true}`, or `{metrics: true}`. Stacks and modules attach names from this catalog. |
 | `stacks`               | yes      | Map of Compose stack definitions.                                                                             |
 | `modules`              | no       | Map of source modules and their services.                                                                     |
 | `secrets`              | no       | Map of logical secret declarations; never put secret material in this file.                                   |
@@ -160,6 +160,7 @@ engine-specific checks also apply where relevant.
 networks:
   frontend: {}
   vault: { internal: true } # no outbound access
+  monitoring: { metrics: true } # cluster targets: each node serves its metrics here
 
 stacks:
   app:
@@ -237,6 +238,12 @@ catalog spans the nodes that run a service on it; see
 single host `internal` takes effect when the network is created: to change it
 later, stop the services on the network and remove the network with the engine
 first.
+
+`metrics: true` has each node of a [cluster target](#cluster-targets) that
+holds a part of the network serve its metrics to the network's containers, at
+`http://mmd.internal:9753/metrics`: the host, the node, and this environment's
+services, never another project's. See
+[collect node and service metrics](../how-to/metrics.md).
 
 `shared-volumes` lists top-level Compose volumes of that stack that are one
 directory on every node of a [cluster target](#cluster-targets): the target's

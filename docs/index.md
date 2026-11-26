@@ -35,6 +35,8 @@ setup needs Linux, systemd, HAProxy, and Docker Compose or Podman Compose.
 - [Share a volume between nodes](./how-to/cluster.md#share-a-volume-between-nodes),
   and when to use a local volume instead.
 - [Read logs and status across nodes](./how-to/cluster.md#read-logs-and-status)
+- [Collect node and service metrics](./how-to/metrics.md) with Prometheus or
+  Alloy, without host mounts.
 - [Scale a service](./how-to/cluster.md#scale-a-service) with `replicas` or
   with the load.
 - [Route traffic into the cluster](./how-to/cluster.md#route-traffic-into-the-cluster)
