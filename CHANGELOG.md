@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-11-26
+
+Remote protocol: 1. Every change in this release is additive: `mm` 0.1.3
+works with hosts on 0.1.2, and hosts on 0.1.3 keep serving `mm` 0.1.2. The
+faster cluster deploys and node metrics need every node upgraded
+(`mm target setup plan --upgrade`); until then a deploy keeps the older
+rollout steps, and its plan names the nodes still behind.
+
 ### Changed
 
 - `mm update` restarts the local user services that run `mm` (the dashboard
