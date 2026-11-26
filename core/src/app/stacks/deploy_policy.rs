@@ -51,7 +51,16 @@ pub(super) fn rollout_policy(
         }
     }
     policy.ahead = ahead.into_iter().collect();
+    super::auto_order::start_replicated_first(document, environment, &mut policy)?;
     Ok(policy)
+}
+
+/// The stacks each stack follows through `after:`.
+pub(super) fn stack_after(document: &ConfigDocument) -> BTreeMap<String, BTreeSet<String>> {
+    (document.config.stacks.iter())
+        .filter(|(_, stack)| !stack.after.is_empty())
+        .map(|(name, stack)| (name.clone(), stack.after.iter().cloned().collect()))
+        .collect()
 }
 
 /// What `service` depends on in `stack`, directly or through the services

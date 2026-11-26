@@ -33,6 +33,17 @@ pub trait ContainerLeaving: Send + Sync {
     /// goes on when the caller stops waiting.
     async fn leave(&self, containers: &[String], drain: Duration) -> Result<(), MmError>;
 
+    /// As `leave`, but returns once every node confirmed that it sends
+    /// none of `containers` anything new; their drain and stop go on after.
+    async fn leave_confirmed(&self, containers: &[String], drain: Duration) -> Result<(), MmError> {
+        self.leave(containers, drain).await
+    }
+
+    /// The engine ids of the containers leaving now to be removed.
+    fn leaving_now(&self) -> Result<Vec<String>, MmError> {
+        Ok(Vec::new())
+    }
+
     /// Takes back the leaves of the containers of Compose project `project`
     /// that have not been stopped: those containers are given out for
     /// their names and routed to again. A leave whose container is being

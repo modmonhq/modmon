@@ -150,6 +150,59 @@ pub(crate) async fn service_containers(
     Ok(containers)
 }
 
+/// Every container of `project` but jobs' one-off ones, as a deployment
+/// compares it with what the files ask for; `leaving` are the ids of the
+/// containers that are leaving the node.
+pub(crate) async fn stack_containers(
+    engine: &dyn ContainerEngine,
+    project: &str,
+    leaving: &[String],
+) -> Result<Vec<crate::domain::rollout::RunningContainer>, MmError> {
+    let ids = container_ids(engine, project, None).await?;
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut args = vec![
+        "container".to_owned(),
+        "inspect".to_owned(),
+        "--format".to_owned(),
+        "json".to_owned(),
+    ];
+    args.extend(ids);
+    let output = engine.engine(args, Duration::from_secs(30)).await?;
+    let rows = serde_json::from_str::<Vec<Value>>(output.stdout.trim()).map_err(|error| {
+        MmError::RuntimeResponse {
+            message: format!(
+                "{} returned invalid container inspect JSON: {error}",
+                engine.engine_name()
+            ),
+        }
+    })?;
+    Ok(rows
+        .iter()
+        .filter_map(|row| {
+            let labels = inspect_labels(row).unwrap_or_default();
+            let one_off = labels
+                .get(ONE_OFF_LABEL)
+                .is_some_and(|value| value.eq_ignore_ascii_case("true"));
+            let service = labels.get(SERVICE_LABEL).filter(|_| !one_off)?;
+            Some(crate::domain::rollout::RunningContainer {
+                service: service.clone(),
+                config_hash: labels.get(CONFIG_HASH_LABEL).cloned(),
+                image_id: row["Image"].as_str().unwrap_or_default().to_owned(),
+                running: row["State"]["Running"].as_bool().unwrap_or(false),
+                health: row["State"]["Health"]["Status"]
+                    .as_str()
+                    .filter(|health| !health.is_empty() && *health != "none")
+                    .map(str::to_owned),
+                leaving: row["Id"]
+                    .as_str()
+                    .is_some_and(|id| leaving.iter().any(|left| left == id)),
+            })
+        })
+        .collect())
+}
+
 /// The ids of the containers of `services` in `project`, running or not;
 /// jobs' one-off containers are none of them.
 pub(crate) async fn service_container_ids(

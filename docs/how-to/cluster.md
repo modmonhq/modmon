@@ -5,7 +5,7 @@ description: List your servers under one target, set them up, and deploy a Compo
 
 A cluster is a target that lists several hosts under `nodes:`. `mm` sets every
 host up, joins them over a private network, and deploys your Compose project
-across them one node at a time. There are no managers, join tokens, or quorum
+across them without dropping requests. There are no managers, join tokens, or quorum
 to look after: a cluster has nodes, services, networks, and volumes.
 
 This guide goes from a node list to a running deployment, then through the
@@ -187,8 +187,11 @@ Cluster deployment plan 0a4ba0ae34677ecf6507139bc887347d251e8ca7ba19e9f006fc2f01
            on failure every node this deployment changed returns to what it ran before
 ```
 
-Apply replaces one node at a time. A node is done when its containers pass
-their health checks and every other node resolves them by name:
+Apply replaces a stack on one node at a time while a service of it that runs
+on several nodes stops its old container first; when every such service starts
+first (the default where it can, see below), all of the stack's nodes are
+replaced together. A node is done when its containers pass their health checks
+and every other node resolves them by name:
 
 ```text
 ==> app-1: preparing
@@ -209,7 +212,14 @@ Deployment 0a4ba0ae34677ecf6507139bc887347d251e8ca7ba19e9f006fc2f016be9f9ab on p
 Give each service a health check in its Compose file: without one, a container
 counts as healthy as soon as it runs. To replace a container without a gap,
 set `update: {order: start-first}` on the service, and the apply says
-`app: started the new web next to the old` on each node. To order stacks, set
+`app: started the new web next to the old` on each node. A service that runs on
+more than one node starts first without that line, unless it publishes a host
+port, sets `container_name`, uses the host's network, mounts a writable volume,
+or runs more than one container per node; `update: {order: stop-first}` keeps
+the old order for it. The old container then leaves while the deployment goes
+on: once every node stops sending it new requests, the next step starts, and
+the container drains and stops in the background. Each node needs the memory
+for both containers while that happens. To order stacks, set
 `after:` on a stack. Both are in [rolling deploys and
 rollback](../remote-daemon.md#rolling-deploys-and-rollback).
 

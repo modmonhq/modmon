@@ -20,6 +20,20 @@
 #   MM_TIMING_LOADED            text that is on screen once the terminal UI has read the
 #                               environment (default "running")
 #
+# With --deploy it times deployments instead, and changes the environment:
+# it swaps the image tag of the first service in each of MM_TIMING_DEPLOY_FILES
+# between MM_TIMING_IMAGE_A and MM_TIMING_IMAGE_B, commits, pushes, plans and
+# applies, then plans and applies again with nothing changed. Run it from a
+# project such as examples/cluster-heavy whose nodes deploy from the pushed
+# branch.
+#
+#   MM_TIMING_DEPLOY_FILES          Compose files to change (default
+#                                   "api.yaml auth.yaml search.yaml")
+#   MM_TIMING_IMAGE_A, _B           the two tags (default nginx:1.27-alpine and
+#                                   nginx:1.26-alpine)
+#   MM_TIMING_DEPLOY_BUDGET_MS      `mm deploy apply` of the change (default 60000)
+#   MM_TIMING_UNCHANGED_BUDGET_MS   `mm deploy apply` of no change (default 15000)
+#
 # The read and log budgets depend on the hosts: a read costs the round trips
 # to the farthest host plus what its engine takes to answer. The script
 # prints the cold and the kept time of a status; the kept one must be the
@@ -36,12 +50,59 @@ read_budget=${MM_TIMING_READ_BUDGET_MS:-500}
 log_budget=${MM_TIMING_LOG_BUDGET_MS:-500}
 loaded=${MM_TIMING_LOADED:-running}
 selection=()
+deploy=false
 while (($# > 0)); do
     case $1 in
         --environment | -e) selection=(--environment "$2"); shift 2 ;;
-        *) printf 'usage: %s [--environment NAME]\n' "$0" >&2; exit 2 ;;
+        --deploy) deploy=true; shift ;;
+        *) printf 'usage: %s [--environment NAME] [--deploy]\n' "$0" >&2; exit 2 ;;
     esac
 done
+
+# deploy_once LABEL BUDGET_MS: plans, then times `mm deploy apply` of that
+# plan, and counts a miss when it is over the budget.
+deploy_once() {
+    local label=$1 budget=$2 hash started elapsed
+    hash=$("$mm" "${selection[@]}" --output json deploy plan | python3 -I -c 'import json, sys; print(json.load(sys.stdin)["plan_hash"])')
+    started=$(python3 -I -c 'import time; print(int(time.monotonic() * 1000))')
+    "$mm" "${selection[@]}" deploy apply --plan "$hash" --yes >/dev/null
+    elapsed=$(($(python3 -I -c 'import time; print(int(time.monotonic() * 1000))') - started))
+    if ((elapsed > budget)); then
+        printf 'FAIL  %-38s %8d ms   (budget %d ms)\n' "$label" "$elapsed" "$budget"
+        return 1
+    fi
+    printf 'ok    %-38s %8d ms   (budget %d ms)\n' "$label" "$elapsed" "$budget"
+}
+
+if $deploy; then
+    image_a=${MM_TIMING_IMAGE_A:-nginx:1.27-alpine}
+    image_b=${MM_TIMING_IMAGE_B:-nginx:1.26-alpine}
+    read -r -a files <<<"${MM_TIMING_DEPLOY_FILES:-api.yaml auth.yaml search.yaml}"
+    for file in "${files[@]}"; do
+        python3 -I - "$file" "$image_a" "$image_b" <<'PY'
+import sys
+path, first, second = sys.argv[1:]
+text = open(path, encoding="utf-8").read()
+at = min((i for i in (text.find(first), text.find(second)) if i >= 0), default=-1)
+if at < 0:
+    sys.exit(f"{path} uses neither {first} nor {second}")
+old, new = (first, second) if text.startswith(first, at) else (second, first)
+open(path, "w", encoding="utf-8").write(text[:at] + new + text[at + len(old):])
+PY
+    done
+    git add -- "${files[@]}"
+    git commit --quiet -m "Change the image of one service in ${#files[@]} stacks"
+    git push --quiet
+    failures=0
+    deploy_once 'mm deploy apply, a changed image' "${MM_TIMING_DEPLOY_BUDGET_MS:-60000}" || failures=$((failures + 1))
+    deploy_once 'mm deploy apply, nothing changed' "${MM_TIMING_UNCHANGED_BUDGET_MS:-15000}" || failures=$((failures + 1))
+    if ((failures > 0)); then
+        printf '%s bar(s) missed\n' "$failures" >&2
+        exit 1
+    fi
+    printf 'every bar held\n'
+    exit 0
+fi
 
 failures=0
 # median LABEL BUDGET_MS COMMAND...: prints the median wall time and counts a

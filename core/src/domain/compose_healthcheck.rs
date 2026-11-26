@@ -4,6 +4,12 @@ use serde_yaml_ng::{Mapping, Value};
 
 const EXTENDS_DEPTH: usize = 16;
 
+#[path = "compose_healthcheck/start_probes.rs"]
+mod start_probes;
+pub use start_probes::{
+    START_INTERVAL, START_INTERVAL_DOCKER_MAJOR, docker_probes_at_start, start_probes,
+};
+
 /// A service whose exec-form (`CMD`) health check has an argument that
 /// Podman before 5.8 splits at whitespace.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

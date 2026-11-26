@@ -203,6 +203,7 @@ pub struct DaemonUseCaseAdapter {
     engine: super::engine_facts::HostEngine,
     node_host: Option<daemon_host::NodeHost>,
     job_pulls: Arc<crate::app::JobPullSlots>,
+    prepared: Arc<crate::app::PreparedEnvironments>,
 }
 
 #[path = "remote_clients.rs"]
@@ -222,7 +223,9 @@ impl DaemonUseCaseAdapter {
         receipt: Option<&crate::domain::build::BuildReceipt>,
     ) -> Result<crate::app::DeploymentService, MmError> {
         let composition = RuntimeComposition::new();
-        let mut service = composition.deployment_service(selection, Some(&self.mm_home))?;
+        let mut service = composition
+            .deployment_service(selection, Some(&self.mm_home))?
+            .with_prepared_environments(Arc::clone(&self.prepared));
         if let (Some(networks), Some(_)) = (&self.networks, &selection.node) {
             service = service.with_cluster_networks(Arc::clone(networks));
         }
@@ -515,7 +518,10 @@ impl crate::app::ports::RemoteUseCases for DaemonUseCaseAdapter {
         let selection = self.selection(context)?;
         let unset = super::host_values::unset_required(&selection, &self.mm_home, context).await?;
         if !unset.is_empty() {
-            return Err(unset_on_host(&context.scope.environment, &unset));
+            return Err(super::host_values::unset_on_host(
+                &context.scope.environment,
+                &unset,
+            ));
         }
         let planned = self
             .deployment(&selection, receipt)
@@ -581,6 +587,18 @@ impl crate::app::ports::RemoteUseCases for DaemonUseCaseAdapter {
             .await
     }
 
+    async fn pull_planned(
+        &self,
+        context: &crate::app::ports::RemoteRequestContext,
+        plan: &crate::domain::deployment::DeploymentPlan,
+    ) -> Result<(), MmError> {
+        let selection = self.selection(context)?;
+        self.deployment(&selection, None)
+            .await?
+            .pull_planned(&selection, plan)
+            .await
+    }
+
     async fn roll_stack(
         &self,
         context: &crate::app::ports::RemoteRequestContext,
@@ -592,6 +610,19 @@ impl crate::app::ports::RemoteUseCases for DaemonUseCaseAdapter {
         self.deployment(&selection, None)
             .await?
             .roll_stack(&selection, deployment_plan_hash, stack, step)
+            .await
+    }
+
+    async fn roll_stacks(
+        &self,
+        context: &crate::app::ports::RemoteRequestContext,
+        deployment_plan_hash: &str,
+        stacks: &[String],
+    ) -> Result<Vec<(String, crate::app::StackOutcome)>, MmError> {
+        let selection = self.selection(context)?;
+        self.deployment(&selection, None)
+            .await?
+            .roll_stacks(&selection, deployment_plan_hash, stacks)
             .await
     }
 
@@ -749,30 +780,3 @@ mod status;
 #[cfg(test)]
 #[path = "remote_tests.rs"]
 mod tests;
-
-/// A plan refused because the node would deploy without a required value.
-fn unset_on_host(
-    environment: &str,
-    unset: &[(crate::domain::staged::ValueKind, String, Vec<String>)],
-) -> MmError {
-    let listed = unset
-        .iter()
-        .map(|(kind, key, services)| {
-            let command = match kind {
-                crate::domain::staged::ValueKind::Secret => "secret",
-                crate::domain::staged::ValueKind::Variable => "env",
-            };
-            format!(
-                "{} '{key}' (used by {}): run `mm -e {environment} {command} set {key}`",
-                kind.as_str(),
-                services.join(", ")
-            )
-        })
-        .collect::<Vec<_>>();
-    MmError::Environment {
-        message: format!(
-            "this host has no value for what the deployment needs: {}. Then plan again",
-            listed.join("; ")
-        ),
-    }
-}

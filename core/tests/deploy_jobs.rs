@@ -73,6 +73,7 @@ fn a_cluster_rollout_runs_before_jobs_in_their_stage_and_once_jobs_only_when_due
         node: "app-1",
         stacks: &stacks,
         policy: &policy,
+        services: &[],
     }]);
     let stage_jobs = rollout.stages[0]
         .jobs
@@ -105,6 +106,7 @@ fn a_node_refuses_a_rollout_that_runs_other_jobs_on_it() -> TestResult {
         node: "app-1",
         stacks: &stacks,
         policy: &policy,
+        services: &[],
     }]);
     rollout.stages[0].jobs.clear();
     let refused = rollout

@@ -37,12 +37,17 @@ const SETUP_PATIENCE: Duration = Duration::from_secs(30 * 60);
 /// its pull limit: stopping, draining and starting containers.
 const STACK_OVERHEAD: Duration = Duration::from_secs(20 * 60);
 const LOCK_PATIENCE: Duration = Duration::from_secs(30);
-const DISCOVERY_LOOK: Duration = Duration::from_secs(1);
+const DISCOVERY_LOOK: Duration = Duration::from_millis(250);
 
 type Outcome = NodeApplyOutcome<DeploymentResult>;
 
 #[path = "rollout_jobs.rs"]
 mod jobs;
+#[path = "rollout_pull.rs"]
+mod pull;
+#[path = "rollout_waves.rs"]
+mod waves;
+use waves::clone_error;
 
 /// Why the rollout stopped at one node.
 struct Fault {
@@ -94,6 +99,9 @@ impl RemoteEnvironment {
         if let Some(storage) = storage {
             self.ready_storage(plan_hash, nodes, storage, progress)
                 .await?;
+        }
+        if rollout.pull_first {
+            self.pull_all(plan_hash, nodes, rollout, progress).await?;
         }
         let mut walk = Walk {
             environment: self,
@@ -185,6 +193,7 @@ impl RemoteEnvironment {
         nodes: &[&RemoteNode],
         progress: NodeProgress<'_>,
     ) -> Result<(), MmError> {
+        let _phase = crate::app::timing::phase("rollout.networks");
         let stored = join_all(nodes.iter().map(|node| {
             self.with_heartbeat(
                 Watched {
@@ -227,6 +236,7 @@ impl RemoteEnvironment {
         storage: &SealedStorage,
         progress: NodeProgress<'_>,
     ) -> Result<(), MmError> {
+        let _phase = crate::app::timing::phase("rollout.storage");
         let is_storage = |node: &&&RemoteNode| node.name.as_deref() == Some(storage.node.as_str());
         let mounting = nodes
             .iter()
@@ -339,40 +349,6 @@ async fn still_here(nodes: &[&RemoteNode], plan_hash: &str) -> std::convert::Inf
     }
 }
 
-/// An error to hand on when the original is only borrowed.
-fn clone_error(error: &MmError) -> MmError {
-    match error {
-        MmError::Remote { code, message } => MmError::Remote {
-            code,
-            message: message.clone(),
-        },
-        MmError::Unreachable {
-            subject,
-            problem,
-            help,
-        } => MmError::Unreachable {
-            subject: subject.clone(),
-            problem: problem.clone(),
-            help: help.clone(),
-        },
-        MmError::Security { message } => MmError::Security {
-            message: message.clone(),
-        },
-        MmError::Timeout { message } => MmError::Timeout {
-            message: message.clone(),
-        },
-        MmError::Cancelled { message } => MmError::Cancelled {
-            message: message.clone(),
-        },
-        MmError::Launch { message } => MmError::Launch {
-            message: message.clone(),
-        },
-        other => MmError::Environment {
-            message: other.to_string(),
-        },
-    }
-}
-
 fn outcome(node: &str, state: NodeApplyState) -> Outcome {
     NodeApplyOutcome {
         node: node.to_owned(),
@@ -427,6 +403,8 @@ impl Walk<'_> {
             RolloutStep::Rollback => "rolling back".to_owned(),
             other => other.name().to_owned(),
         };
+        let detail = format!("{}: {label}", self.name(index));
+        let _phase = crate::app::timing::phase_of("rollout.step", &detail);
         let watched = Watched {
             node,
             step: &label,
@@ -452,38 +430,50 @@ impl Walk<'_> {
         outcomes
     }
 
-    /// Every stage in order; returns where the rollout stopped, if it did.
+    /// Every stage in order, or wave by wave; returns where the rollout
+    /// stopped, if it did.
     async fn stages(&mut self) -> Option<Fault> {
         let rollout = self.rollout;
+        if !rollout.waves.is_empty() {
+            return self.waves().await;
+        }
         for stage in &rollout.stages {
-            if let Some(fault) = self.stage_jobs(stage).await {
+            if let Some(fault) = self.stage(stage).await {
                 return Some(fault);
             }
-            for batch in &stage.batches {
-                let indices = batch
-                    .iter()
-                    .filter_map(|name| {
-                        self.nodes
-                            .iter()
-                            .position(|node| node.name.as_deref() == Some(name.as_str()))
-                    })
-                    .collect::<Vec<_>>();
-                let steps = join_all(
-                    indices
+        }
+        None
+    }
+
+    /// One stage: its jobs, then its batches of nodes, one after the other.
+    async fn stage(&mut self, stage: &RolloutStage) -> Option<Fault> {
+        if let Some(fault) = self.stage_jobs(stage).await {
+            return Some(fault);
+        }
+        for batch in &stage.batches {
+            let indices = batch
+                .iter()
+                .filter_map(|name| {
+                    self.nodes
                         .iter()
-                        .map(|index| self.roll_node(stage, *index, self.begun.contains(index))),
-                )
-                .await;
-                let mut fault = None;
-                for step in steps {
-                    if step.began && !self.begun.contains(&step.index) {
-                        self.begun.push(step.index);
-                    }
-                    fault = fault.or(step.fault);
+                        .position(|node| node.name.as_deref() == Some(name.as_str()))
+                })
+                .collect::<Vec<_>>();
+            let steps = join_all(
+                indices
+                    .iter()
+                    .map(|index| self.roll_node(stage, *index, self.begun.contains(index))),
+            )
+            .await;
+            let mut fault = None;
+            for step in steps {
+                if step.began && !self.begun.contains(&step.index) {
+                    self.begun.push(step.index);
                 }
-                if fault.is_some() {
-                    return fault;
-                }
+                fault = fault.or(step.fault);
+            }
+            if fault.is_some() {
+                return fault;
             }
         }
         None
@@ -651,10 +641,12 @@ impl Walk<'_> {
     }
 
     /// Every stack is healthy on every node. First every node the plan
-    /// gives no stack begins, so that nothing is final while a node can
-    /// still refuse; then each node removes what it no longer runs and
-    /// records the deployment.
+    /// gives no stack begins, all at once, so that nothing is final while a
+    /// node can still refuse; then every node at once removes what it no
+    /// longer runs and records the deployment. A node whose finish fails
+    /// undoes its own part; the others may have finished already.
     async fn finish(&mut self, outcomes: &mut [Outcome]) -> Option<Fault> {
+        let _phase = crate::app::timing::phase("rollout.finish");
         let fault = |index: usize, text: String, undone: bool| Fault {
             index,
             stack: None,
@@ -665,24 +657,37 @@ impl Walk<'_> {
             preparing: false,
             code: None,
         };
-        for index in 0..self.nodes.len() {
-            if self.begun.contains(&index) {
-                continue;
-            }
-            self.say(index, ProgressStep::Preparing);
-            self.begun.push(index);
-            if let Err(error) = self.step(index, RolloutStep::Begin, SETUP_PATIENCE).await {
-                let mut stopped = fault(index, error.to_string(), false);
-                stopped.code = Some(error.code().to_owned());
-                return Some(stopped);
-            }
+        let waiting = (0..self.nodes.len())
+            .filter(|index| !self.begun.contains(index))
+            .collect::<Vec<_>>();
+        for index in &waiting {
+            self.say(*index, ProgressStep::Preparing);
+        }
+        self.begun.extend(&waiting);
+        let begun = join_all(
+            (waiting.iter()).map(|index| self.step(*index, RolloutStep::Begin, SETUP_PATIENCE)),
+        )
+        .await;
+        if let Some((index, error)) = waiting
+            .iter()
+            .zip(begun)
+            .find_map(|(index, begun)| begun.err().map(|error| (*index, error)))
+        {
+            let mut stopped = fault(index, error.to_string(), false);
+            stopped.code = Some(error.code().to_owned());
+            return Some(stopped);
         }
         for index in 0..self.nodes.len() {
             self.say(index, ProgressStep::Finishing);
-            match self
-                .step(index, RolloutStep::Finish, self.undo_patience())
-                .await
-            {
+        }
+        let finished = join_all(
+            (0..self.nodes.len())
+                .map(|index| self.step(index, RolloutStep::Finish, self.undo_patience())),
+        )
+        .await;
+        let mut stopped = None;
+        for (index, finished) in finished.into_iter().enumerate() {
+            match finished {
                 Ok(RolloutAnswer::Finished(result)) => {
                     if let Some(outcome) = outcomes.get_mut(index) {
                         outcome.state = NodeApplyState::Applied;
@@ -690,21 +695,21 @@ impl Walk<'_> {
                     }
                 }
                 Ok(_) => {
-                    return Some(fault(
+                    stopped = stopped.or(Some(fault(
                         index,
                         "the node gave another answer than a finished deployment".to_owned(),
                         false,
-                    ));
+                    )));
                 }
                 // A node whose finish failed has undone its own part.
                 Err(error) => {
-                    let mut stopped = fault(index, error.to_string(), true);
-                    stopped.code = Some(error.code().to_owned());
-                    return Some(stopped);
+                    let mut failed = fault(index, error.to_string(), true);
+                    failed.code = Some(error.code().to_owned());
+                    stopped = stopped.or(Some(failed));
                 }
             }
         }
-        None
+        stopped
     }
 
     /// After a fault: the nodes that were changed return to what they ran

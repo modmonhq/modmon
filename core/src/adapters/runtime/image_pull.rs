@@ -3,6 +3,7 @@
 
 use std::time::Duration;
 
+use futures_util::StreamExt as _;
 use tokio::time::Instant;
 
 use crate::app::ports::{CommandSpec, Doing, ProcessRunner};
@@ -10,6 +11,8 @@ use crate::domain::error::MmError;
 use crate::domain::runtime::{RuntimeKind, RuntimeTarget};
 
 const LOOK_TIMEOUT: Duration = Duration::from_secs(45);
+/// How many images a node looks at or pulls at once.
+const PULLS_AT_ONCE: usize = 3;
 
 /// One engine's way to run itself: `podman` or `docker` with the
 /// environment it inherits.
@@ -41,62 +44,117 @@ impl ImagePuller<'_> {
         limit: Duration,
     ) -> Result<(), MmError> {
         let deadline = Instant::now() + limit;
-        let mut missing = Vec::new();
-        for wanted in self
+        let wanted = self
             .wanted(target, compose, services, deadline, limit)
-            .await?
-        {
-            if wanted.always || !self.present(target, &wanted, deadline, limit).await? {
-                missing.push(wanted);
-            }
-        }
+            .await?;
+        let missing = self.missing(target, wanted, deadline, limit).await?;
         if missing.is_empty() {
             return Ok(());
         }
         let auth = super::registry_auth::RegistryAuth::prepare(&target.registry_credentials)?;
         let total = missing.len();
-        let line = |index: usize| {
-            format!(
-                "pulling image {} of {total} for stack '{}': {}",
-                index + 1,
-                target.stack_name,
-                missing[index].image
-            )
-        };
-        let doing = Doing::now(line(0));
-        for (index, wanted) in missing.iter().enumerate() {
-            if index > 0 {
-                doing.update(line(index));
-            }
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            if remaining.is_zero() {
-                return Err(pull_timeout(target, wanted, limit));
-            }
-            let pulled = self
-                .process
-                .run(
-                    auth.for_runtime(
-                        self.kind,
-                        (self.base)(vec![
-                            "pull".to_owned(),
-                            "--quiet".to_owned(),
-                            qualified(&wanted.image),
-                        ]),
-                    )
-                    .timeout(remaining)
-                    .with_output_limit(16 * 1024),
+        let doing = Doing::now(format!(
+            "pulling {} for stack '{}': {}",
+            if total == 1 {
+                "1 image".to_owned()
+            } else {
+                format!("{total} images")
+            },
+            target.stack_name,
+            missing
+                .iter()
+                .map(|wanted| wanted.image.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+        let mut pulling = Vec::with_capacity(missing.len());
+        for wanted in &missing {
+            pulling.push(self.pull_one(target, wanted, &auth, (deadline, limit)));
+        }
+        let pulls = futures_util::stream::iter(pulling)
+            .buffered(PULLS_AT_ONCE)
+            .collect::<Vec<_>>()
+            .await;
+        drop(doing);
+        pulls
+            .into_iter()
+            .collect::<Result<Vec<()>, MmError>>()
+            .map(drop)
+    }
+
+    async fn pull_one(
+        &self,
+        target: &RuntimeTarget,
+        wanted: &WantedImage,
+        auth: &super::registry_auth::RegistryAuth,
+        (deadline, limit): (Instant, Duration),
+    ) -> Result<(), MmError> {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(pull_timeout(target, wanted, limit));
+        }
+        let pulled = self
+            .process
+            .run(
+                auth.for_runtime(
+                    self.kind,
+                    (self.base)(vec![
+                        "pull".to_owned(),
+                        "--quiet".to_owned(),
+                        qualified(&wanted.image),
+                    ]),
                 )
+                .timeout(remaining)
+                .with_output_limit(16 * 1024),
+            )
+            .await;
+        match pulled {
+            Ok(output) if output.success() => Ok(()),
+            Ok(output) => Err(pull_failed(target, wanted, &output.stderr)),
+            Err(MmError::ProcessTimeout { .. }) => Err(pull_timeout(target, wanted, limit)),
+            Err(error) => Err(error),
+        }
+    }
+
+    /// The images of `wanted` to pull: the ones pulled always, and the
+    /// ones the engine lacks. One look tells whether the engine has every
+    /// image; only when it lacks one is each looked at alone.
+    async fn missing(
+        &self,
+        target: &RuntimeTarget,
+        wanted: Vec<WantedImage>,
+        deadline: Instant,
+        limit: Duration,
+    ) -> Result<Vec<WantedImage>, MmError> {
+        let looked = wanted
+            .iter()
+            .filter(|wanted| !wanted.always)
+            .collect::<Vec<_>>();
+        let all_present = match looked.as_slice() {
+            [] => true,
+            [_] => false,
+            many => self.present(target, many, deadline, limit).await?,
+        };
+        let mut absent = std::collections::BTreeSet::new();
+        if !all_present {
+            let mut looking = Vec::with_capacity(looked.len());
+            for wanted in &looked {
+                looking.push(self.present(target, std::slice::from_ref(wanted), deadline, limit));
+            }
+            let presence = futures_util::stream::iter(looking)
+                .buffered(PULLS_AT_ONCE)
+                .collect::<Vec<_>>()
                 .await;
-            match pulled {
-                Ok(output) if output.success() => {}
-                Ok(output) => return Err(pull_failed(target, wanted, &output.stderr)),
-                Err(MmError::ProcessTimeout { .. }) => {
-                    return Err(pull_timeout(target, wanted, limit));
+            for (wanted, present) in looked.iter().zip(presence) {
+                if !present? {
+                    absent.insert(wanted.image.clone());
                 }
-                Err(error) => return Err(error),
             }
         }
-        Ok(())
+        Ok(wanted
+            .into_iter()
+            .filter(|wanted| wanted.always || absent.contains(&wanted.image))
+            .collect())
     }
 
     async fn wanted(
@@ -130,29 +188,34 @@ impl ImagePuller<'_> {
         wanted_images(&output.stdout, services)
     }
 
+    /// Whether the engine has every image of `wanted`.
     async fn present(
         &self,
         target: &RuntimeTarget,
-        wanted: &WantedImage,
+        wanted: &[&WantedImage],
         deadline: Instant,
         limit: Duration,
     ) -> Result<bool, MmError> {
-        let look = look_within(deadline).ok_or_else(|| pull_timeout(target, wanted, limit))?;
+        let Some(first) = wanted.first() else {
+            return Ok(true);
+        };
+        let look = look_within(deadline).ok_or_else(|| pull_timeout(target, first, limit))?;
+        let mut arguments = vec![
+            "image".to_owned(),
+            "inspect".to_owned(),
+            "--format".to_owned(),
+            "{{.Id}}".to_owned(),
+        ];
+        arguments.extend(wanted.iter().map(|wanted| wanted.image.clone()));
         let output = self
             .process
             .run(
-                (self.base)(vec![
-                    "image".to_owned(),
-                    "inspect".to_owned(),
-                    "--format".to_owned(),
-                    "{{.Id}}".to_owned(),
-                    wanted.image.clone(),
-                ])
-                .timeout(look)
-                .with_output_limit(16 * 1024),
+                (self.base)(arguments)
+                    .timeout(look)
+                    .with_output_limit(16 * 1024),
             )
             .await
-            .map_err(|error| past_deadline(error, look, || pull_timeout(target, wanted, limit)))?;
+            .map_err(|error| past_deadline(error, look, || pull_timeout(target, first, limit)))?;
         Ok(output.success())
     }
 }

@@ -54,6 +54,8 @@ struct FakeNode {
     networks: Mutex<mm::domain::cluster_network::NodeNetworkStatus>,
     /// What this node's resolver knows.
     names: Mutex<Option<mm::domain::discovery::NameReport>>,
+    /// Its `mmd` lists the newer rollout steps.
+    newer_steps: AtomicBool,
 }
 
 impl FakeNode {
@@ -77,11 +79,18 @@ impl FakeNode {
             silent_peer: Mutex::new(None),
             networks: Mutex::new(mm::domain::cluster_network::NodeNetworkStatus::default()),
             names: Mutex::new(None),
+            newer_steps: AtomicBool::new(false),
         })
     }
 
     fn call(&self, method: &str, scope: &RemoteScope) -> Result<(), MmError> {
         locked(&self.calls).push(method.to_owned());
+        self.answer(scope)
+    }
+
+    /// Whether the node answers, for a look that changes nothing and that
+    /// the tests do not count.
+    fn answer(&self, scope: &RemoteScope) -> Result<(), MmError> {
         assert_eq!(
             scope.node.as_deref(),
             Some(self.name.as_str()),
@@ -268,6 +277,8 @@ impl RemoteTransport for FakeNode {
                 created: Vec::new(),
             },
             RolloutStep::Release => RolloutAnswer::Released,
+            RolloutStep::Stacks { .. } => RolloutAnswer::StacksRolled(Vec::new()),
+            RolloutStep::Pull => RolloutAnswer::Pulled,
             RolloutStep::Rollback => RolloutAnswer::RolledBack,
             RolloutStep::Begin => {
                 if self.fail_apply.load(Ordering::SeqCst) {
@@ -430,7 +441,7 @@ impl RemoteTransport for FakeNode {
     }
 
     async fn node(&self, scope: RemoteScope) -> Result<NodeFacts, MmError> {
-        self.call("node", &scope)?;
+        self.answer(&scope)?;
         Ok(NodeFacts {
             node: Some(self.answers_as.clone().unwrap_or_else(|| self.name.clone())),
             daemon_version: format!("0.{}.0", self.digit),
@@ -445,6 +456,13 @@ impl RemoteTransport for FakeNode {
             engine: None,
             daemon: None,
             secret_store: None,
+            rollout_steps: if self.newer_steps.load(Ordering::SeqCst) {
+                mm::domain::rollout::NEWER_ROLLOUT_STEPS
+                    .map(str::to_owned)
+                    .to_vec()
+            } else {
+                Vec::new()
+            },
         })
     }
 
@@ -980,7 +998,7 @@ async fn a_subset_plan_leaves_the_other_nodes_alone_and_says_so() -> TestResult 
 }
 
 #[tokio::test]
-async fn a_node_that_cannot_begin_rolls_the_earlier_ones_back_and_spares_the_later() -> TestResult {
+async fn a_node_that_cannot_begin_rolls_back_every_node_that_began() -> TestResult {
     let (environment, fakes) = cluster()?;
     let plan = environment.plan_deployment(COMMIT, None, None).await?;
     fakes[1].fail_apply.store(true, Ordering::SeqCst);
@@ -996,9 +1014,12 @@ async fn a_node_that_cannot_begin_rolls_the_earlier_ones_back_and_spares_the_lat
         [
             "app-1: preparing",
             "app-2: preparing",
+            "db-1: preparing",
+            "db-1: rolling back",
             "app-2: rolling back",
             "app-1: rolling back"
-        ]
+        ],
+        "the nodes without stacks begin together"
     );
     assert_eq!(
         report
@@ -1009,7 +1030,7 @@ async fn a_node_that_cannot_begin_rolls_the_earlier_ones_back_and_spares_the_lat
         [
             ("app-1", NodeApplyState::RolledBack),
             ("app-2", NodeApplyState::Failed),
-            ("db-1", NodeApplyState::NotStarted),
+            ("db-1", NodeApplyState::RolledBack),
         ]
     );
     assert!(
@@ -1025,17 +1046,20 @@ async fn a_node_that_cannot_begin_rolls_the_earlier_ones_back_and_spares_the_lat
             .into_iter()
             .filter(|call| call.starts_with("rollout:"))
             .collect::<Vec<_>>(),
-        ["rollout:hold", "rollout:networks", "rollout:release"],
-        "a node after the failure took the lock and the plan's addresses, and gave the lock up"
+        [
+            "rollout:hold",
+            "rollout:networks",
+            "rollout:begin",
+            "rollout:rollback"
+        ],
+        "a node that began beside the failed one is rolled back"
     );
-    assert!(!fakes[2].calls().contains(&"rollout:begin".to_owned()));
     let failure = report.failure("mm deploy plan").unwrap_or_default();
     assert!(failure.contains("failed on node 'app-2'"), "{failure}");
     assert!(
-        failure.contains("Rolled back to what they ran before: app-1, app-2."),
+        failure.contains("Rolled back to what they ran before: app-1, app-2, db-1."),
         "{failure}"
     );
-    assert!(failure.contains("Not changed: db-1."), "{failure}");
     Ok(())
 }
 
@@ -1335,6 +1359,7 @@ async fn node_reports_cover_every_node_reachable_or_not() -> TestResult {
         FakeNode::answering_as("db-1", "3", Some("app-1")),
     ])?;
     fakes[1].up.store(false, Ordering::SeqCst);
+    fakes[0].newer_steps.store(true, Ordering::SeqCst);
     let mut nodes = environment.nodes().to_vec();
     nodes.push(RemoteNode {
         name: Some("new-1".to_owned()),
@@ -1396,6 +1421,14 @@ async fn node_reports_cover_every_node_reachable_or_not() -> TestResult {
     assert_eq!(json[1]["state"], "unreachable");
     assert_eq!(json[0]["mesh_address"], "10.90.0.1");
     assert_eq!(json[0]["deployed"]["runs_services"], true);
+    assert_eq!(
+        json[0]["rollout_steps"],
+        serde_json::json!(mm::domain::rollout::NEWER_ROLLOUT_STEPS)
+    );
+    assert!(
+        json[2].get("rollout_steps").is_none(),
+        "a node that lists none has no field"
+    );
     Ok(())
 }
 
@@ -1837,6 +1870,7 @@ fn hardened_node_plan() -> mm::domain::deployment::DeploymentPlan {
         registries: BTreeMap::new(),
         node: None,
         rollout: Default::default(),
+        stack_after: Default::default(),
         config_files: vec![ConfigFileUse {
             stack: "app".to_owned(),
             service: "web".to_owned(),

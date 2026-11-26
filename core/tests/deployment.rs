@@ -64,6 +64,8 @@ mod pull_order;
 #[path = "deployment/route_adoption.rs"]
 mod route_adoption;
 
+#[path = "deployment/draining.rs"]
+mod draining;
 #[path = "deployment/first_failure.rs"]
 mod first_failure;
 #[path = "deployment/rollback_routes.rs"]
@@ -1584,6 +1586,7 @@ async fn a_node_rolls_out_in_steps_and_returns_to_what_it_ran_before_when_asked(
         rolled,
         StackOutcome::Done {
             started: Vec::new(),
+            unchanged: false,
             addresses: Vec::new()
         }
     );
@@ -5715,6 +5718,11 @@ struct FakeRuntime {
     scaling: Mutex<Vec<ScaledCall>>,
     /// How many containers each service runs, for `service_container_ids`.
     containers: Mutex<BTreeMap<String, usize>>,
+    /// The containers the node's leaves say are draining.
+    draining: Mutex<Vec<String>>,
+    /// The draining containers each start-first look and unchanged look
+    /// was given, as `beside:<services>:<ids>` and `unchanged:<ids>`.
+    told_draining: Mutex<Vec<String>>,
 }
 
 /// One call that runs a number of containers of services.
@@ -5809,6 +5817,16 @@ impl FakeRuntime {
             .flatten()
             .cloned()
             .collect::<Vec<_>>())
+    }
+
+    fn tell_draining(&self, call: String) -> Result<(), MmError> {
+        self.told_draining
+            .lock()
+            .map_err(|_| MmError::State {
+                message: "fake runtime draining lock was poisoned".to_owned(),
+            })?
+            .push(call);
+        Ok(())
     }
 
     fn record(&self, call: impl Into<String>) -> Result<(), MmError> {
@@ -6101,6 +6119,30 @@ impl LocalDeploymentRuntime for FakeRuntime {
             });
         }
         Ok(())
+    }
+
+    async fn start_beside(
+        &self,
+        _target: &RuntimeTarget,
+        services: &[String],
+        leaving: &[String],
+    ) -> Result<Vec<String>, MmError> {
+        self.tell_draining(format!(
+            "beside:{}:{}",
+            services.join(","),
+            leaving.join(",")
+        ))?;
+        Ok(Vec::new())
+    }
+
+    async fn stack_unchanged(
+        &self,
+        _target: &RuntimeTarget,
+        _counts: &BTreeMap<String, u32>,
+        leaving: &[String],
+    ) -> Result<bool, MmError> {
+        self.tell_draining(format!("unchanged:{}", leaving.join(",")))?;
+        Ok(false)
     }
 
     async fn outdated_containers(
@@ -6642,6 +6684,16 @@ impl mm::app::ports::ContainerLeaving for RecordingLeaving {
     async fn recall(&self, project: &str) -> Result<Vec<String>, MmError> {
         self.0.record(format!("recall:{project}"))?;
         Ok(Vec::new())
+    }
+
+    fn leaving_now(&self) -> Result<Vec<String>, MmError> {
+        self.0
+            .draining
+            .lock()
+            .map(|draining| draining.clone())
+            .map_err(|_| MmError::State {
+                message: "fake runtime draining lock was poisoned".to_owned(),
+            })
     }
 }
 

@@ -140,6 +140,9 @@ fn operation_name(method: &RemoteMethod) -> String {
             ..
         } => format!("deployment (stack '{stack}')"),
         RemoteMethod::Rollout { step: RolloutStep::Job { job, .. }, .. } => format!("deployment (job '{job}')"),
+        RemoteMethod::Rollout { step: RolloutStep::Stacks { stacks }, .. } => {
+            format!("deployment (stacks '{}')", stacks.join("', '"))
+        }
         RemoteMethod::Rollout { step, .. } => format!("deployment (step {})", step.name()),
         RemoteMethod::Deliver(offer) => {
             format!("delivery of commit {}", offer.commit.get(..12).unwrap_or(&offer.commit))

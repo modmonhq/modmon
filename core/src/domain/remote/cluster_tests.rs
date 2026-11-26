@@ -273,6 +273,7 @@ fn node(name: &str, state: NodeState, version: Option<&str>, commit: Option<&str
         engine: None,
         daemon: None,
         secret_store: None,
+        rollout_steps: Vec::new(),
     }
 }
 

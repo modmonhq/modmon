@@ -699,3 +699,83 @@ fn the_api_is_used_only_for_the_engine_the_cli_would_talk_to() -> TestResult {
     assert_eq!(from(&[("DOCKER_CONFIG", &config)], &socket), None);
     Ok(())
 }
+
+/// Answers each engine command with the next output, in order, and fails
+/// once none is left.
+struct Scripted(Mutex<std::collections::VecDeque<String>>);
+
+#[async_trait::async_trait]
+impl ProcessRunner for Scripted {
+    async fn run(&self, specification: CommandSpec) -> Result<CommandOutput, MmError> {
+        let next = self
+            .0
+            .lock()
+            .ok()
+            .and_then(|mut answers| answers.pop_front())
+            .ok_or_else(|| MmError::State {
+                message: format!(
+                    "one engine command too many: {}",
+                    specification.redacted_display()
+                ),
+            })?;
+        Ok(CommandOutput {
+            code: Some(0),
+            stdout: Zeroizing::new(next),
+            stderr: Zeroizing::new(String::new()),
+            truncated: false,
+        })
+    }
+}
+
+/// A health wait renders the project once; every look after the first
+/// asks the engine's API for the containers instead of running
+/// `compose config` again.
+#[tokio::test]
+async fn a_health_wait_renders_the_project_once_and_then_asks_the_engine() -> TestResult {
+    use mm::app::ports::RuntimeDriver as _;
+    use mm::domain::runtime::{ConvergenceCancellation, ConvergencePolicy, ConvergenceState};
+
+    let engine = start_engine(vec![container("aaa111", "api", 1)])?;
+    let rendered = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/runtime-conformance/app.compose.yaml"),
+    )?;
+    let starting = r#"[{"ID":"aaa111","Name":"shop-app-api-1","Image":"nginx:1.27","State":"running","Status":"Up 1 second (health: starting)","Health":"starting","ExitCode":0,"Labels":{"com.docker.compose.project":"shop-app","com.docker.compose.service":"api"}}]"#;
+    let answers = Arc::new(Scripted(Mutex::new(
+        [rendered, starting.to_owned()].into_iter().collect(),
+    )));
+    let outcome = mm::adapters::runtime::DockerComposeRuntime::new(answers.clone())
+        .reading_engine_api(Some(engine.api()))
+        .wait_for_services(
+            &target(),
+            &["api".to_owned()],
+            ConvergencePolicy {
+                timeout: Duration::from_secs(30),
+                initial_backoff: Duration::from_millis(5),
+                maximum_backoff: Duration::from_millis(5),
+            },
+            ConvergenceCancellation::default(),
+        )
+        .await?;
+    assert_eq!(outcome.state, ConvergenceState::Succeeded, "{outcome:?}");
+    assert!(
+        answers.0.lock().is_ok_and(|left| left.is_empty()),
+        "one rendering and one listing by the command line"
+    );
+    assert!(
+        engine
+            .requests()
+            .iter()
+            .any(|path| path.starts_with("/containers/json")),
+        "{:?}",
+        engine.requests()
+    );
+    Ok(())
+}
+
+#[test]
+fn a_health_wait_looks_again_within_a_second() {
+    let policy = mm::domain::runtime::ConvergencePolicy::default();
+    assert_eq!(policy.initial_backoff, Duration::from_millis(250));
+    assert_eq!(policy.maximum_backoff, Duration::from_secs(1));
+}

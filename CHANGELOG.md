@@ -48,6 +48,63 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Vault custom metadata; the terminal UI shows the same for a selected
   secret variable. mm 0.1.2 still reads an Age store this release wrote.
 
+- Cluster deploys spend less time waiting on each node: a rollout prepares
+  its environment once instead of for every stack, a health wait renders the
+  Compose project once and looks again within a second, a node checks every
+  image of a stack in one look and pulls up to three at once, drained
+  containers stop side by side, and the client checks every 250 ms that the
+  other nodes resolve new containers.
+- A service that runs on more than one node of a cluster and sets no
+  `update.order` now starts its new container before the old one stops,
+  unless it publishes a host port, sets `container_name`, uses the host's
+  network, mounts a writable volume or runs several containers per node;
+  `update.order: stop-first` keeps the old order. A deployment goes on as soon
+  as every node stops sending a replaced container new requests, and the
+  container drains and stops in the background, so `drain` no longer adds to
+  deploy time. The next deploy counts a container that still drains as
+  neither the old nor the new one, so going back to the image it runs starts
+  a new container of that image.
+- A cluster node leaves a stack alone when its containers already run what
+  the deployment would start: the same Compose configuration, environment and
+  secrets, the image its tag names on the node, healthy, and as many as the
+  node runs, not counting containers that still drain from the deploy before.
+  Nothing is stopped, started or waited for. Docker hosts only; a Podman host
+  applies every stack as before.
+- A cluster deploy has every node pull the images it runs, all nodes at the
+  same time, before any node is replaced; a pull that fails stops the deploy
+  with nothing changed. Unless every node's `mmd` says it knows the new
+  rollout steps (`rollout_steps` in `mm target nodes --output json`), nodes
+  keep pulling stack by stack, and the plan names the older nodes until
+  `mm target setup plan --upgrade` brings them up to date.
+- A stack whose services that run on several nodes all start first is
+  replaced on all its nodes at once when no service sets `update.parallelism`;
+  otherwise it still goes one node at a time. An `update.parallelism` a
+  service sets keeps applying.
+- Stacks that `after:` does not order roll out side by side in a cluster
+  deploy: each node rolls out up to four of them at once in one step, and the
+  next layer of `after:` starts once every node resolves what they started. A
+  stack with `before-deploy` jobs, services that pause on failure, or more than
+  one batch of nodes still rolls out alone. The plan lists the stacks that go
+  side by side. With a node whose `mmd` does not know the new steps, stacks
+  roll out one at a time, and the plan says so.
+- With `MM_TIMING=1`, `mm deploy apply` on a cluster shows how long the
+  networks, storage, pull, each wave of stacks, each node step and the finish
+  took, and `mmd` shows each stack's leave, start, health wait and resolve.
+  `scripts/live-timing.sh --deploy` times a changed and an unchanged deploy
+  against a budget, with `examples/cluster-heavy` as the load.
+- On Docker Engine 25 and later, mm's generated Compose overlay gives each
+  service with a health check `start_interval: 1s`, and a `start_period` of
+  `interval` times `retries` when the service sets none, so a deploy sees a
+  new container healthy within about a second instead of after the first
+  `interval`. The service's own `interval` applies once the container is
+  healthy. The first deploy after upgrading recreates every service with a
+  health check once, since its configuration changes. Podman hosts and older
+  Docker Engines are left as they are.
+- Every node of a cluster deploy finishes at the same time, and nodes without
+  stacks begin at the same time. A node whose finish fails rolls itself back
+  as before, but the other nodes may have finished already: the report lists
+  them as applied instead of rolling them back.
+
 ### Fixed
 
 - `mm_read` kind `secrets` for an environment on this machine returned every

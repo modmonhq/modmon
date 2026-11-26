@@ -78,7 +78,10 @@ pub use cluster_setup::{
 };
 pub use dashboard::{DashboardQueryService, RegisteredDashboardHostSource};
 pub use deployment::{DeploymentManager, DeploymentManagerDependencies, DeploymentPlanner};
-pub use deployment_apply::{DeploymentExecutionPorts, DeploymentService, StackOutcome, StackStep};
+pub use deployment_apply::{
+    DeploymentExecutionPorts, DeploymentService, EnvironmentMaterial, PreparedEnvironments,
+    StackOutcome, StackStep,
+};
 pub use development_mount::{DevelopmentMountManager, DevelopmentMountPlanRequest};
 pub use environment::{
     EnvironmentDependencies, EnvironmentManager, SECRET_STORE_UNAVAILABLE, refused_at_apply,

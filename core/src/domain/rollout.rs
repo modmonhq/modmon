@@ -35,12 +35,26 @@ pub use operations::{
     CancelOutcome, CancelReport, CancelledRun, DaemonHealth, LateChild, NodeCancel,
     OperationInFlight, RECENT_START_MS, SHORT_ID, STUCK_AFTER_MS, daemon_diagnostics, short_id,
 };
+#[path = "rollout/auto_order.rs"]
+mod auto_order;
+pub use auto_order::{HostTies, starts_first_by_default};
+#[path = "rollout/unchanged.rs"]
+mod unchanged;
+pub use unchanged::{
+    Beside, RunningContainer, WantedService, beside, service_images, stack_unchanged,
+};
+#[path = "rollout/waves.rs"]
+mod waves;
+pub use waves::{STACKS_AT_ONCE, check_waves, shares_a_wave, waves_of};
+#[path = "rollout/versions.rs"]
+mod versions;
+pub use versions::{NEWER_ROLLOUT_STEPS, NodeSteps, knows_newer_steps};
 #[path = "rollout/steps.rs"]
 mod steps;
 pub use steps::{
     DEFAULT_FAILURE_LOG_LINES, FAILURE_LINE_CHARS, FAILURE_LOG_BYTES, FAILURE_SUMMARY_LINES,
     LOCK_LEASE_MS, LOCK_RENEW_MS, MAX_FAILURE_LOG_LINES, RolloutAnswer, RolloutChanges,
-    RolloutStep, StepFailure, failure_log_summary, kept_failure_log, unhealthy_code,
+    RolloutStep, StackRolled, StepFailure, failure_log_summary, kept_failure_log, unhealthy_code,
 };
 
 /// What a job that did not succeed in a rollout tells the client: the
@@ -81,6 +95,7 @@ pub struct ServiceUpdate {
     pub stack: String,
     pub service: String,
     pub order: UpdateOrder,
+    /// `update.parallelism`; 0 when the service sets none.
     pub parallelism: u32,
     pub failure: UpdateFailure,
 }
@@ -200,7 +215,7 @@ impl RolloutPolicy {
                     format!("modules.{module_name}.services.{name}.update.{problem}")
                 })?;
                 if update.order != UpdateOrder::default()
-                    || update.parallelism != 1
+                    || update.parallelism != 0
                     || update.failure != UpdateFailure::default()
                 {
                     services.push(update);
@@ -332,10 +347,10 @@ fn service_update(
     service: &str,
     update: &UpdateConfig,
 ) -> Result<ServiceUpdate, String> {
-    let parallelism = update.parallelism.unwrap_or(1);
-    if parallelism == 0 {
+    if update.parallelism == Some(0) {
         return Err("parallelism must be at least 1".to_owned());
     }
+    let parallelism = update.parallelism.unwrap_or(0);
     Ok(ServiceUpdate {
         stack: stack.to_owned(),
         service: service.to_owned(),
@@ -451,6 +466,20 @@ pub struct ClusterRollout {
     /// place: the ones no node ran before.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub once: Vec<StageJob>,
+    /// Every node pulls the images it runs before any node is replaced.
+    /// Only when every node's `mmd` knows the `pull` step.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pull_first: bool,
+    /// The stages in waves (indices into `stages`): the stages of a wave
+    /// roll out side by side. Empty when every stage rolls out alone, and
+    /// unless every node's `mmd` knows the `stacks` step.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub waves: Vec<Vec<usize>>,
+    /// The nodes whose `mmd` is too old for the newer steps, with its
+    /// release, for the plan to say so. Not part of the plan.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub older_nodes: Vec<(String, String)>,
 }
 
 fn pull_timeout(seconds: Option<u64>) -> Duration {
@@ -467,6 +496,8 @@ pub struct NodeRolloutInput<'a> {
     pub node: &'a str,
     pub stacks: &'a [String],
     pub policy: &'a RolloutPolicy,
+    /// The services the node runs; empty when its plan does not say.
+    pub services: &'a [crate::domain::placement::PlacedService],
 }
 
 /// The jobs of `nodes`' policies that `keep` takes, each on its node.
@@ -487,6 +518,49 @@ fn placed_jobs<'a, 'b: 'a>(
                 })
         })
         .collect()
+}
+
+/// How many of `running`, the nodes that run `stack`, replace it at once:
+/// the smallest `update.parallelism` its services set, or with none set,
+/// every node together when each service on more than one of them starts
+/// first, and otherwise one at a time.
+fn stage_parallelism(
+    stack: &str,
+    running: &[&NodeRolloutInput<'_>],
+    updates: &[&ServiceUpdate],
+) -> usize {
+    if let Some(set) = updates
+        .iter()
+        .map(|service| service.parallelism)
+        .filter(|parallelism| *parallelism > 0)
+        .min()
+    {
+        return set as usize;
+    }
+    if running.iter().any(|node| node.services.is_empty()) {
+        return 1;
+    }
+    let mut nodes_of = BTreeMap::<&str, usize>::new();
+    for placed in running
+        .iter()
+        .flat_map(|node| node.services)
+        .filter(|placed| placed.stack == stack)
+    {
+        *nodes_of.entry(placed.service.as_str()).or_default() += 1;
+    }
+    let starts_first = |service: &str| {
+        updates
+            .iter()
+            .any(|update| update.service == service && update.order == UpdateOrder::StartFirst)
+    };
+    if nodes_of
+        .iter()
+        .all(|(service, nodes)| *nodes < 2 || starts_first(service))
+    {
+        running.len().max(1)
+    } else {
+        1
+    }
 }
 
 impl ClusterRollout {
@@ -525,12 +599,7 @@ impl ClusterRollout {
                 .flat_map(|node| &node.policy.services)
                 .filter(|service| service.stack == stack)
                 .collect::<Vec<_>>();
-            let parallelism = updates
-                .iter()
-                .map(|service| service.parallelism)
-                .min()
-                .unwrap_or(1)
-                .max(1) as usize;
+            let parallelism = stage_parallelism(stack, &running, &updates);
             let names = |keep: &dyn Fn(&ServiceUpdate) -> bool| {
                 updates
                     .iter()
@@ -577,12 +646,39 @@ impl ClusterRollout {
             stages,
             ran_once: BTreeMap::new(),
             once: placed_jobs(nodes.iter(), |job| job.run == JobWhen::Once),
+            pull_first: false,
+            waves: Vec::new(),
+            older_nodes: Vec::new(),
         }
     }
 
     #[must_use]
     pub fn pull_timeout(&self) -> Duration {
         pull_timeout(self.pull_timeout_seconds)
+    }
+
+    /// Plans the newer steps when every node of `nodes` says its `mmd`
+    /// knows them, and otherwise notes the nodes that do not; `after` maps
+    /// a stack to the stacks it follows.
+    #[must_use]
+    pub fn for_daemons(
+        mut self,
+        nodes: &[NodeSteps],
+        after: &BTreeMap<String, BTreeSet<String>>,
+    ) -> Self {
+        self.older_nodes = nodes
+            .iter()
+            .filter(|node| !knows_newer_steps(&node.steps))
+            .map(|node| (node.node.clone(), node.daemon_version.clone()))
+            .collect();
+        let newer = self.older_nodes.is_empty();
+        self.pull_first = newer && !self.stages.is_empty();
+        self.waves = if newer {
+            waves_of(&self.stages, after)
+        } else {
+            Vec::new()
+        };
+        self
     }
 
     /// Takes in what the nodes say ran once: those jobs are not started

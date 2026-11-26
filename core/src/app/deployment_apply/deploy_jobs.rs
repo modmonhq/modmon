@@ -26,7 +26,7 @@ impl DeploymentService {
             }
         })?;
         let mut environment = self
-            .prepare_environment(selection, &running.plan, running.operation_id)
+            .prepare_rollout_environment(selection, &running.plan, running.operation_id)
             .await?;
         let ran = self
             .run_deploy_job(

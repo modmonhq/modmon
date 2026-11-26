@@ -1291,9 +1291,12 @@ deployment. The command exits with status 3 when a node is not ready, and
 prints the list either way. `--output json` prints the same facts as
 `{"target": ..., "nodes": [...], "addresses": {...}}`. Each node has `name`,
 `host`, `port`, `mesh_address`, `state`, `reachable`, `problem`,
-`mmd_version`, and `deployed`. `host` and `port` are the address this device
-connected to; when it is [this device's own](#reach-the-nodes-at-another-address),
-`repo_address` holds the one in `targets.yaml`.
+`mmd_version`, and `deployed`. `rollout_steps` lists the newer rollout steps
+the node's `mmd` knows (`pull`, `stacks`); a deploy uses them only when every
+node lists them, and the field is left out for a node that lists none. `host`
+and `port` are the address this device connected to; when it is
+[this device's own](#reach-the-nodes-at-another-address), `repo_address` holds
+the one in `targets.yaml`.
 
 Below the nodes, the command prints the addresses of the
 [networks that span the nodes](#networks-across-nodes), for the environment
@@ -1382,8 +1385,11 @@ mm --environment production deploy apply --plan "$PLAN" --yes
 ### Rolling deploys and rollback
 
 A deployment to a cluster needs no configuration to be safe. Stacks roll out
-in name order, and each stack one node at a time in the order the target lists
-the nodes. A node is done when the stack's containers pass their health checks
+in name order. Each stack is replaced on every node at once when each of its
+services that runs on more than one node is `start-first` (by default where it
+can be), since those keep serving from the old containers until the new ones
+are healthy; otherwise one node at a time, in the order the target lists the
+nodes. A node is done when the stack's containers pass their health checks
 (a service without a health check counts as healthy once it runs) and every
 other node resolves the new containers by name. Only then does the next node
 start.
@@ -1392,6 +1398,34 @@ Before the first node is replaced, every node of the plan stores the
 addresses the plan gives the cluster's networks, so a container that starts on
 a network a node did not have before is reachable and resolvable from the
 nodes whose turn has not come.
+
+Then every node pulls the images it runs, all nodes at the same time, within
+`deploy.pull-timeout`. A pull that fails stops the deployment before any
+container changes. This needs every node's `mmd` to know the newer rollout
+steps, which it says when asked about itself; with a node on an older release
+each node pulls stack by stack instead, and the plan names that node with a
+line such as `node 'db-1' runs mmd 0.1.2: images are pulled stack by stack and
+stacks roll out one at a time until mm target setup plan --upgrade brings it
+up to date`.
+
+Stacks that `after:` does not order roll out side by side: the stacks of one
+layer of `after:` go together, each node rolling out up to four of its stacks
+at once, and the next layer starts once every node resolves what they started.
+A stack with `before-deploy` jobs, a service with `update.failure: pause`, or
+more than one batch of nodes rolls out alone, in its turn. The plan lists the
+stacks that go together, as in `side by side, each node up to 4 at once: api,
+cache, web`. With a node on an older release every stack rolls out alone
+until `mm target setup plan --upgrade` brings it up to date, and the plan names
+that node.
+
+A stack that did not change is left alone: when every container of it on a
+node already runs what the deployment would start (the same Compose
+configuration, environment and secrets, the image its tag names on the node,
+healthy, and as many containers as the node runs, not counting containers
+that still drain from an earlier deploy), the node answers at once
+without stopping, starting or waiting for anything, and a rollback does not
+touch it. A tag pushed again under the same name is only picked up once the
+node pulls it. Podman hosts apply every stack, changed or not.
 
 The plan says so before anything changes:
 
@@ -1456,8 +1490,8 @@ modules:
         stack: app
         placement: all
         update:
-          order: start-first # default stop-first
-          parallelism: 2 # nodes at a time; default 1
+          order: start-first # default: start-first on several nodes when it can, else stop-first
+          parallelism: 2 # nodes at a time; default: all when it is safe, else 1
           failure: pause # default rollback
 ```
 
@@ -1467,8 +1501,8 @@ modules:
 | `deploy.progress-timeout`         | `2m`         | How long `mm deploy apply` waits without any sign of progress from a host before it stops with `MM_TIMEOUT`, naming the host, the step, and the operation. At least `30s`.            |
 | `deploy.failure-log-lines`        | `200`        | How many last lines of a failed container's log a node keeps for the report and `mm deploy status`: 1 to 1000, and never more than 64 KiB.                                           |
 | `stacks.<stack>.after`            | none         | Stacks that roll out before this one, on every node, so that a database is healthy before the application that needs it starts.                                                      |
-| `update.order`                    | `stop-first` | `start-first` starts the new container next to the old one; see below.                                                                                                               |
-| `update.parallelism`              | `1`          | How many nodes replace the service's stack at the same time. A stack takes the smallest value among its services.                                                                    |
+| `update.order`                    | see below    | `start-first` starts the new container next to the old one. Without it, a service on several nodes starts first when it can; see below.                                              |
+| `update.parallelism`              | see above    | How many nodes replace the service's stack at the same time. A stack takes the smallest value among its services; with none set, all of them or one, as described above.            |
 | `update.failure`                  | `rollback`   | `pause` stops the deployment where it is when this service fails, so the failed container can be looked at. `mm deploy rollback` then returns the nodes to what they ran before.      |
 | `drain`                           | `1m`         | How long an old container keeps serving what it has once no node sends it requests, before it stops; see below.                                                                      |
 
@@ -1483,6 +1517,14 @@ commands to read its log and deploy again, and the next deployment applies
 over what runs. Once any node has finished a deployment, a failure rolls the
 changed nodes back as described above, a node that joined since included.
 
+Once every stack is healthy, every node finishes at the same time: it
+publishes its routes, removes what the plan no longer runs, and records the
+deployment. A node whose finish fails returns to what it ran before by
+itself, and the report says so; the nodes that finished already keep the new
+deployment and are reported as applied. Run `mm deploy plan` again to bring
+the failed node up to date, or `mm deploy rollback` to return every node to
+the deployment before.
+
 #### Replace a container without a gap
 
 With `update.order: start-first`, a node starts the new container of the
@@ -1492,14 +1534,34 @@ requests keep going to the old one. Once every node resolves the new
 container, the old one [leaves](#take-a-container-out-without-dropping-a-request):
 no node answers with it or sends it requests any more, it finishes what it
 has during the service's `drain` (`1m` by default), and then it stops. The
-next node starts after that. A new container that never becomes healthy is
-removed and the old one keeps serving.
+deployment goes on as soon as every node confirmed that it sends the old
+container nothing new; the drain and the stop happen in the background, and
+`mm deploy status` lists the container as leaving until it is gone. A deploy
+started meanwhile treats a leaving container as already gone: deploying its
+image again starts a new container of it. A new container that never becomes
+healthy is removed and the old one keeps serving. A rollback during the drain
+takes the old container back.
+
+A service placed on more than one node that sets no `update.order` is
+`start-first` by default, unless something ties it to one container per node:
+its Compose definition publishes a host port, sets `container_name`, uses the
+host's network, PID or IPC namespace, mounts a volume that is not read-only,
+hands it devices, or runs more than one container (`scale`,
+`deploy.replicas`, `replicas`, `autoscale`, `host-network`). Set
+`update.order: stop-first` to keep such a service stopping first. Each node
+needs the memory for both containers while the old one drains.
 
 The service is reached by its name on a [network that spans the
 nodes](#networks-across-nodes) or through the [ingress](#route-traffic-into-the-cluster);
 neither a client that asks again for each request nor one that keeps its
 connection sees a failed request. Give the service a health check: without one
-a container counts as healthy once it has run for five seconds.
+a container counts as healthy once it has run for five seconds. On Docker
+Engine 25 and later mm probes a starting container's health check every
+second (`start_interval: 1s`, with a `start_period` of `interval` times
+`retries` unless the service sets one), so the new container counts as healthy
+as soon as its check passes; the service's own `interval` applies after that.
+A service that sets `start_interval` keeps its own. The first deployment
+after upgrading mm recreates each service with a health check once.
 
 `start-first` needs two containers of the service on one node for a moment, so
 `mm config validate` refuses it with `MM_UPDATE_ORDER` for a service that

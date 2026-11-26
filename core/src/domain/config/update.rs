@@ -62,11 +62,15 @@ pub enum UpdateFailure {
 #[serde(rename_all = "kebab-case")]
 #[schemars(deny_unknown_fields)]
 pub struct UpdateConfig {
-    /// `stop-first` (the default) or `start-first`.
+    /// `stop-first` or `start-first`. The default is `start-first` for a
+    /// service on several nodes that nothing of the host ties to one
+    /// container, and `stop-first` otherwise.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub order: Option<UpdateOrder>,
     /// How many nodes of a cluster target replace the service's stack at
-    /// the same time. The default is 1.
+    /// the same time. Without it, every node of the stack together when each
+    /// service on more than one node starts first, and one at a time
+    /// otherwise.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(range(min = 1))]
     pub parallelism: Option<u32>,

@@ -201,6 +201,7 @@
             }
             Ok(crate::app::StackOutcome::Done {
                 started: Vec::new(),
+                unchanged: false,
                 addresses: vec![std::net::Ipv4Addr::new(10, 64, 0, 2)],
             })
         }
@@ -1426,6 +1427,7 @@
         registries: Default::default(),
             node: None,
             rollout: Default::default(),
+            stack_after: Default::default(),
             config_files: Vec::new(),
             runtime_changes: Vec::new(),
             unknown_config_keys: Vec::new(),

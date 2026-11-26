@@ -35,6 +35,8 @@ pub enum StackOutcome {
     Done {
         /// For `Start`: the services that now run two containers.
         started: Vec<String>,
+        /// The stack already ran what the plan starts, and was left alone.
+        unchanged: bool,
         /// The addresses of this node's containers of the stack that the
         /// other nodes are to resolve before the rollout goes on.
         addresses: Vec<Ipv4Addr>,
@@ -104,25 +106,47 @@ impl DeploymentService {
                 ),
             }
         })?;
+        let mut environment = self
+            .prepare_rollout_environment(selection, &running.plan, running.operation_id)
+            .await?;
+        let rolled = self
+            .roll_with(&running, environment.bundle(), stack, step)
+            .await;
+        environment.dispose()?;
+        rolled
+    }
+
+    /// One step of one stack of `running`, with the rollout's environment.
+    pub(super) async fn roll_with(
+        &self,
+        running: &RunningRollout,
+        bundle: Option<&crate::domain::environment::PreparedEnvironmentBundle>,
+        stack: &str,
+        step: StackStep,
+    ) -> Result<StackOutcome, MmError> {
         let plan = &running.plan;
         let stack_plan = plan
             .stacks
             .iter()
             .find(|rendered| rendered.stack == stack)
             .ok_or_else(|| MmError::State {
-                message: format!("plan {plan_hash} has no stack '{stack}' on this host"),
+                message: format!(
+                    "plan {} has no stack '{stack}' on this host",
+                    plan.plan_hash
+                ),
             })?;
-        let mut environment = self
-            .prepare_environment(selection, plan, running.operation_id)
-            .await?;
-        let bundle = environment.bundle();
         // What the node answered with before a start: the new containers
         // are the addresses that come after.
         let before = match step {
             StackStep::Start => self.own_addresses(plan),
             StackStep::Apply | StackStep::Ahead => std::collections::BTreeSet::new(),
         };
+        let unchanged = step == StackStep::Apply
+            && self
+                .unchanged_here(plan, &running.target, stack_plan, bundle)
+                .await;
         let rolled = match step {
+            _ if unchanged => Ok(Ok(Vec::new())),
             StackStep::Start => {
                 self.start_beside_old(plan, &running.target, stack_plan, bundle)
                     .await
@@ -139,7 +163,6 @@ impl DeploymentService {
                     .await
             }
         };
-        environment.dispose()?;
         let started = match rolled? {
             Ok(started) => started,
             Err(failure) => return Ok(StackOutcome::Failed(failure)),
@@ -153,7 +176,11 @@ impl DeploymentService {
         };
         Ok(
             match self.resolved_here(plan, stack, wanted, &before).await {
-                Ok(addresses) => StackOutcome::Done { started, addresses },
+                Ok(addresses) => StackOutcome::Done {
+                    unchanged: unchanged || (step == StackStep::Start && started.is_empty()),
+                    started,
+                    addresses,
+                },
                 Err(failure) => StackOutcome::Failed(failure),
             },
         )
@@ -177,6 +204,7 @@ impl DeploymentService {
         let settled = self.settle(&running.plan, &running.target).await;
         match settled {
             Ok(result) => {
+                self.forget_environment(running.operation_id);
                 let closed = self.close_operation(
                     selection,
                     &running.plan,
@@ -321,7 +349,7 @@ impl DeploymentService {
             }
         };
         match self
-            .prepare_environment(selection, plan, operation_id)
+            .prepare_rollout_environment(selection, plan, operation_id)
             .await
         {
             Ok(mut environment) => {
@@ -343,6 +371,7 @@ impl DeploymentService {
             }
             Err(error) => failures.push(error.to_string()),
         }
+        self.forget_environment(operation_id);
         if let Err(journal) =
             self.finish_operation(operation_id, OperationState::Failed, Some(code))
         {
@@ -426,6 +455,7 @@ impl DeploymentService {
         if expected.is_empty() {
             return Ok(Vec::new());
         }
+        let _phase = crate::app::timing::phase_of("stack.resolve", &stack);
         let waited = tokio::time::Instant::now();
         loop {
             let report = names.report(&key(""));

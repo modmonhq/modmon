@@ -1,0 +1,116 @@
+schema-version: 1
+project:
+  id: 7d1f3c52-9a4e-4f0b-8c61-2e5d9b0a6f13
+  name: cluster-heavy
+default-environment: production
+target: cluster
+
+networks:
+  backend: {}
+
+stacks:
+  cache:
+    files: [cache.yaml]
+  data:
+    files: [data.yaml]
+  queue:
+    files: [queue.yaml]
+  api:
+    files: [api.yaml]
+    after: [cache, data, queue]
+  auth:
+    files: [auth.yaml]
+    after: [cache, data, queue]
+  files:
+    files: [files.yaml]
+    after: [cache, data, queue]
+  search:
+    files: [search.yaml]
+    after: [cache, data, queue]
+  admin:
+    files: [admin.yaml]
+    after: [api, auth, files, search]
+  web:
+    files: [web.yaml]
+    after: [api, auth, files, search]
+  worker:
+    files: [worker.yaml]
+    after: [api, auth, files, search]
+
+modules:
+  heavy:
+    path: .
+    services:
+      cache-1: {stack: cache, role: worker, placement: all, networks: [backend]}
+      cache-2: {stack: cache, role: worker, placement: all, networks: [backend]}
+      cache-3: {stack: cache, role: worker, placement: all, networks: [backend]}
+      cache-4: {stack: cache, role: worker, networks: [backend]}
+      cache-5: {stack: cache, role: worker, networks: [backend]}
+      cache-6: {stack: cache, role: worker, networks: [backend]}
+      data-1: {stack: data, role: worker, placement: all, networks: [backend]}
+      data-2: {stack: data, role: worker, placement: all, networks: [backend]}
+      data-3: {stack: data, role: worker, placement: all, networks: [backend]}
+      data-4: {stack: data, role: worker, networks: [backend]}
+      data-5: {stack: data, role: worker, networks: [backend]}
+      data-6: {stack: data, role: worker, networks: [backend]}
+      queue-1: {stack: queue, role: worker, placement: all, networks: [backend]}
+      queue-2: {stack: queue, role: worker, placement: all, networks: [backend]}
+      queue-3: {stack: queue, role: worker, placement: all, networks: [backend]}
+      queue-4: {stack: queue, role: worker, networks: [backend]}
+      queue-5: {stack: queue, role: worker, networks: [backend]}
+      queue-6: {stack: queue, role: worker, networks: [backend]}
+      api-1: {stack: api, role: worker, placement: all, networks: [backend]}
+      api-2: {stack: api, role: worker, placement: all, networks: [backend]}
+      api-3: {stack: api, role: worker, placement: all, networks: [backend]}
+      api-4: {stack: api, role: worker, networks: [backend]}
+      api-5: {stack: api, role: worker, networks: [backend]}
+      api-6: {stack: api, role: worker, networks: [backend]}
+      auth-1: {stack: auth, role: worker, placement: all, networks: [backend]}
+      auth-2: {stack: auth, role: worker, placement: all, networks: [backend]}
+      auth-3: {stack: auth, role: worker, placement: all, networks: [backend]}
+      auth-4: {stack: auth, role: worker, networks: [backend]}
+      auth-5: {stack: auth, role: worker, networks: [backend]}
+      auth-6: {stack: auth, role: worker, networks: [backend]}
+      files-1: {stack: files, role: worker, placement: all, networks: [backend]}
+      files-2: {stack: files, role: worker, placement: all, networks: [backend]}
+      files-3: {stack: files, role: worker, placement: all, networks: [backend]}
+      files-4: {stack: files, role: worker, networks: [backend]}
+      files-5: {stack: files, role: worker, networks: [backend]}
+      files-6: {stack: files, role: worker, networks: [backend]}
+      search-1: {stack: search, role: worker, placement: all, networks: [backend]}
+      search-2: {stack: search, role: worker, placement: all, networks: [backend]}
+      search-3: {stack: search, role: worker, placement: all, networks: [backend]}
+      search-4: {stack: search, role: worker, networks: [backend]}
+      search-5: {stack: search, role: worker, networks: [backend]}
+      search-6: {stack: search, role: worker, networks: [backend]}
+      admin-1: {stack: admin, role: worker, placement: all, networks: [backend]}
+      admin-2: {stack: admin, role: worker, placement: all, networks: [backend]}
+      admin-3: {stack: admin, role: worker, placement: all, networks: [backend]}
+      admin-4: {stack: admin, role: worker, networks: [backend]}
+      admin-5: {stack: admin, role: worker, networks: [backend]}
+      admin-6: {stack: admin, role: worker, networks: [backend]}
+      web-1: {stack: web, role: worker, placement: all, networks: [backend]}
+      web-2: {stack: web, role: worker, placement: all, networks: [backend]}
+      web-3: {stack: web, role: worker, placement: all, networks: [backend]}
+      web-4: {stack: web, role: worker, networks: [backend]}
+      web-5: {stack: web, role: worker, networks: [backend]}
+      web-6: {stack: web, role: worker, networks: [backend]}
+      worker-1: {stack: worker, role: worker, placement: all, networks: [backend]}
+      worker-2: {stack: worker, role: worker, placement: all, networks: [backend]}
+      worker-3: {stack: worker, role: worker, placement: all, networks: [backend]}
+      worker-4: {stack: worker, role: worker, networks: [backend]}
+      worker-5: {stack: worker, role: worker, networks: [backend]}
+      worker-6: {stack: worker, role: worker, networks: [backend]}
+
+jobs:
+  migrate:
+    module: heavy
+    service: api-4
+    run: before-deploy
+    command: [sh, -c, 'echo migrated']
+    timeout: 2m
+
+environments:
+  production:
+    target: cluster
+    deploy-from: [main]

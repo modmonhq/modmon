@@ -441,7 +441,9 @@ impl RemoteDaemon {
                 .ok_or_else(|| "the cluster plan carries no rollout order".to_owned())
                 .and_then(|rollout| {
                     let jobs = remote.plan.as_ref().map_or(&[][..], |plan| plan.rollout.jobs.as_slice());
-                    rollout.check_node(node, &stacks, jobs)
+                    rollout.check_node(node, &stacks, jobs)?;
+                    let after = remote.plan.as_ref().map(|plan| plan.stack_after.clone()).unwrap_or_default();
+                    crate::domain::rollout::check_waves(&rollout.waves, &rollout.stages, &after)
                 })
                 .map_err(|message| MmError::Security {
                     message: format!("{message}; produce a new plan"),
@@ -521,6 +523,7 @@ impl RemoteDaemon {
             engine: self.use_cases.engine(runtime).await,
             daemon: Some(self.daemon_health()?),
             secret_store: self.use_cases.secret_store(scope).await,
+            rollout_steps: crate::domain::rollout::NEWER_ROLLOUT_STEPS.map(str::to_owned).to_vec(),
         };
         send_result(writer, context, RemoteResult::Node(Box::new(facts))).await
     }

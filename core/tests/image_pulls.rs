@@ -128,8 +128,11 @@ impl ProcessRunner for Engine {
                 Ok(output(0, CONFIG, ""))
             }
             Some("image") => {
-                let image = arguments.last().map(String::as_str).unwrap_or_default();
-                Ok(output(i32::from(!self.present.contains(image)), "", ""))
+                let lacks = arguments
+                    .iter()
+                    .skip(4)
+                    .any(|image| !self.present.contains(image.as_str()));
+                Ok(output(i32::from(lacks), "", ""))
             }
             Some("pull") => match self.pull {
                 Pull::Arrives => Ok(output(0, "", "")),
@@ -364,5 +367,55 @@ async fn looking_for_images_counts_against_the_pull_limit() -> TestResult {
         assert!(message.contains(part), "missing {part:?} in: {message}");
     }
     assert!(engine.records().is_empty());
+    Ok(())
+}
+
+fn looks(engine: &Engine) -> Vec<Vec<String>> {
+    engine
+        .records()
+        .into_iter()
+        .filter(|record| record.arguments.first().map(String::as_str) == Some("image"))
+        .map(|record| record.arguments.into_iter().skip(4).collect())
+        .collect()
+}
+
+#[tokio::test]
+async fn one_look_finds_every_image_and_only_a_miss_is_looked_up_image_by_image() -> TestResult {
+    let images = [
+        "registry.example.com/shop/web:2",
+        "registry.example.com/shop/api:1.4",
+        "library-mirror/proxy:3",
+        "registry.example.com/shop/search:5",
+    ];
+    let services = ["web", "api", "proxy", "search"].map(str::to_owned);
+    let engine = Engine::new(&images, Pull::Arrives);
+    DockerComposeRuntime::new(engine.clone())
+        .pull_images(
+            &target(Vec::new()),
+            Some(&services),
+            Duration::from_secs(60),
+        )
+        .await?;
+    assert_eq!(looks(&engine), [images.map(str::to_owned).to_vec()]);
+    assert!(engine.pulled().is_empty());
+
+    let engine = Engine::new(&images[..2], Pull::Arrives);
+    DockerComposeRuntime::new(engine.clone())
+        .pull_images(
+            &target(Vec::new()),
+            Some(&services),
+            Duration::from_secs(60),
+        )
+        .await?;
+    let mut expected = vec![images.map(str::to_owned).to_vec()];
+    expected.extend(images.iter().map(|image| vec![(*image).to_owned()]));
+    assert_eq!(looks(&engine), expected);
+    assert_eq!(
+        engine.pulled(),
+        [
+            "docker.io/library-mirror/proxy:3",
+            "registry.example.com/shop/search:5"
+        ]
+    );
     Ok(())
 }

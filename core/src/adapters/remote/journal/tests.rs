@@ -227,6 +227,7 @@ fn remote_plan(
         registries: Default::default(),
         node: None,
         rollout: Default::default(),
+        stack_after: Default::default(),
         config_files: Vec::new(),
         runtime_changes: Vec::new(),
         unknown_config_keys: Vec::new(),

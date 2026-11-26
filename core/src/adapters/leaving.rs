@@ -43,9 +43,12 @@ pub struct LeaveKeeper {
     /// The engine setup installed on the node.
     engine: RuntimeKind,
     changed: Notify,
-    /// Held while one leave moves on, and while leaves are taken back: a
-    /// leave is never taken back half way through its stop.
+    /// Held while one leave's file changes, and while leaves are taken
+    /// back.
     turn: tokio::sync::Mutex<()>,
+    /// The ids of the leaves whose stop has begun: a leave is never taken
+    /// back half way through its stop.
+    stopping: std::sync::Mutex<std::collections::BTreeSet<String>>,
 }
 
 impl std::fmt::Debug for LeaveKeeper {
@@ -72,6 +75,7 @@ impl LeaveKeeper {
             engine,
             changed: Notify::new(),
             turn: tokio::sync::Mutex::new(()),
+            stopping: std::sync::Mutex::default(),
         })
     }
 
@@ -87,18 +91,28 @@ impl LeaveKeeper {
         Ok(records.len())
     }
 
-    /// Moves every leave on until the process ends.
+    /// Moves every leave on until the process ends. Leaves stop side by
+    /// side.
     pub async fn run(self: Arc<Self>) {
         loop {
             match self.records() {
                 Ok(records) => {
                     for record in records {
-                        let _turn = self.turn.lock().await;
+                        if self.is_stopping(&record.id) {
+                            continue;
+                        }
+                        let turn = self.turn.lock().await;
                         // Taken back meanwhile.
                         if !self.directory.join(record.file_name()).exists() {
                             continue;
                         }
-                        if let Err(error) = self.advance(record).await {
+                        if record.stage(now_unix_ms()) == LeaveStage::Stopping {
+                            self.mark_stopping(&record.id, true);
+                            drop(turn);
+                            tokio::spawn(Arc::clone(&self).finish(record));
+                            continue;
+                        }
+                        if let Err(error) = self.advance(record) {
                             tracing::warn!(%error, "a leaving container could not go on");
                         }
                     }
@@ -113,8 +127,8 @@ impl LeaveKeeper {
         }
     }
 
-    /// One look at one leave.
-    async fn advance(&self, mut record: LeaveRecord) -> Result<(), MmError> {
+    /// One look at one leave that is not stopping yet.
+    fn advance(&self, mut record: LeaveRecord) -> Result<(), MmError> {
         self.names.mark_leaving(std::slice::from_ref(&record.id));
         let now = now_unix_ms();
         match record.stage(now) {
@@ -123,13 +137,40 @@ impl LeaveKeeper {
                 record.confirmed_unix_ms = Some(now);
                 self.save(&record)
             }
-            LeaveStage::Marked | LeaveStage::Draining { .. } => Ok(()),
-            LeaveStage::Stopping => {
-                self.stop(&record).await?;
-                remove(&self.directory.join(record.file_name()))?;
+            LeaveStage::Marked | LeaveStage::Draining { .. } | LeaveStage::Stopping => Ok(()),
+        }
+    }
+
+    /// Stops and removes (or restarts) a drained container, and ends its
+    /// leave. One that cannot stop is tried again at the next look.
+    async fn finish(self: Arc<Self>, record: LeaveRecord) {
+        self.names.mark_leaving(std::slice::from_ref(&record.id));
+        let finished = match self.stop(&record).await {
+            Ok(()) => remove(&self.directory.join(record.file_name())).map(drop),
+            Err(error) => Err(error),
+        };
+        match finished {
+            Ok(()) => {
                 self.names.unmark_leaving(std::slice::from_ref(&record.id));
                 tracing::info!(container = %record.name, restarted = record.restart, "the leaving container stopped and was removed or restarted");
-                Ok(())
+            }
+            Err(error) => tracing::warn!(%error, "a leaving container could not go on"),
+        }
+        self.mark_stopping(&record.id, false);
+    }
+
+    fn is_stopping(&self, id: &str) -> bool {
+        self.stopping
+            .lock()
+            .is_ok_and(|stopping| stopping.contains(id))
+    }
+
+    fn mark_stopping(&self, id: &str, stopping: bool) {
+        if let Ok(mut ids) = self.stopping.lock() {
+            if stopping {
+                ids.insert(id.to_owned());
+            } else {
+                ids.remove(id);
             }
         }
     }
@@ -214,6 +255,20 @@ impl LeaveKeeper {
         }
         self.changed.notify_one();
         Ok(ids)
+    }
+
+    /// Waits until every node confirmed each of `ids`, or it is gone.
+    async fn confirmed(&self, ids: &[String]) {
+        let pending = |id: &String| {
+            read_whole(&self.directory.join(format!("{id}.json")))
+                .ok()
+                .flatten()
+                .and_then(|bytes| serde_json::from_slice::<LeaveRecord>(&bytes).ok())
+                .is_some_and(|record| record.confirmed_unix_ms.is_none())
+        };
+        while ids.iter().any(pending) {
+            tokio::time::sleep(LOOK / 2).await;
+        }
     }
 
     /// Waits until none of `ids` is leaving any more.
@@ -367,8 +422,7 @@ impl LeaveKeeper {
     /// See `ContainerLeaving::recall`.
     async fn take_back(&self, project: &str) -> Result<Vec<String>, MmError> {
         let _turn = self.turn.lock().await;
-        let records = self.records()?;
-        if records.is_empty() {
+        if self.records()?.is_empty() {
             return Ok(Vec::new());
         }
         let label = format!("label=com.docker.compose.project={project}");
@@ -395,6 +449,10 @@ impl LeaveKeeper {
             .map(str::trim)
             .filter(|line| !line.is_empty())
             .collect::<Vec<_>>();
+        while ids.iter().any(|id| self.is_stopping(id)) {
+            tokio::time::sleep(LOOK / 4).await;
+        }
+        let records = self.records()?;
         let mut recalled = Vec::new();
         for record in records
             .into_iter()
@@ -421,9 +479,24 @@ impl ContainerLeaving for LeaveKeeper {
         Ok(())
     }
 
+    async fn leave_confirmed(&self, containers: &[String], drain: Duration) -> Result<(), MmError> {
+        let ids = self.begin(containers, drain).await?;
+        self.confirmed(&ids).await;
+        Ok(())
+    }
+
     async fn restart(&self, containers: &[String], drain: Option<Duration>) -> Result<(), MmError> {
         let ids = self.begin_as(containers, drain, true).await?;
         self.gone(&ids).await;
         Ok(())
+    }
+
+    fn leaving_now(&self) -> Result<Vec<String>, MmError> {
+        Ok(self
+            .records()?
+            .into_iter()
+            .filter(|record| !record.restart)
+            .map(|record| record.id)
+            .collect())
     }
 }

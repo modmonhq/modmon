@@ -48,6 +48,10 @@ struct Script {
     busy: bool,
     /// The node cannot reach the storage node.
     cut_off_from_storage: bool,
+    /// The node cannot pull an image.
+    cannot_pull: bool,
+    /// The node's finish fails, and it undoes its own part.
+    cannot_finish: bool,
     cannot_roll_back: bool,
     /// The address the node's new container gets.
     address: Option<Ipv4Addr>,
@@ -109,6 +113,7 @@ impl RemoteTransport for Node {
             RolloutStep::Start { stack } | RolloutStep::Apply { stack } => format!(":{stack}"),
             RolloutStep::Job { stack, job } => format!(":{stack}/{job}"),
             RolloutStep::Ahead { stack } => format!(":{stack}"),
+            RolloutStep::Stacks { stacks } => format!(":{}", stacks.join("+")),
             _ => String::new(),
         };
         locked(&self.steps).push(format!("{}:{}{stack}", self.name, step.name()));
@@ -145,6 +150,28 @@ impl RemoteTransport for Node {
                     Vec::new()
                 },
             }),
+            RolloutStep::Pull if script.cannot_pull => Err(MmError::Remote {
+                code: "MM_RUNTIME_LAUNCH",
+                message: "could not pull image web:2: unauthorized".to_owned(),
+            }),
+            RolloutStep::Pull => Ok(RolloutAnswer::Pulled),
+            RolloutStep::Stacks { stacks } => Ok(RolloutAnswer::StacksRolled(
+                stacks
+                    .into_iter()
+                    .map(|stack| {
+                        let failure = script.sick.clone().filter(|sick| sick.stack == stack);
+                        mm::domain::rollout::StackRolled {
+                            addresses: if failure.is_some() {
+                                Vec::new()
+                            } else {
+                                addresses.clone()
+                            },
+                            failure,
+                            stack,
+                        }
+                    })
+                    .collect(),
+            )),
             RolloutStep::Release => Ok(RolloutAnswer::Released),
             RolloutStep::Begin if script.store_down.is_some() => Err(MmError::Remote {
                 code: "MM_SECRET_STORE_UNAVAILABLE",
@@ -181,6 +208,11 @@ impl RemoteTransport for Node {
             }
             RolloutStep::Job { job, .. } => Ok(RolloutAnswer::JobRan(Box::new(ran(&job)))),
             RolloutStep::Ahead { .. } => Ok(RolloutAnswer::Applied { addresses }),
+            RolloutStep::Finish if script.cannot_finish => Err(MmError::Remote {
+                code: "MM_INGRESS",
+                message: "the routes could not be published; rolled back to what it ran before"
+                    .to_owned(),
+            }),
             RolloutStep::Finish => Ok(RolloutAnswer::Finished(None::<Box<DeploymentResult>>)),
             RolloutStep::Rollback if script.cannot_roll_back => Err(MmError::RuntimeResponse {
                 message: "the engine does not answer".to_owned(),
@@ -494,6 +526,25 @@ impl Cluster {
         stages: Vec<RolloutStage>,
         storage: Option<mm::domain::shared_storage::SealedStorage>,
     ) -> Result<String, String> {
+        self.sealed(stages, storage, false)
+    }
+
+    fn sealed(
+        &self,
+        stages: Vec<RolloutStage>,
+        storage: Option<mm::domain::shared_storage::SealedStorage>,
+        pull_first: bool,
+    ) -> Result<String, String> {
+        self.sealed_in_waves(stages, storage, pull_first, Vec::new())
+    }
+
+    fn sealed_in_waves(
+        &self,
+        stages: Vec<RolloutStage>,
+        storage: Option<mm::domain::shared_storage::SealedStorage>,
+        pull_first: bool,
+        waves: Vec<Vec<usize>>,
+    ) -> Result<String, String> {
         let seal = ClusterPlanSeal::new(
             RemotePlanKind::Deployment,
             &scope(None),
@@ -515,6 +566,9 @@ impl Cluster {
                     stages,
                     ran_once: Default::default(),
                     once: Vec::new(),
+                    pull_first,
+                    waves,
+                    older_nodes: Vec::new(),
                 }),
                 storage,
                 ingress: None,
@@ -1618,5 +1672,200 @@ async fn a_node_where_a_start_first_service_does_not_change_says_nothing_of_it()
         "{said:?}"
     );
     assert!(said.iter().any(|line| line == "app-2: app"), "{said:?}");
+    Ok(())
+}
+
+#[tokio::test]
+async fn every_node_pulls_its_images_before_any_node_is_replaced() -> TestResult {
+    let cluster = cluster()?;
+    let hash = cluster.sealed(
+        vec![
+            stage("app", &[&["app-1"], &["app-2"]]),
+            stage("db", &[&["db-1"]]),
+        ],
+        None,
+        true,
+    )?;
+    let report = cluster.environment.apply_deployment(&hash, &|_| {}).await?;
+    assert!(report.succeeded());
+    let steps = cluster.steps();
+    let first_begin = steps
+        .iter()
+        .position(|step| step.ends_with(":begin"))
+        .ok_or("no node began")?;
+    for node in NODES {
+        let pulled = steps
+            .iter()
+            .position(|step| *step == format!("{node}:pull"))
+            .ok_or_else(|| format!("{node} pulled nothing: {steps:?}"))?;
+        assert!(pulled < first_begin, "{steps:?}");
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_node_that_cannot_pull_stops_the_rollout_before_anything_changed() -> TestResult {
+    let cluster = cluster()?;
+    locked(&cluster.nodes[2].script).cannot_pull = true;
+    let hash = cluster.sealed(vec![stage("app", &[&["app-1"], &["app-2"]])], None, true)?;
+    let Err(error) = cluster.environment.apply_deployment(&hash, &|_| {}).await else {
+        return Err("a node that cannot pull refuses the rollout".into());
+    };
+    let text = error.to_string();
+    assert!(
+        text.contains("db-1") && text.contains("unauthorized"),
+        "{text}"
+    );
+    let steps = cluster.steps();
+    assert!(
+        !steps.iter().any(|step| step.ends_with(":begin")),
+        "{steps:?}"
+    );
+    for node in NODES {
+        assert!(steps.contains(&format!("{node}:release")), "{steps:?}");
+    }
+    Ok(())
+}
+
+#[test]
+fn the_newer_steps_are_planned_only_when_every_node_says_it_knows_them() {
+    use mm::domain::rollout::{NEWER_ROLLOUT_STEPS, NodeSteps, knows_newer_steps};
+
+    let knows = NEWER_ROLLOUT_STEPS.map(str::to_owned).to_vec();
+    assert!(knows_newer_steps(&knows));
+    assert!(!knows_newer_steps(&[]), "a released 0.1.2 mmd lists none");
+    assert!(!knows_newer_steps(&["pull".to_owned()]));
+
+    let node = |name: &str, version: &str, steps: &[String]| NodeSteps {
+        node: name.to_owned(),
+        daemon_version: version.to_owned(),
+        steps: steps.to_vec(),
+    };
+    let rollout = ClusterRollout {
+        stages: vec![stage("app", &[&["app-1"]])],
+        ..ClusterRollout::default()
+    };
+    let new = rollout.clone().for_daemons(
+        &[
+            node("app-1", "0.1.3", &knows),
+            node("db-1", "0.1.3", &knows),
+        ],
+        &Default::default(),
+    );
+    assert!(new.pull_first);
+    assert!(new.older_nodes.is_empty());
+    let released = rollout.for_daemons(
+        &[node("app-1", "0.1.3", &knows), node("db-1", "0.1.2", &[])],
+        &Default::default(),
+    );
+    assert!(
+        !released.pull_first,
+        "a node on released 0.1.2 gets the old steps"
+    );
+    assert!(released.waves.is_empty());
+    assert_eq!(
+        released.older_nodes,
+        [("db-1".to_owned(), "0.1.2".to_owned())]
+    );
+}
+
+#[tokio::test]
+async fn the_stacks_of_a_shared_wave_roll_out_side_by_side_on_every_node() -> TestResult {
+    let cluster = cluster()?;
+    let hash = cluster.sealed_in_waves(
+        vec![
+            stage("app", &[&["app-1", "app-2"]]),
+            stage("cache", &[&["app-2", "db-1"]]),
+        ],
+        None,
+        false,
+        vec![vec![0, 1]],
+    )?;
+    let said = Mutex::new(Vec::new());
+    let report = cluster
+        .environment
+        .apply_deployment(&hash, &|line| locked(&said).push(line.to_string()))
+        .await?;
+    assert!(report.succeeded());
+    assert_eq!(
+        cluster.steps_of("app-1"),
+        ["hold", "begin", "stacks:app", "finish"]
+    );
+    assert_eq!(
+        cluster.steps_of("app-2"),
+        ["hold", "begin", "stacks:app+cache", "finish"]
+    );
+    assert_eq!(
+        cluster.steps_of("db-1"),
+        ["hold", "begin", "stacks:cache", "finish"]
+    );
+    let said = locked(&said);
+    for line in [
+        "app-2: app",
+        "app-2: cache",
+        "app-2: app: healthy",
+        "app-2: cache: healthy",
+    ] {
+        assert!(said.iter().any(|said| said == line), "{line}: {said:?}");
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_stack_that_fails_in_a_shared_wave_rolls_back_every_node_the_wave_began() -> TestResult {
+    let cluster = cluster()?;
+    locked(&cluster.nodes[2].script).sick = Some(sick("cache", "redis"));
+    let hash = cluster.sealed_in_waves(
+        vec![
+            stage("app", &[&["app-1", "app-2"]]),
+            stage("cache", &[&["db-1"]]),
+        ],
+        None,
+        false,
+        vec![vec![0, 1]],
+    )?;
+    let report = cluster.environment.apply_deployment(&hash, &|_| {}).await?;
+    assert_eq!(
+        states(&report),
+        [
+            ("app-1", NodeApplyState::RolledBack),
+            ("app-2", NodeApplyState::RolledBack),
+            ("db-1", NodeApplyState::Failed),
+        ]
+    );
+    assert!(
+        report.nodes[2]
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("redis")),
+        "{:?}",
+        report.nodes[2].error
+    );
+    for node in NODES {
+        assert!(
+            cluster.steps_of(node).contains(&"rollback".to_owned()),
+            "{node}"
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn every_node_finishes_at_once_and_a_failed_finish_leaves_the_others_applied() -> TestResult {
+    let cluster = cluster()?;
+    locked(&cluster.nodes[1].script).cannot_finish = true;
+    let hash = cluster.reviewed(vec![stage("app", &[&["app-1", "app-2"]])])?;
+    let report = cluster.environment.apply_deployment(&hash, &|_| {}).await?;
+    assert_eq!(
+        states(&report),
+        [
+            ("app-1", NodeApplyState::Applied),
+            ("app-2", NodeApplyState::Failed),
+            ("db-1", NodeApplyState::Applied),
+        ]
+    );
+    assert!(report.nodes[1].rolled_back, "the node undid its own part");
+    assert_eq!(cluster.steps_of("db-1"), ["hold", "begin", "finish"]);
+    assert!(!cluster.steps_of("app-1").contains(&"rollback".to_owned()));
     Ok(())
 }

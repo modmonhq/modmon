@@ -332,6 +332,7 @@ pub(crate) async fn wait_for_project(
     let mut backoff = policy.initial_backoff;
     let mut polls = 0;
     let mut watch = ConvergenceWatch::new(only);
+    let mut rendered = None;
     loop {
         if cancellation.is_cancelled() {
             return Ok(ConvergenceOutcome {
@@ -343,7 +344,7 @@ pub(crate) async fn wait_for_project(
                 message: Some("runtime convergence was cancelled".to_owned()),
             });
         }
-        let observation = runtime.observe(target).await?;
+        let observation = observe(runtime, target, &mut rendered).await?;
         polls += 1;
         let assessment = watch.assess(&observation);
         if matches!(
@@ -387,6 +388,30 @@ pub(crate) async fn wait_for_project(
         .await;
         backoff = backoff.saturating_mul(2).min(policy.maximum_backoff);
     }
+}
+
+/// The project as it runs now. The first look renders the project; the
+/// ones after it list its containers by the services that rendering named,
+/// where the driver can.
+async fn observe(
+    runtime: &(impl RuntimeDriver + ?Sized),
+    target: &RuntimeTarget,
+    rendered: &mut Option<Vec<String>>,
+) -> Result<ObservedProject, MmError> {
+    if let Some(services) = rendered.as_deref()
+        && let Some(observed) = runtime.observe_unrendered(target, services).await
+    {
+        return observed;
+    }
+    let observed = runtime.observe(target).await?;
+    *rendered = Some(
+        observed
+            .services
+            .iter()
+            .map(|service| service.identity.service.clone())
+            .collect(),
+    );
+    Ok(observed)
 }
 
 #[cfg(test)]

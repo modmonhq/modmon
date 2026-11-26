@@ -769,7 +769,7 @@ impl Default for ConvergencePolicy {
         Self {
             timeout: Duration::from_secs(120),
             initial_backoff: Duration::from_millis(250),
-            maximum_backoff: Duration::from_secs(5),
+            maximum_backoff: Duration::from_secs(1),
         }
     }
 }

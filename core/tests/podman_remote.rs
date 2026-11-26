@@ -340,6 +340,7 @@ fn report(name: &str, engine: Option<EngineFacts>) -> NodeReport {
         engine,
         daemon: None,
         secret_store: None,
+        rollout_steps: Vec::new(),
     }
 }
 

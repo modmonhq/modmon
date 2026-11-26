@@ -138,10 +138,11 @@ impl DeploymentService {
         let runtime_target = stack_runtime_target(plan, target, stack, environments, false);
         self.pull_images(plan, &runtime_target, Some(&services))
             .await?;
+        let leaving = self.leaving_now()?;
         let started = self
             .ports
             .runtime
-            .start_beside(&runtime_target, &services)
+            .start_beside(&runtime_target, &services, &leaving)
             .await?;
         if started.is_empty() {
             return Ok(Ok(started));
@@ -194,22 +195,25 @@ impl DeploymentService {
             self.awaited_services(plan, stack).as_deref(),
         )
         .await?;
+        let leaving = crate::app::timing::phase_of("stack.leave", &stack.stack);
         let start_first = plan.rollout.start_first(&stack.stack);
-        if !start_first.is_empty() {
+        let draining = if start_first.is_empty() {
+            Vec::new()
+        } else {
             self.retire_replaced(plan, &runtime_target, &start_first)
-                .await?;
-        }
+                .await?
+        };
         self.retire_outdated(plan, &runtime_target, stack, &start_first)
             .await?;
+        drop(leaving);
+        let up = crate::app::timing::phase_of("stack.up", &stack.stack);
         // A cluster node removes what left it itself (`moves.rs`), so a
         // service that moved keeps running while it starts elsewhere. It
         // runs its share of each scaled service.
         if plan.node.is_some() {
             self.await_scaled_leaves(plan, &stack.stack).await;
             let counts = self.apply_counts(plan, &runtime_target).await?;
-            self.ports
-                .runtime
-                .apply_scaled(&runtime_target, &counts, true)
+            self.apply_beside_draining(&runtime_target, stack, &counts, &draining)
                 .await?;
             self.remove_departed_services(plan, target, Some(&stack.stack))
                 .await?;
@@ -218,6 +222,8 @@ impl DeploymentService {
         }
         self.remove_job_only_containers(plan, &runtime_target)
             .await?;
+        drop(up);
+        let _health = crate::app::timing::phase_of("stack.health", &stack.stack);
         match self.awaited_services(plan, stack) {
             // The node runs none of the stack's services now.
             Some(awaited) if awaited.is_empty() => Ok(None),
@@ -230,24 +236,26 @@ impl DeploymentService {
 
     /// The old containers of `services` that a new one runs beside: each
     /// service's leave together, with its own drain, on a cluster node;
-    /// removed at once on a single host.
+    /// removed at once on a single host. On a cluster node the step goes on
+    /// once every node confirmed the leaves, and returns the services
+    /// whose old containers still drain.
     async fn retire_replaced(
         &self,
         plan: &DeploymentPlan,
         runtime_target: &RuntimeTarget,
         services: &[String],
-    ) -> Result<(), MmError> {
+    ) -> Result<Vec<String>, MmError> {
         let Some(leaving) = self.planner.leaving() else {
             let replaced = self
                 .ports
                 .runtime
                 .replaced_containers(runtime_target, services)
                 .await?;
-            return self
-                .ports
+            self.ports
                 .runtime
                 .remove_containers(runtime_target, &replaced)
-                .await;
+                .await?;
+            return Ok(Vec::new());
         };
         let leaves = services.iter().map(|service| async move {
             let replaced = self
@@ -256,16 +264,47 @@ impl DeploymentService {
                 .replaced_containers(runtime_target, std::slice::from_ref(service))
                 .await?;
             if replaced.is_empty() {
-                return Ok(());
+                return Ok(None);
             }
             let drain = plan.rollout.drain(&runtime_target.stack_name, service);
-            leaving.leave(&replaced, drain).await
+            leaving.leave_confirmed(&replaced, drain).await?;
+            Ok(Some(service.clone()))
         });
         futures_util::future::join_all(leaves)
             .await
             .into_iter()
-            .collect::<Result<Vec<()>, MmError>>()
-            .map(drop)
+            .collect::<Result<Vec<Option<String>>, MmError>>()
+            .map(|draining| draining.into_iter().flatten().collect())
+    }
+
+    /// Applies the stack on a cluster node, leaving alone the services in
+    /// `draining`: Compose counts their old containers until they are gone
+    /// and would stop one at once.
+    async fn apply_beside_draining(
+        &self,
+        runtime_target: &RuntimeTarget,
+        stack: &DeploymentStackPlan,
+        counts: &BTreeMap<String, u32>,
+        draining: &[String],
+    ) -> Result<(), MmError> {
+        if draining.is_empty() {
+            return self
+                .ports
+                .runtime
+                .apply_scaled(runtime_target, counts, true)
+                .await;
+        }
+        let others = (stack.artifact.manifest.services.iter())
+            .map(|known| known.service.clone())
+            .filter(|service| !draining.contains(service))
+            .collect::<Vec<_>>();
+        if others.is_empty() {
+            return Ok(());
+        }
+        self.ports
+            .runtime
+            .apply_services(runtime_target, &others, counts)
+            .await
     }
 
     /// On a cluster node: a `stop-first` container the apply is about to

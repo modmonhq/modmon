@@ -125,6 +125,7 @@ impl RemoteDaemon {
                 self.holder(context, hash)?;
                 self.ready_storage(context, hash, timeout, pass).await?
             }
+            RolloutStep::Pull => self.pull_rollout(context, hash, timeout, passed()?).await?,
             RolloutStep::Begin => {
                 let authorization = plan_authorization.ok_or_else(|| MmError::State {
                     message: "the rollout's plan authorization was not checked".to_owned(),
@@ -139,6 +140,9 @@ impl RemoteDaemon {
             }
             RolloutStep::Ahead { stack } => {
                 self.roll_stack(context, hash, (stack, StackStep::Ahead), (timeout, passed()?)).await?
+            }
+            RolloutStep::Stacks { stacks } => {
+                self.roll_stacks(context, hash, stacks, (timeout, passed()?)).await?
             }
             RolloutStep::Job { stack, job } => {
                 self.roll_job(context, hash, (stack, job), (timeout, passed()?)).await?
@@ -158,7 +162,8 @@ impl RemoteDaemon {
                     RolloutStep::Start { stack } | RolloutStep::Apply { stack } | RolloutStep::Ahead { stack } | RolloutStep::Job { stack, .. } => Some(stack),
                     _ => None,
                 },
-                "healthy": !matches!(answer, RolloutAnswer::Failed(_)),
+                "healthy": !matches!(&answer, RolloutAnswer::Failed(_))
+                    && !matches!(&answer, RolloutAnswer::StacksRolled(rolled) if rolled.iter().any(|stack| stack.failure.is_some())),
                 "daemon_version": env!("CARGO_PKG_VERSION"),
             }))?;
         }
@@ -480,9 +485,11 @@ impl RemoteDaemon {
         })?;
         // The lock outlives the step, however long the client lets it run.
         let budget = i64::try_from(timeout.as_millis()).unwrap_or(i64::MAX);
+        let mut noted_before = false;
         self.note_rollout(context, hash, |rollout, now| {
             rollout.expires_at_unix_ms = now.saturating_add(budget).saturating_add(LOCK_LEASE_MS);
             if let Some(changes) = &mut rollout.changes {
+                noted_before = changes.whole(stack);
                 changes.note(stack, step == StackStep::Ahead);
             }
         })?;
@@ -499,10 +506,19 @@ impl RemoteDaemon {
             // Given up because access changed: a refusal, not a stack
             // that failed.
             Err(error @ MmError::Security { .. }) => return Err(self.lease_ends(context, hash, error)),
-            Ok(StackOutcome::Done { started, addresses }) => match step {
-                StackStep::Start => RolloutAnswer::Started { services: started, addresses },
-                StackStep::Apply | StackStep::Ahead => RolloutAnswer::Applied { addresses },
-            },
+            Ok(StackOutcome::Done { started, unchanged, addresses }) => {
+                if unchanged && !noted_before {
+                    self.note_rollout(context, hash, |rollout, _| {
+                        if let Some(changes) = &mut rollout.changes {
+                            changes.forget(stack);
+                        }
+                    })?;
+                }
+                match step {
+                    StackStep::Start => RolloutAnswer::Started { services: started, addresses },
+                    StackStep::Apply | StackStep::Ahead => RolloutAnswer::Applied { addresses },
+                }
+            }
             Ok(StackOutcome::Failed(failure)) => RolloutAnswer::Failed(failure),
             Err(error) => {
                 let error = host_failure(context, "stack", error);

@@ -120,9 +120,12 @@ fn a_policy_carries_the_window_and_only_the_update_settings_that_differ() -> Tes
             .collect::<Vec<_>>(),
         [
             ("api", UpdateOrder::StopFirst, 2, UpdateFailure::Pause),
-            ("web", UpdateOrder::StartFirst, 1, UpdateFailure::Rollback),
-        ]
+            ("web", UpdateOrder::StartFirst, 0, UpdateFailure::Rollback),
+            ("pg", UpdateOrder::StopFirst, 1, UpdateFailure::Rollback),
+        ],
+        "a parallelism the service sets is kept, even 1; 0 is none set"
     );
+    assert_eq!(policy.services.len(), 3);
     assert_eq!(policy.start_first("app"), ["web"]);
     assert!(policy.start_first("db").is_empty());
 
@@ -200,21 +203,25 @@ fn a_cluster_rolls_one_stack_at_a_time_over_the_nodes_that_run_it() -> TestResul
             node: "app-1",
             stacks: &app,
             policy: &policy,
+            services: &[],
         },
         NodeRolloutInput {
             node: "app-2",
             stacks: &app,
             policy: &policy,
+            services: &[],
         },
         NodeRolloutInput {
             node: "db-1",
             stacks: &both,
             policy: &policy,
+            services: &[],
         },
         NodeRolloutInput {
             node: "idle",
             stacks: &none,
             policy: &policy,
+            services: &[],
         },
     ]);
     assert_eq!(rollout.convergence_timeout_seconds, 120);
@@ -268,6 +275,7 @@ fn parallelism_batches_the_nodes_and_pause_is_per_service() -> TestResult {
                 node,
                 stacks: &app,
                 policy: &policy,
+                services: &[],
             })
             .collect::<Vec<_>>(),
     );
@@ -717,6 +725,7 @@ fn small_findings_name_the_place_and_the_next_step() -> TestResult {
         engine: None,
         daemon: None,
         secret_store: None,
+        rollout_steps: Vec::new(),
     };
     assert!(refused_handshake(
         "has no remote protocol in common with this mm. Update mm on this machine"
@@ -775,6 +784,7 @@ fn the_pull_limit_is_twenty_minutes_unless_an_environment_sets_it() -> TestResul
         node: "app-1",
         stacks: &app,
         policy: &default,
+        services: &[],
     }]);
     assert_eq!(alone.pull_timeout_seconds, None);
     assert_eq!(alone.pull_timeout().as_secs(), 20 * 60);
@@ -783,11 +793,13 @@ fn the_pull_limit_is_twenty_minutes_unless_an_environment_sets_it() -> TestResul
             node: "app-1",
             stacks: &app,
             policy: &default,
+            services: &[],
         },
         NodeRolloutInput {
             node: "app-2",
             stacks: &app,
             policy: &longer,
+            services: &[],
         },
     ]);
     assert_eq!(mixed.pull_timeout().as_secs(), 45 * 60);
@@ -807,5 +819,474 @@ fn the_pull_limit_is_twenty_minutes_unless_an_environment_sets_it() -> TestResul
         );
         assert!(error.contains(problem), "{window}: {error}");
     }
+    Ok(())
+}
+
+#[test]
+fn a_service_on_several_nodes_starts_first_unless_the_host_holds_it() -> TestResult {
+    use mm::domain::rollout::{HostTies, starts_first_by_default};
+
+    let ties = |yaml: &str| -> Result<HostTies, serde_yaml_ng::Error> {
+        Ok(HostTies::of(&serde_yaml_ng::from_str(yaml)?))
+    };
+    let free = [
+        "image: web:2",
+        "{image: web:2, volumes: ['config:/etc/web:ro', /cache]}",
+        "{image: web:2, volumes: [{type: bind, source: ./conf, target: /conf, read_only: true}, {type: tmpfs, target: /tmp}, {type: volume, target: /scratch}]}",
+        "{image: web:2, ports: []}",
+        "{image: web:2, scale: 1}",
+    ];
+    for yaml in free {
+        let ties = ties(yaml)?;
+        assert!(!ties.any(), "{yaml}: {ties:?}");
+        assert!(starts_first_by_default(2, &ties), "{yaml}");
+        assert!(!starts_first_by_default(1, &ties), "one node: {yaml}");
+        assert!(!starts_first_by_default(0, &ties), "no cluster: {yaml}");
+    }
+    let held = [
+        "{image: web:2, ports: ['8080:80']}",
+        "{image: web:2, ports: ['80']}",
+        "{image: web:2, container_name: web}",
+        "{image: web:2, network_mode: host}",
+        "{image: web:2, pid: host}",
+        "{image: db:17, volumes: ['data:/var/lib/postgresql/data']}",
+        "{image: db:17, volumes: [{type: volume, source: data, target: /data}]}",
+        "{image: web:2, devices: ['/dev/fuse']}",
+        "{image: web:2, deploy: {replicas: 2}}",
+    ];
+    for yaml in held {
+        assert!(!starts_first_by_default(3, &ties(yaml)?), "{yaml}");
+    }
+    Ok(())
+}
+
+#[test]
+fn a_stack_is_left_alone_only_when_every_container_is_what_the_files_start() {
+    use mm::domain::rollout::{RunningContainer, WantedService, stack_unchanged};
+
+    let wanted = |service: &str, count: u32| WantedService {
+        service: service.to_owned(),
+        config_hash: format!("hash-{service}"),
+        count,
+        image_id: Some(format!("sha256:{service}")),
+        always_pulled: false,
+    };
+    let running = |service: &str| RunningContainer {
+        service: service.to_owned(),
+        config_hash: Some(format!("hash-{service}")),
+        image_id: format!("sha256:{service}"),
+        running: true,
+        health: Some("healthy".to_owned()),
+        leaving: false,
+    };
+    let services = [wanted("web", 2), wanted("worker", 1), wanted("idle", 0)];
+    let same = vec![running("web"), running("web"), running("worker")];
+    assert!(stack_unchanged(&services, &same));
+
+    let without_check = vec![
+        running("web"),
+        running("web"),
+        RunningContainer {
+            health: None,
+            ..running("worker")
+        },
+    ];
+    assert!(
+        stack_unchanged(&services, &without_check),
+        "no health check"
+    );
+
+    let changed: Vec<(&str, Vec<RunningContainer>)> = vec![
+        (
+            "one container short",
+            vec![running("web"), running("worker")],
+        ),
+        (
+            "an extra container",
+            vec![
+                running("web"),
+                running("web"),
+                running("worker"),
+                running("worker"),
+            ],
+        ),
+        (
+            "a service the files no longer have",
+            [same.clone(), vec![running("gone")]].concat(),
+        ),
+        (
+            "another configuration",
+            vec![
+                running("web"),
+                RunningContainer {
+                    config_hash: Some("old".to_owned()),
+                    ..running("web")
+                },
+                running("worker"),
+            ],
+        ),
+        (
+            "a tag that names another image now",
+            vec![
+                running("web"),
+                running("web"),
+                RunningContainer {
+                    image_id: "sha256:old".to_owned(),
+                    ..running("worker")
+                },
+            ],
+        ),
+        (
+            "not healthy",
+            vec![
+                running("web"),
+                running("web"),
+                RunningContainer {
+                    health: Some("starting".to_owned()),
+                    ..running("worker")
+                },
+            ],
+        ),
+        (
+            "stopped",
+            vec![
+                running("web"),
+                running("web"),
+                RunningContainer {
+                    running: false,
+                    ..running("worker")
+                },
+            ],
+        ),
+    ];
+    for (why, containers) in changed {
+        assert!(!stack_unchanged(&services, &containers), "{why}");
+    }
+
+    let always = [
+        WantedService {
+            always_pulled: true,
+            ..wanted("web", 2)
+        },
+        wanted("worker", 1),
+    ];
+    assert!(!stack_unchanged(&always, &same), "pull_policy: always");
+    let missing_image = [
+        WantedService {
+            image_id: None,
+            ..wanted("web", 2)
+        },
+        wanted("worker", 1),
+    ];
+    assert!(
+        !stack_unchanged(&missing_image, &same),
+        "the tag is not on the node"
+    );
+    assert!(!stack_unchanged(&[], &[]), "nothing to compare");
+}
+
+#[test]
+fn a_container_that_drains_from_an_earlier_deploy_is_neither_old_nor_new() {
+    use mm::domain::rollout::{Beside, RunningContainer, WantedService, beside, stack_unchanged};
+
+    let container = |hash: &str, leaving: bool| RunningContainer {
+        service: "whoami".to_owned(),
+        config_hash: Some(hash.to_owned()),
+        image_id: format!("sha256:{hash}"),
+        running: true,
+        health: None,
+        leaving,
+    };
+    let wanted = |hash: &str| WantedService {
+        service: "whoami".to_owned(),
+        config_hash: hash.to_owned(),
+        count: 1,
+        image_id: Some(format!("sha256:{hash}")),
+        always_pulled: false,
+    };
+
+    let back_to_older = [container("v1.11", false), container("v1.10", true)];
+    assert_eq!(
+        beside("v1.10", &back_to_older),
+        Beside::Start { scale: 3 },
+        "the draining v1.10 is not the new container: a new one starts, and Compose counts the draining one"
+    );
+    assert!(!stack_unchanged(&[wanted("v1.10")], &back_to_older));
+
+    let same_again = [container("v1.11", false), container("v1.10", true)];
+    assert_eq!(beside("v1.11", &same_again), Beside::Nothing);
+    assert!(
+        stack_unchanged(&[wanted("v1.11")], &same_again),
+        "the stack runs what the files start once the old container is gone"
+    );
+
+    assert_eq!(
+        beside("v1.11", &[container("v1.10", false)]),
+        Beside::Start { scale: 2 }
+    );
+    assert_eq!(
+        beside(
+            "v1.11",
+            &[container("v1.11", false), container("v1.10", false)]
+        ),
+        Beside::Started,
+        "an interrupted start left the new container next to the old"
+    );
+    assert_eq!(
+        beside("v1.11", &[container("v1.10", true)]),
+        Beside::Nothing
+    );
+    assert_eq!(
+        beside(
+            "v1.11",
+            &[RunningContainer {
+                running: false,
+                ..container("v1.10", false)
+            }]
+        ),
+        Beside::Nothing
+    );
+}
+
+#[test]
+fn a_stack_a_step_left_alone_is_not_rolled_back() {
+    use mm::domain::rollout::RolloutChanges;
+
+    let mut changes = RolloutChanges::default();
+    changes.note("db", false);
+    changes.note("app", false);
+    changes.forget("app");
+    assert!(changes.whole("db"));
+    assert!(!changes.whole("app"));
+    assert_eq!(changes.begun(), ["db"]);
+}
+
+#[test]
+fn a_rendered_configuration_says_which_images_are_pulled_always() -> TestResult {
+    let images = mm::domain::rollout::service_images(
+        "services:\n  web:\n    image: web:2\n  cache:\n    image: redis:7\n    pull_policy: always\n  built:\n    build: .\n",
+    )?;
+    assert_eq!(images.get("web"), Some(&(Some("web:2".to_owned()), false)));
+    assert_eq!(
+        images.get("cache"),
+        Some(&(Some("redis:7".to_owned()), true))
+    );
+    assert_eq!(images.get("built"), Some(&(None, false)));
+    Ok(())
+}
+
+#[test]
+fn every_node_of_a_stack_rolls_together_when_its_shared_services_start_first() -> TestResult {
+    use mm::domain::placement::PlacedService;
+
+    let placed = |services: &[&str]| {
+        services
+            .iter()
+            .map(|service| PlacedService {
+                stack: "app".to_owned(),
+                service: (*service).to_owned(),
+            })
+            .collect::<Vec<_>>()
+    };
+    let (web_and_cache, web, worker) = (
+        placed(&["web", "cache"]),
+        placed(&["web"]),
+        placed(&["worker"]),
+    );
+    let app = names(&["app"]);
+    let stage = |services: &str,
+                 lists: [&[PlacedService]; 3]|
+     -> Result<String, Box<dyn std::error::Error>> {
+        let config = config("  app: {files: [a.yaml]}", "{}", services)?;
+        let policy = RolloutPolicy::from_config(&config, "production")?;
+        let rollout = ClusterRollout::of(
+            &["n1", "n2", "n3"]
+                .iter()
+                .zip(lists)
+                .map(|(node, services)| NodeRolloutInput {
+                    node,
+                    stacks: &app,
+                    policy: &policy,
+                    services,
+                })
+                .collect::<Vec<_>>(),
+        );
+        Ok(rollout.stages[0].describe())
+    };
+    let lists = [&web_and_cache[..], &web[..], &worker[..]];
+    assert_eq!(
+        stage(
+            "      web: {stack: app, update: {order: start-first}}",
+            lists
+        )?,
+        "app on n1 and n2 and n3",
+        "web runs on two nodes and starts first; cache and worker run on one each"
+    );
+    assert_eq!(
+        stage("      web: {stack: app}", lists)?,
+        "app on n1, then n2, then n3",
+        "a stop-first service on two nodes keeps them one at a time"
+    );
+    assert_eq!(
+        stage(
+            "      web: {stack: app, update: {order: start-first, parallelism: 1}}",
+            lists
+        )?,
+        "app on n1, then n2, then n3",
+        "a parallelism the stack sets wins"
+    );
+    assert_eq!(
+        stage(
+            "      web: {stack: app, update: {order: start-first}}",
+            [&web[..], &web[..], &[][..]]
+        )?,
+        "app on n1, then n2, then n3",
+        "a node that does not say what it runs keeps them one at a time"
+    );
+    Ok(())
+}
+
+#[test]
+fn stages_go_in_waves_by_the_layers_of_after_and_alone_when_they_cannot_share() {
+    use mm::domain::rollout::{RolloutStage, StageJob, check_waves, waves_of};
+    use std::collections::{BTreeMap, BTreeSet};
+
+    let stage = |stack: &str, batches: &[&[&str]]| RolloutStage {
+        stack: stack.to_owned(),
+        batches: batches
+            .iter()
+            .map(|batch| batch.iter().map(|node| (*node).to_owned()).collect())
+            .collect(),
+        start_first: Vec::new(),
+        pause_on_failure: Vec::new(),
+        jobs: Vec::new(),
+        ahead: Vec::new(),
+    };
+    let after = |pairs: &[(&str, &[&str])]| {
+        pairs
+            .iter()
+            .map(|(stack, earlier)| {
+                (
+                    (*stack).to_owned(),
+                    earlier
+                        .iter()
+                        .map(|name| (*name).to_owned())
+                        .collect::<BTreeSet<_>>(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>()
+    };
+    let one = &[&["a", "b"][..]][..];
+    // The stages in the order the plan rolls them out: db first, then the
+    // stacks that follow it, by name.
+    let stages = vec![
+        stage("cache", one),
+        stage("db", one),
+        stage("api", one),
+        stage("web", one),
+        stage("worker", &[&["a"], &["b"]]),
+    ];
+    let order = after(&[("api", &["db"]), ("web", &["api"]), ("worker", &["db"])]);
+    let waves = waves_of(&stages, &order);
+    assert_eq!(
+        waves,
+        [vec![0, 1], vec![2], vec![4], vec![3]],
+        "cache and db side by side; api once db is done; worker has two batches, so alone"
+    );
+    assert!(check_waves(&waves, &stages, &order).is_ok());
+    assert_eq!(
+        waves_of(&stages, &order),
+        waves,
+        "the same plan, the same waves"
+    );
+
+    let mut with_job = stages.clone();
+    with_job[0].jobs.push(StageJob {
+        job: "migrate".to_owned(),
+        node: "a".to_owned(),
+        timeout_seconds: 60,
+    });
+    assert!(
+        waves_of(&with_job, &order)
+            .iter()
+            .all(|wave| wave.len() == 1 || !wave.contains(&0)),
+        "a stage with jobs goes alone"
+    );
+
+    assert!(
+        waves_of(&stages[1..4], &order).is_empty(),
+        "no two stages side by side: no waves"
+    );
+
+    let early = check_waves(&[vec![1, 2], vec![0], vec![3], vec![4]], &stages, &order)
+        .err()
+        .unwrap_or_default();
+    assert!(
+        early.contains("stack 'api'") && early.contains("'db'"),
+        "{early}"
+    );
+    let twice = check_waves(&[vec![0, 1], vec![1, 2], vec![3], vec![4]], &stages, &order)
+        .err()
+        .unwrap_or_default();
+    assert!(twice.contains("twice"), "{twice}");
+    let shared = check_waves(&[vec![0, 1], vec![2], vec![3, 4]], &stages, &order)
+        .err()
+        .unwrap_or_default();
+    assert!(shared.contains("stack 'worker'"), "{shared}");
+    let missing = check_waves(&[vec![0, 1], vec![2], vec![3]], &stages, &order)
+        .err()
+        .unwrap_or_default();
+    assert!(missing.contains("leave out stack 'worker'"), "{missing}");
+}
+
+#[test]
+fn the_heavy_cluster_example_rolls_out_in_layers() -> TestResult {
+    use mm::domain::rollout::{RolloutStage, StageJob, waves_of};
+
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../examples/cluster-heavy/.config/mm.yaml");
+    let config: MmConfig = serde_yaml_ng::from_str(&std::fs::read_to_string(path)?)?;
+    let policy = RolloutPolicy::from_config(&config, "production")?;
+    assert_eq!(policy.stack_order.len(), 10);
+    let stages = policy
+        .stack_order
+        .iter()
+        .map(|stack| RolloutStage {
+            stack: stack.clone(),
+            batches: vec![vec!["n1".to_owned(), "n2".to_owned(), "n3".to_owned()]],
+            start_first: Vec::new(),
+            pause_on_failure: Vec::new(),
+            jobs: if stack == "api" {
+                vec![StageJob {
+                    job: "migrate".to_owned(),
+                    node: "n1".to_owned(),
+                    timeout_seconds: 120,
+                }]
+            } else {
+                Vec::new()
+            },
+            ahead: Vec::new(),
+        })
+        .collect::<Vec<_>>();
+    let after = config
+        .stacks
+        .iter()
+        .map(|(name, stack)| (name.clone(), stack.after.iter().cloned().collect()))
+        .collect();
+    let names = |wave: &Vec<usize>| {
+        wave.iter()
+            .map(|index| stages[*index].stack.as_str())
+            .collect::<Vec<_>>()
+    };
+    let waves = waves_of(&stages, &after);
+    assert_eq!(
+        waves.iter().map(names).collect::<Vec<_>>(),
+        [
+            vec!["cache", "data", "queue"],
+            vec!["api"],
+            vec!["auth", "files", "search"],
+            vec!["admin", "web", "worker"],
+        ]
+    );
     Ok(())
 }

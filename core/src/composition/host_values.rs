@@ -703,3 +703,30 @@ pub(super) async fn migrate_to_store(
         secrets,
     })
 }
+
+/// A plan refused because the node would deploy without a required value.
+pub(super) fn unset_on_host(
+    environment: &str,
+    unset: &[(crate::domain::staged::ValueKind, String, Vec<String>)],
+) -> MmError {
+    let listed = unset
+        .iter()
+        .map(|(kind, key, services)| {
+            let command = match kind {
+                crate::domain::staged::ValueKind::Secret => "secret",
+                crate::domain::staged::ValueKind::Variable => "env",
+            };
+            format!(
+                "{} '{key}' (used by {}): run `mm -e {environment} {command} set {key}`",
+                kind.as_str(),
+                services.join(", ")
+            )
+        })
+        .collect::<Vec<_>>();
+    MmError::Environment {
+        message: format!(
+            "this host has no value for what the deployment needs: {}. Then plan again",
+            listed.join("; ")
+        ),
+    }
+}

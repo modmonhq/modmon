@@ -1640,6 +1640,7 @@ fn node_report(name: &str, store: Option<StoreStatus>) -> mm::domain::remote::No
         engine: None,
         daemon: None,
         secret_store: store,
+        rollout_steps: Vec::new(),
     }
 }
 

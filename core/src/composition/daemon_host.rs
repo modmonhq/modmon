@@ -26,6 +26,7 @@ impl DaemonUseCaseAdapter {
             engine: super::super::engine_facts::HostEngine::default(),
             node_host: None,
             job_pulls: Arc::default(),
+            prepared: Arc::default(),
         }
     }
 
