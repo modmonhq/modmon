@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::repo_target::{RepoClusterConfig, RepoTargetSetup};
 use crate::domain::runtime::RuntimeKind;
-use crate::domain::target::{BootstrapInputFile, SetupCommand};
+use crate::domain::target::{BootstrapInputFile, SetupCommandLine};
 use crate::domain::workspace::ProjectId;
 
 /// The release of mm a node's `mmd` reports.
@@ -409,8 +409,8 @@ impl ClusterSetupPlan {
 
     /// The `mm target setup` command this plan was made with.
     #[must_use]
-    pub fn setup_command(&self) -> SetupCommand {
-        let mut command = SetupCommand::new(&self.environment);
+    pub fn setup_command(&self) -> SetupCommandLine {
+        let mut command = SetupCommandLine::new(&self.environment);
         if !self.skipped.is_empty() {
             let nodes = self
                 .nodes

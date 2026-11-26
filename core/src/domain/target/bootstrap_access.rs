@@ -9,7 +9,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::host_binaries::{HostBinaries, is_lower_hex_digest, validate_host_binaries};
-use super::setup_command::SetupCommand;
+use super::setup_command::SetupCommandLine;
 use super::{BootstrapCapability, hash_field};
 use crate::domain::cluster_setup::ReleaseConsent;
 use crate::domain::host_policy::{BreakGlassKey, parse_public_key, valid_user_name};
@@ -178,7 +178,7 @@ impl BootstrapAccess {
 
     /// `command` with the setup flags that request this access step again.
     #[must_use]
-    pub fn setup_flags(&self, command: SetupCommand) -> SetupCommand {
+    pub fn setup_flags(&self, command: SetupCommandLine) -> SetupCommandLine {
         let mut command = if self.pushes() {
             command.with("--delivery", "push")
         } else {

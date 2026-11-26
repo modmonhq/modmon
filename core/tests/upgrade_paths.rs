@@ -468,8 +468,8 @@ async fn a_target_without_nodes_reads_its_host_release_as_a_cluster_reads_each_n
 
 #[test]
 fn a_setup_command_carries_the_release_flags_to_plan_and_apply() {
-    use mm::domain::target::SetupCommand;
-    let plain = SetupCommand::new("uat");
+    use mm::domain::target::SetupCommandLine;
+    let plain = SetupCommandLine::new("uat");
     assert_eq!(plain.plan(), "mm --environment uat target setup plan");
     assert_eq!(
         plain.apply("97d8abb4ef35"),

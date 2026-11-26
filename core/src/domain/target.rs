@@ -392,8 +392,8 @@ impl TargetBootstrapPlan {
 
     /// The `mm target setup` command this plan was made with.
     #[must_use]
-    pub fn setup_command(&self) -> SetupCommand {
-        let command = SetupCommand::new(&self.environment)
+    pub fn setup_command(&self) -> SetupCommandLine {
+        let command = SetupCommandLine::new(&self.environment)
             .selecting("--target", &self.target.name)
             .selecting("--runtime", runtime_kind_name(self.selected_runtime));
         match &self.access {
@@ -754,7 +754,7 @@ pub use host_binaries::{
 
 #[path = "target/setup_command.rs"]
 mod setup_command;
-pub use setup_command::SetupCommand;
+pub use setup_command::SetupCommandLine;
 
 #[path = "target/node_address.rs"]
 mod node_address;

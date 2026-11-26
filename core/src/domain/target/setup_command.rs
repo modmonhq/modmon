@@ -6,14 +6,14 @@ use crate::domain::cluster_setup::ReleaseConsent;
 /// same flags, so the apply command of a plan repeats every one it was made
 /// with.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct SetupCommand {
+pub struct SetupCommandLine {
     environment: String,
     selection: Vec<String>,
     flags: Vec<String>,
     release: ReleaseConsent,
 }
 
-impl SetupCommand {
+impl SetupCommandLine {
     #[must_use]
     pub fn new(environment: &str) -> Self {
         Self {
