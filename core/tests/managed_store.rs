@@ -1319,6 +1319,7 @@ async fn migration_reads_the_age_store_as_it_is_live_never_what_is_staged() -> T
             &reference,
             mm::domain::secret::SecretMaterial::from_zeroizing(Zeroizing::new(VALUE.to_owned()))?,
             1,
+            None,
         )
         .await?;
     age.stage_values(

@@ -312,6 +312,19 @@ pub fn detect_agent<'a>(
         .find(|marker| set.contains(marker))
 }
 
+/// The tool an agent marker stands for, as records name it.
+#[must_use]
+pub fn agent_label(marker: &str) -> &'static str {
+    match marker {
+        "CLAUDECODE" => "claude",
+        "OPENCODE" => "opencode",
+        "CURSOR_AGENT" => "cursor",
+        "GEMINI_CLI" => "gemini",
+        marker if marker.starts_with("CODEX_") => "codex",
+        _ => "agent",
+    }
+}
+
 #[cfg(test)]
 #[path = "agents/tests.rs"]
 mod tests;

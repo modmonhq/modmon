@@ -69,6 +69,7 @@ async fn age_and_environment_pass_storage_conformance() -> Result<(), Box<dyn st
             &age_reference,
             SecretMaterial::new(SENTINEL.to_owned())?,
             1_000,
+            None,
         )
         .await?;
     let inspected = registry.inspect(&scope, &age_reference).await?;
@@ -93,6 +94,7 @@ async fn age_and_environment_pass_storage_conformance() -> Result<(), Box<dyn st
                     candidate_revision: None,
                 },
                 2_000,
+                None,
             )
             .await
             .is_err()
@@ -131,6 +133,7 @@ async fn age_and_environment_pass_storage_conformance() -> Result<(), Box<dyn st
                 &env_reference,
                 SecretMaterial::new("not-written".to_owned())?,
                 1_000,
+                None,
             )
             .await
             .is_err()
@@ -165,6 +168,7 @@ async fn age_and_environment_pass_storage_conformance() -> Result<(), Box<dyn st
                 },
             ],
             2_000,
+            None,
         )
         .await
         .err()
@@ -422,6 +426,7 @@ impl SecretMetadataInspector for FakeProvider {
             revision: None,
             created_at_unix_ms: None,
             candidate_revision: None,
+            set_by: None,
         })
     }
 }

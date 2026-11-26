@@ -730,6 +730,7 @@ environments:
                 revision: Some("1".to_owned()),
                 created_at_unix_ms: Some(NOW),
                 candidate_revision: None,
+                set_by: None,
             },
             material: Some(SecretMaterial::new("scheduler-secret-sentinel".to_owned())?),
         })),

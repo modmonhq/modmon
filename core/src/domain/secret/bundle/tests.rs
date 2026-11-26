@@ -13,6 +13,8 @@ fn secret(locator: &str, revision: &str, value: &str) -> Result<BundledSecret, S
         reference: format!("age://{locator}").parse()?,
         revision: revision.to_owned(),
         material: SecretMaterial::new(value.to_owned())?,
+        set_at_unix_ms: None,
+        set_by: None,
     })
 }
 
@@ -116,6 +118,8 @@ fn rejects_wrong_scope_versions_and_invalid_entries() -> Result<(), String> {
         reference: "vault://name".parse()?,
         revision: "rev-1".to_owned(),
         material: SecretMaterial::new("value".to_owned())?,
+        set_at_unix_ms: None,
+        set_by: None,
     }];
     assert!(vault.validate().is_err());
 
@@ -129,5 +133,31 @@ fn rejects_wrong_scope_versions_and_invalid_entries() -> Result<(), String> {
         public_key: "ssh-rsa AAAAB3NzaC1yc2E".to_owned(),
     });
     assert!(key.validate().is_err());
+    Ok(())
+}
+
+#[test]
+fn a_bundle_carries_when_and_by_whom_each_revision_was_written() -> Result<(), String> {
+    let mut original = bundle()?;
+    original.secrets[0].set_at_unix_ms = Some(1_700_000_000_000);
+    original.secrets[0].set_by = Some("agent:claude (alex)".to_owned());
+    let plaintext = original.encode()?;
+    let json: serde_json::Value =
+        serde_json::from_slice(&plaintext).map_err(|error| error.to_string())?;
+    assert_eq!(json["secrets"][0]["set_by"], "agent:claude (alex)");
+    assert!(json["secrets"][1].get("set_by").is_none());
+    assert!(json["secrets"][1].get("set_at_unix_ms").is_none());
+    let decoded = SecretBundle::decode(&plaintext)?;
+    assert_eq!(decoded.secrets[0].set_at_unix_ms, Some(1_700_000_000_000));
+    assert_eq!(
+        decoded.secrets[0].set_by.as_deref(),
+        Some("agent:claude (alex)")
+    );
+    assert_eq!(decoded.secrets[1].set_by, None);
+
+    original.secrets[0].set_by = Some("line\nbreak".to_owned());
+    assert!(original.encode().is_err());
+    original.secrets[0].set_by = Some("x".repeat(256));
+    assert!(original.encode().is_err());
     Ok(())
 }

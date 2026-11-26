@@ -640,6 +640,7 @@ impl SecretCreator for FakeSecrets {
         reference: &SecretReference,
         material: SecretMaterial,
         _now: i64,
+        _set_by: Option<&str>,
     ) -> Result<SecretWriteResult, MmError> {
         let scripted = lock(&self.create_results, "secret create results")?.pop_front();
         let changed = match scripted {
@@ -724,6 +725,7 @@ fn secret_metadata(present: bool) -> SecretMetadata {
         revision: present.then(|| "revision-1".to_owned()),
         created_at_unix_ms: present.then_some(1),
         candidate_revision: None,
+        set_by: None,
     }
 }
 

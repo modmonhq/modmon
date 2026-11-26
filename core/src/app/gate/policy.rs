@@ -89,7 +89,7 @@ impl GateManager {
             let result = match self
                 .dependencies
                 .secret_creator
-                .create(&scope, reference, material, now)
+                .create(&scope, reference, material, now, None)
                 .await
             {
                 Ok(result) => result,

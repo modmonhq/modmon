@@ -12,6 +12,8 @@ fn bundle() -> Result<SecretBundle, Box<dyn std::error::Error>> {
             reference: "age://database-password".parse()?,
             revision: "0b5c1d4e-rev".to_owned(),
             material: SecretMaterial::new("sealed-value".to_owned())?,
+            set_at_unix_ms: None,
+            set_by: None,
         }],
         deploy_key: Some(BundledDeployKey {
             private_key: Zeroizing::new(b"private key bytes\n".to_vec()),

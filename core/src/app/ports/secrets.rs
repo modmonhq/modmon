@@ -67,6 +67,7 @@ pub trait SecretCreator: Send + Sync {
         reference: &SecretReference,
         material: SecretMaterial,
         now_unix_ms: i64,
+        set_by: Option<&str>,
     ) -> Result<SecretWriteResult, MmError>;
 }
 
@@ -79,6 +80,7 @@ pub trait SecretReplacer: Send + Sync {
         material: SecretMaterial,
         expected: SecretExpectedState,
         now_unix_ms: i64,
+        set_by: Option<&str>,
     ) -> Result<String, MmError>;
 }
 
@@ -88,6 +90,7 @@ pub trait SecretBatchReplacer: Send + Sync {
         &self,
         replacements: Vec<SecretReplacement>,
         now_unix_ms: i64,
+        set_by: Option<&str>,
     ) -> Result<Vec<String>, MmError>;
 }
 
@@ -100,6 +103,7 @@ pub trait SecretCandidateLifecycle: Send + Sync {
         material: SecretMaterial,
         expected: SecretExpectedState,
         now_unix_ms: i64,
+        set_by: Option<&str>,
     ) -> Result<String, MmError>;
     async fn promote(
         &self,

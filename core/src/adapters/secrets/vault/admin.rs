@@ -399,7 +399,7 @@ pub(super) fn environment_policy(
     locations.iter().map(|location| {
         let location = location.split('/').filter(|part| !part.is_empty()).map(encode_segment).collect::<Vec<_>>().join("/");
         format!(
-            "path \"{}/data/{prefix}/{location}\" {{ capabilities = [\"create\", \"read\", \"update\"] }}\npath \"{}/metadata/{prefix}/{location}\" {{ capabilities = [\"read\"] }}\npath \"{}/delete/{prefix}/{location}\" {{ capabilities = [\"update\"] }}\n",
+            "path \"{}/data/{prefix}/{location}\" {{ capabilities = [\"create\", \"read\", \"update\"] }}\npath \"{}/metadata/{prefix}/{location}\" {{ capabilities = [\"read\", \"update\"] }}\npath \"{}/delete/{prefix}/{location}\" {{ capabilities = [\"update\"] }}\n",
             connection.mount, connection.mount, connection.mount
         )
     }).collect()

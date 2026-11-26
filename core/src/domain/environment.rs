@@ -110,6 +110,10 @@ pub struct VariableStatus {
     pub provider: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub revision: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub set_at_unix_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub set_by: Option<String>,
     pub location: SourceLocation,
 }
 

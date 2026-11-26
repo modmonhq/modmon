@@ -26,7 +26,7 @@ fn initialization_reuses_private_identity_rejects_duplicates_and_handles_empty_b
     let second_initialized = second.initialize()?;
     assert_eq!(second_initialized.recipient, initialized.recipient);
     assert!(second.read_document()?.entries.is_empty());
-    assert!(second.replace_many(Vec::new(), 1)?.is_empty());
+    assert!(second.replace_many(Vec::new(), 1, None)?.is_empty());
     Ok(())
 }
 

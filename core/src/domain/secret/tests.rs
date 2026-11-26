@@ -71,6 +71,7 @@ fn references_material_and_resolution_contracts_are_bounded_and_redacted() -> Re
         revision: Some("active".to_owned()),
         created_at_unix_ms: Some(1),
         candidate_revision: Some("candidate".to_owned()),
+        set_by: None,
     };
     assert_eq!(
         metadata.expected_state(),

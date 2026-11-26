@@ -101,6 +101,20 @@ fn configured_store(
     ),
     Box<dyn std::error::Error>,
 > {
+    store_over(Arc::new(QueueTransport(Mutex::new(responses.into()))))
+}
+
+fn store_over(
+    transport: Arc<dyn OpenBaoHttpTransport>,
+) -> Result<
+    (
+        tempfile::TempDir,
+        OpenBaoSecretStore,
+        SecretScope,
+        SecretReference,
+    ),
+    Box<dyn std::error::Error>,
+> {
     let temporary = crate::test_support::tempdir()?;
     let project_id = ProjectId(uuid::Uuid::from_u128(801));
     let instance =
@@ -142,7 +156,7 @@ fn configured_store(
         OpenBaoMode::External,
         project_id,
         connections,
-        Arc::new(QueueTransport(Mutex::new(responses.into()))),
+        transport,
     );
     Ok((temporary, store, SecretScope::new("local"), reference))
 }
@@ -320,6 +334,7 @@ async fn authenticated_provider_lifecycle_covers_remote_states_and_cas_results()
             &reference,
             SecretMaterial::new("created".to_owned())?,
             1,
+            None,
         )
         .await?;
     assert!(created.changed);
@@ -336,7 +351,8 @@ async fn authenticated_provider_lifecycle_covers_remote_states_and_cas_results()
                 &scope,
                 &reference,
                 SecretMaterial::new("existing".to_owned())?,
-                1
+                1,
+                None
             )
             .await?
             .changed
@@ -359,6 +375,7 @@ async fn authenticated_provider_lifecycle_covers_remote_states_and_cas_results()
                 SecretMaterial::new("replacement".to_owned())?,
                 expected.clone(),
                 2,
+                None,
             )
             .await
             .is_err()
@@ -377,6 +394,7 @@ async fn authenticated_provider_lifecycle_covers_remote_states_and_cas_results()
                 SecretMaterial::new("replacement".to_owned())?,
                 expected.clone(),
                 2,
+                None,
             )
             .await?,
         "3"
@@ -400,5 +418,142 @@ async fn authenticated_provider_lifecycle_covers_remote_states_and_cas_results()
         store.inspect(&scope, &reference).await?.status,
         SecretStatus::ProviderUnavailable
     );
+    Ok(())
+}
+
+struct RecordingTransport {
+    responses: Mutex<VecDeque<OpenBaoHttpResponse>>,
+    sent: Mutex<Vec<(Method, String, Option<serde_json::Value>)>>,
+}
+
+#[async_trait]
+impl OpenBaoHttpTransport for RecordingTransport {
+    async fn request(
+        &self,
+        _connection: &OpenBaoConnection,
+        method: Method,
+        path: &str,
+        _token: Option<&str>,
+        body: Option<&serde_json::Value>,
+    ) -> Result<OpenBaoHttpResponse, MmError> {
+        let poisoned = || MmError::State {
+            message: "recording transport lock poisoned".to_owned(),
+        };
+        self.sent
+            .lock()
+            .map_err(|_| poisoned())?
+            .push((method, path.to_owned(), body.cloned()));
+        self.responses
+            .lock()
+            .map_err(|_| poisoned())?
+            .pop_front()
+            .ok_or_else(|| MmError::State {
+                message: "OpenBao response queue exhausted".to_owned(),
+            })
+    }
+
+    async fn request_bytes(
+        &self,
+        _connection: &OpenBaoConnection,
+        _method: Method,
+        _path: &str,
+        _token: &str,
+        _body: Option<&[u8]>,
+    ) -> Result<OpenBaoHttpResponse, MmError> {
+        Err(MmError::State {
+            message: "byte requests are unused by provider tests".to_owned(),
+        })
+    }
+}
+
+fn authored_metadata(recorded: u64) -> OpenBaoHttpResponse {
+    response(
+        200,
+        serde_json::json!({
+            "data": {
+                "current_version": 2,
+                "versions": {"2": {
+                    "created_time": "2026-08-26T12:00:00Z",
+                    "deletion_time": "", "destroyed": false,
+                }},
+                "custom_metadata": {"mm_set_by": "alex", "mm_set_version": recorded.to_string()}
+            }
+        }),
+    )
+}
+
+#[tokio::test]
+async fn a_write_records_its_writer_for_that_version_only() -> Result<(), Box<dyn std::error::Error>>
+{
+    let transport = Arc::new(RecordingTransport {
+        responses: Mutex::new(VecDeque::from([
+            health(false),
+            login(),
+            response(200, serde_json::json!({"data": {"version": 4}})),
+            response(204, serde_json::json!({})),
+        ])),
+        sent: Mutex::new(Vec::new()),
+    });
+    let (_temporary, store, scope, reference) = store_over(transport.clone())?;
+    store
+        .replace(
+            &scope,
+            &reference,
+            SecretMaterial::new("replacement-value".to_owned())?,
+            SecretExpectedState {
+                active_revision: Some("3".to_owned()),
+                candidate_revision: None,
+            },
+            2,
+            Some("alex"),
+        )
+        .await?;
+    let (method, path, body) = transport
+        .sent
+        .lock()
+        .map_err(|_| "poisoned")?
+        .last()
+        .cloned()
+        .ok_or("no request")?;
+    assert_eq!(method, Method::POST);
+    assert!(path.contains("/metadata/mm/"), "{path}");
+    let body = body.as_ref().ok_or("no body")?;
+    assert_eq!(
+        body,
+        &serde_json::json!({"custom_metadata": {"mm_set_by": "alex", "mm_set_version": "4"}})
+    );
+    assert!(!body.to_string().contains("replacement-value"));
+
+    let (_temporary, store, scope, reference) = configured_store(vec![
+        health(false),
+        login(),
+        response(200, serde_json::json!({"data": {"version": 5}})),
+        response(403, serde_json::json!({"errors": ["permission denied"]})),
+    ])?;
+    let written = store
+        .create(
+            &scope,
+            &reference,
+            SecretMaterial::new("created".to_owned())?,
+            1,
+            Some("alex"),
+        )
+        .await?;
+    assert_eq!(
+        written.revision, "5",
+        "a refused metadata write keeps the version"
+    );
+
+    for (recorded, expected) in [(2, Some("alex")), (1, None)] {
+        let (_temporary, store, scope, reference) =
+            configured_store(vec![health(false), login(), authored_metadata(recorded)])?;
+        assert_eq!(
+            store.inspect(&scope, &reference).await?.set_by.as_deref(),
+            expected
+        );
+    }
+    let (_temporary, store, scope, reference) =
+        configured_store(vec![health(false), login(), stored_metadata(200, false)])?;
+    assert_eq!(store.inspect(&scope, &reference).await?.set_by, None);
     Ok(())
 }

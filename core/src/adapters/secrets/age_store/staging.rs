@@ -66,6 +66,7 @@ impl StagedEntry {
                 revision: Some(self.revision.clone()),
                 created_at_unix_ms: Some(self.staged_at_unix_ms),
                 candidate_revision: None,
+                set_by: Some(self.staged_by.clone()),
             },
             None => unset_metadata(),
         }
@@ -417,6 +418,7 @@ impl AgeSecretStore {
                         value,
                         revision: staged.revision.clone(),
                         created_at_unix_ms: staged.staged_at_unix_ms,
+                        set_by: Some(staged.staged_by.clone()),
                     };
                     match document.entries.get_mut(&key) {
                         Some(entry) => replace_active(entry, next, now_unix_ms)?,
@@ -440,6 +442,7 @@ impl AgeSecretStore {
                             value,
                             revision: staged.revision.clone(),
                             created_at_unix_ms: staged.staged_at_unix_ms,
+                            set_by: Some(staged.staged_by.clone()),
                         },
                     );
                 }

@@ -55,19 +55,19 @@ async fn registry_routes_reads_and_rejects_unadvertised_mutations_and_bounds()
     );
     assert!(
         registry
-            .create(&scope, &reference, material("new")?, 1)
+            .create(&scope, &reference, material("new")?, 1, None)
             .await
             .is_err()
     );
     assert!(
         registry
-            .replace(&scope, &reference, material("new")?, expected(), 1)
+            .replace(&scope, &reference, material("new")?, expected(), 1, None)
             .await
             .is_err()
     );
     assert!(
         registry
-            .stage(&scope, &reference, material("new")?, expected(), 1)
+            .stage(&scope, &reference, material("new")?, expected(), 1, None)
             .await
             .is_err()
     );
@@ -83,7 +83,12 @@ async fn registry_routes_reads_and_rejects_unadvertised_mutations_and_bounds()
             .await
             .is_err()
     );
-    assert!(registry.replace_batch(Vec::new(), 1).await?.is_empty());
+    assert!(
+        registry
+            .replace_batch(Vec::new(), 1, None)
+            .await?
+            .is_empty()
+    );
 
     let long = SecretReference::new(provider, "x".repeat(256))?;
     assert!(registry.inspect(&scope, &long).await.is_err());
@@ -109,6 +114,7 @@ async fn registry_routes_reads_and_rejects_unadvertised_mutations_and_bounds()
                     },
                 ],
                 1,
+                None,
             )
             .await
             .is_err()

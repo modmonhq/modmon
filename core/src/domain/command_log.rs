@@ -27,8 +27,40 @@ pub enum CommandOutcome {
 pub enum CommandPrincipal {
     /// A person at this machine's terminal, by login name.
     User { name: String },
-    /// An agent working through `mm mcp`.
-    Agent { name: String },
+    /// An agent working through `mm mcp`, and the person it works for.
+    Agent {
+        name: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        user: Option<String>,
+    },
+}
+
+impl CommandPrincipal {
+    /// How a secret revision records who wrote it: `alex`, or
+    /// `agent:claude (alex)`.
+    #[must_use]
+    pub fn author(&self) -> String {
+        match self {
+            Self::User { name } => name.clone(),
+            Self::Agent {
+                name,
+                user: Some(user),
+            } => format!("agent:{name} ({user})"),
+            Self::Agent { name, user: None } => format!("agent:{name}"),
+        }
+    }
+}
+
+/// The one team user whose entry lists this device's key, else the login
+/// name, else `unknown`.
+#[must_use]
+pub fn principal_name(team_users: &[String], login: Option<String>) -> String {
+    match team_users {
+        [only] => only.clone(),
+        _ => login
+            .filter(|login| !login.is_empty())
+            .unwrap_or_else(|| "unknown".to_owned()),
+    }
 }
 
 /// One progress event and when it came, in milliseconds from the start.

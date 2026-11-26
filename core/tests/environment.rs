@@ -153,6 +153,7 @@ async fn indexes_overrides_compiles_and_materializes_without_public_leaks()
             &reference,
             SecretMaterial::new(SENTINEL.to_owned())?,
             10_000,
+            None,
         )
         .await?;
     manager.set_override(&selection, "DB.HOST", "postgres.local", None)?;
@@ -361,6 +362,7 @@ async fn age_status_is_metadata_only_and_env_provider_is_read_only()
                 &env_reference,
                 SecretMaterial::new("value".to_owned())?,
                 10_000,
+                None,
             )
             .await
             .is_err()
@@ -710,6 +712,7 @@ async fn concurrent_projects_share_one_age_identity_without_overwrite()
             &reference,
             SecretMaterial::new("first-value".to_owned())?,
             10_000,
+            None,
         )
         .await?;
     let second_store = AgeSecretStore::new(identity, home.path().join("second.age"));
@@ -719,6 +722,7 @@ async fn concurrent_projects_share_one_age_identity_without_overwrite()
             &reference,
             SecretMaterial::new("second-value".to_owned())?,
             10_000,
+            None,
         )
         .await?;
     assert_eq!(
@@ -749,6 +753,7 @@ async fn age_secret_lifecycle_uses_create_only_and_revision_guards()
             &reference,
             SecretMaterial::new("initial-value".to_owned())?,
             1_000,
+            None,
         )
         .await?;
     assert!(initial.changed);
@@ -758,6 +763,7 @@ async fn age_secret_lifecycle_uses_create_only_and_revision_guards()
             &reference,
             SecretMaterial::new("must-not-overwrite".to_owned())?,
             2_000,
+            None,
         )
         .await?;
     assert!(!duplicate.changed);
@@ -778,6 +784,7 @@ async fn age_secret_lifecycle_uses_create_only_and_revision_guards()
                 SecretMaterial::new("candidate-value".to_owned())?,
                 expected_state(Some("stale-revision"), None),
                 3_000,
+                None,
             )
             .await
             .is_err()
@@ -789,6 +796,7 @@ async fn age_secret_lifecycle_uses_create_only_and_revision_guards()
             SecretMaterial::new("candidate-value".to_owned())?,
             expected_state(Some(&initial.revision), None),
             3_000,
+            None,
         )
         .await?;
     assert_eq!(
@@ -806,6 +814,7 @@ async fn age_secret_lifecycle_uses_create_only_and_revision_guards()
                 SecretMaterial::new("must-not-discard-candidate".to_owned())?,
                 expected_state(Some(&initial.revision), None),
                 3_500,
+                None,
             )
             .await
             .is_err()
@@ -842,6 +851,7 @@ async fn age_secret_lifecycle_uses_create_only_and_revision_guards()
                 SecretMaterial::new("replacement".to_owned())?,
                 expected_state(Some(&initial.revision), None),
                 5_000,
+                None,
             )
             .await
             .is_err()
@@ -853,6 +863,7 @@ async fn age_secret_lifecycle_uses_create_only_and_revision_guards()
             SecretMaterial::new("replacement".to_owned())?,
             expected_state(Some(&promoted), None),
             5_000,
+            None,
         )
         .await?;
     assert!(
@@ -909,6 +920,7 @@ fn concurrent_secret_creation_publishes_exactly_one_value() -> Result<(), Box<dy
                     &reference,
                     SecretMaterial::new(value.to_owned())?,
                     10_000,
+                    None,
                 ))
                 .map_err(|error| error.to_string())
         })
@@ -1198,6 +1210,7 @@ async fn manager_override_default_delivery_and_diff_contracts_are_explicit()
             &"age://local/db-password".parse()?,
             SecretMaterial::new(SENTINEL.to_owned())?,
             10_000,
+            None,
         )
         .await?;
     let manager = environment_manager(
@@ -1387,6 +1400,7 @@ impl SecretMetadataInspector for ControlledInspector {
                 revision: None,
                 created_at_unix_ms: None,
                 candidate_revision: None,
+                set_by: None,
             }),
             InspectionOutcome::Failure => Err(MmError::Secret {
                 message: "injected provider inspection failure".to_owned(),

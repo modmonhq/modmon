@@ -337,6 +337,7 @@ fn secret(status: SecretStatus, material: Option<&str>) -> Result<SecretResoluti
             revision: Some("revision-1".to_owned()),
             created_at_unix_ms: Some(NOW),
             candidate_revision: None,
+            set_by: None,
         },
         material: material
             .map(|value| SecretMaterial::new(value.to_owned()))

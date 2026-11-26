@@ -216,6 +216,7 @@ impl SecretMaterialResolver for Stores {
                 revision: material.as_ref().map(|_| "1".to_owned()),
                 created_at_unix_ms: None,
                 candidate_revision: None,
+                set_by: None,
             },
             material,
         })

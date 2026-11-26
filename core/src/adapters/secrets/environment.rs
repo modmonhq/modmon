@@ -86,6 +86,7 @@ impl SecretMetadataInspector for EnvironmentSecretStore {
             revision,
             created_at_unix_ms: None,
             candidate_revision: None,
+            set_by: None,
         })
     }
 
@@ -131,6 +132,7 @@ impl SecretMaterialResolver for EnvironmentSecretStore {
                     revision: None,
                     created_at_unix_ms: None,
                     candidate_revision: None,
+                    set_by: None,
                 },
                 material: None,
             }),
@@ -140,6 +142,7 @@ impl SecretMaterialResolver for EnvironmentSecretStore {
                     revision: Some(self.revision(reference, &value)),
                     created_at_unix_ms: None,
                     candidate_revision: None,
+                    set_by: None,
                 },
                 material: Some(
                     SecretMaterial::new(value).map_err(|message| MmError::Secret { message })?,
@@ -151,6 +154,7 @@ impl SecretMaterialResolver for EnvironmentSecretStore {
                     revision: None,
                     created_at_unix_ms: None,
                     candidate_revision: None,
+                    set_by: None,
                 },
                 material: None,
             }),
@@ -160,6 +164,7 @@ impl SecretMaterialResolver for EnvironmentSecretStore {
                     revision: None,
                     created_at_unix_ms: None,
                     candidate_revision: None,
+                    set_by: None,
                 },
                 material: None,
             }),

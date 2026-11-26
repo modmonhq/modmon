@@ -29,6 +29,7 @@ async fn inspecting_many_secrets_reads_the_store_once() -> Result<(), Box<dyn st
                     &reference,
                     SecretMaterial::new(format!("value-{index}"))?,
                     1_000,
+                    None,
                 )
                 .await?;
         }

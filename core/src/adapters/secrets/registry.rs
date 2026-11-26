@@ -180,6 +180,7 @@ impl SecretCreator for SecretProviderRegistry {
         reference: &SecretReference,
         material: SecretMaterial,
         now_unix_ms: i64,
+        set_by: Option<&str>,
     ) -> Result<SecretWriteResult, MmError> {
         let provider = self.provider(reference)?;
         validate_material(provider, &material)?;
@@ -188,7 +189,7 @@ impl SecretCreator for SecretProviderRegistry {
             StorageOperation::Create,
             provider.creator.as_ref(),
         )?
-        .create(scope, reference, material, now_unix_ms)
+        .create(scope, reference, material, now_unix_ms, set_by)
         .await
     }
 }
@@ -202,6 +203,7 @@ impl SecretReplacer for SecretProviderRegistry {
         material: SecretMaterial,
         expected: SecretExpectedState,
         now_unix_ms: i64,
+        set_by: Option<&str>,
     ) -> Result<String, MmError> {
         let provider = self.provider(reference)?;
         validate_material(provider, &material)?;
@@ -210,7 +212,7 @@ impl SecretReplacer for SecretProviderRegistry {
             StorageOperation::Replace,
             provider.replacer.as_ref(),
         )?
-        .replace(scope, reference, material, expected, now_unix_ms)
+        .replace(scope, reference, material, expected, now_unix_ms, set_by)
         .await
     }
 }
@@ -221,6 +223,7 @@ impl SecretBatchReplacer for SecretProviderRegistry {
         &self,
         replacements: Vec<SecretReplacement>,
         now_unix_ms: i64,
+        set_by: Option<&str>,
     ) -> Result<Vec<String>, MmError> {
         let Some(first) = replacements.first() else {
             return Ok(Vec::new());
@@ -246,7 +249,7 @@ impl SecretBatchReplacer for SecretProviderRegistry {
             StorageOperation::ReplaceBatch,
             provider.batch_replacer.as_ref(),
         )?
-        .replace_batch(replacements, now_unix_ms)
+        .replace_batch(replacements, now_unix_ms, set_by)
         .await
     }
 }
@@ -260,6 +263,7 @@ impl SecretCandidateLifecycle for SecretProviderRegistry {
         material: SecretMaterial,
         expected: SecretExpectedState,
         now_unix_ms: i64,
+        set_by: Option<&str>,
     ) -> Result<String, MmError> {
         let provider = self.provider(reference)?;
         validate_material(provider, &material)?;
@@ -268,7 +272,7 @@ impl SecretCandidateLifecycle for SecretProviderRegistry {
             StorageOperation::StageCandidate,
             provider.candidates.as_ref(),
         )?
-        .stage(scope, reference, material, expected, now_unix_ms)
+        .stage(scope, reference, material, expected, now_unix_ms, set_by)
         .await
     }
 

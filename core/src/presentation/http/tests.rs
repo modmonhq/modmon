@@ -561,6 +561,7 @@ impl SecretCreator for TestGateExternal {
         _reference: &SecretReference,
         _material: SecretMaterial,
         _now_unix_ms: i64,
+        _set_by: Option<&str>,
     ) -> Result<SecretWriteResult, MmError> {
         Ok(SecretWriteResult {
             revision: "test-revision".to_owned(),
@@ -591,5 +592,6 @@ fn test_secret_metadata() -> SecretMetadata {
         revision: Some("test-revision".to_owned()),
         created_at_unix_ms: Some(1_700_000_000_000),
         candidate_revision: None,
+        set_by: None,
     }
 }

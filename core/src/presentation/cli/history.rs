@@ -107,10 +107,7 @@ fn outcome_word(outcome: CommandOutcome) -> &'static str {
 }
 
 fn who(principal: &CommandPrincipal) -> String {
-    match principal {
-        CommandPrincipal::User { name } => name.clone(),
-        CommandPrincipal::Agent { name } => format!("agent {name}"),
-    }
+    principal.author()
 }
 
 fn duration(ms: u64) -> String {

@@ -410,7 +410,7 @@ pub fn environment_policy(
         .map(|location| {
             let location = encoded_location(location);
             format!(
-                "path \"{}/data/{prefix}/{location}\" {{ capabilities = [\"create\", \"read\", \"update\"] }}\npath \"{}/metadata/{prefix}/{location}\" {{ capabilities = [\"read\"] }}\npath \"{}/delete/{prefix}/{location}\" {{ capabilities = [\"update\"] }}\n",
+                "path \"{}/data/{prefix}/{location}\" {{ capabilities = [\"create\", \"read\", \"update\"] }}\npath \"{}/metadata/{prefix}/{location}\" {{ capabilities = [\"read\", \"update\"] }}\npath \"{}/delete/{prefix}/{location}\" {{ capabilities = [\"update\"] }}\n",
                 connection.mount, connection.mount, connection.mount
             )
         })
