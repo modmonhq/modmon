@@ -107,7 +107,9 @@ missing from the store: `mm env status` shows those variables as `defaulted`,
 `generate --missing` still creates it, and deploys use the template default
 until you store a value. An empty default (`KEY=`), or a secret also mounted
 with `secret-files` or read by a registry, TLS certificate or tunnel, stays
-`unset`. In JSON output, `status` stays `unset` and `defaulted` is `true`.
+`unset`. In JSON output, `status` stays `unset` and `defaulted` is `true`. For
+an environment on remote hosts, `mm secret status` shows the same as
+`live: default`.
 
 To enter an existing password instead, use `mm secret set database.password`.
 The prompt hides your input. Other stores are described in
