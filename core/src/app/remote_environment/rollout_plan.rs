@@ -16,7 +16,13 @@ impl RemoteEnvironment {
         }
         join_all(selected.iter().map(|node| async move {
             let facts = match node.connect() {
-                Ok(transport) => transport.node(node.scope.clone()).await.ok(),
+                Ok(transport) => match transport.node(node.scope.clone()).await {
+                    Ok(facts) => Some(facts),
+                    Err(error) => {
+                        tracing::debug!(%error, "a node did not say which rollout steps it knows");
+                        None
+                    }
+                },
                 Err(_) => None,
             };
             NodeSteps {

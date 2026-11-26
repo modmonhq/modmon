@@ -18,7 +18,15 @@ pub(super) fn with_start_probes(
 ) -> Result<Vec<u8>, MmError> {
     let models = sources
         .iter()
-        .filter_map(|source| serde_yaml_ng::from_slice::<Value>(&source.bytes).ok())
+        .filter_map(
+            |source| match serde_yaml_ng::from_slice::<Value>(&source.bytes) {
+                Ok(model) => Some(model),
+                Err(error) => {
+                    tracing::debug!(%error, "no start probes for a Compose file mm cannot read");
+                    None
+                }
+            },
+        )
         .collect::<Vec<_>>();
     let probes = start_probes(&models);
     if probes.is_empty() {

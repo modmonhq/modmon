@@ -61,7 +61,9 @@ impl PreparedEnvironments {
     }
 
     pub fn get(&self, operation: OperationId) -> Option<Arc<EnvironmentMaterial>> {
-        let mut entries = self.entries.lock().ok()?;
+        let Ok(mut entries) = self.entries.lock() else {
+            return None;
+        };
         entries.retain(|(_, used, _)| used.elapsed() < IDLE);
         let index = entries.iter().position(|(kept, _, _)| *kept == operation)?;
         let (_, _, material) = entries.remove(index);
