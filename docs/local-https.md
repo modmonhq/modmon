@@ -122,8 +122,10 @@ mm ingress start
 ```
 
 Run the first command to stop forwarding, and the second when you want it back.
-Stopping an absent or already stopped forwarder succeeds with “Public ingress
-is not running.” and does not request sudo.
+On Linux, `stop` also disables the forwarder at boot, and deploys leave a
+forwarder stopped this way alone until you run `mm ingress start`. Stopping an
+absent forwarder, or one already stopped by `mm ingress stop`, succeeds with
+“Public ingress is not running.” and does not request sudo.
 `start` is idempotent: it checks the installed forwarder, shared ingress services,
 and local TLS. If installation is absent, interrupted, or unhealthy, it prepares
 the forwarder prerequisites, sets up TLS when needed, and offers reviewed repair
@@ -134,8 +136,7 @@ JSON and noninteractive use never prompt. For noninteractive installation or
 repair, pass `mm ingress start --yes`. This does not configure workstation DNS;
 `./install.sh --setup-only` does that. Project containers, volumes, DNS, and CA
 trust are retained. These commands control all mm sites on the workstation, not
-one site's route. An operation that explicitly reconciles host ingress can start
-the forwarder again.
+one site's route.
 
 To check forwarding without changing anything, or to reconcile and restart it:
 
@@ -146,19 +147,22 @@ mm ingress restart
 
 `status` reports forwarding separately from the shared services and local TLS
 it depends on, so a deliberately stopped forwarder is not reported as broken.
-With `--output json`, `state` is `running` or `stopped`, `forwarder.failed`
-marks a forwarder that exited with an error, and `ready` is `true` only when
-forwarding is running and the services and TLS are healthy. `restart` follows
+It also prints the loopback ports where mm's Traefik listens. With
+`--output json`, `state` is `running` or `stopped`, `forwarder.failed` marks a
+forwarder that exited with an error, `forwarder.kept_stopped` marks one stopped
+by `mm ingress stop`, `loopback_ports` lists Traefik's HTTP and HTTPS loopback
+ports, and `ready` is `true` only when forwarding is running and the services
+and TLS are healthy. `restart` follows
 the same approval rules as `start`.
 
 How the forwarder runs depends on the workstation:
 
 - **Linux:** HAProxy runs as the `mm-ingress-forwarder.service` system unit.
-  `start` and `stop` request sudo only for that fixed operation; the `mm`
-  process remains your user. Authorize with `sudo -v` first for noninteractive
-  use. To also change boot startup, use
-  `sudo systemctl disable --now mm-ingress-forwarder.service` and
-  `sudo systemctl enable --now mm-ingress-forwarder.service`.
+  `start` and `stop` request sudo only for that fixed operation
+  (`systemctl enable --now` and `systemctl disable --now`); the `mm` process
+  remains your user. Authorize with `sudo -v` first for noninteractive use.
+  A forwarder stopped only with `systemctl stop` is still enabled, so it starts
+  again at boot or on the next deploy; `mm ingress status` says so.
 - **macOS:** HAProxy runs as your user in the `local.mm.ingress-forwarder`
   launchd agent; macOS lets any user listen on ports 80 and 443 on all
   addresses, so `start` and `stop` never use sudo. `stop` unloads the agent but
@@ -168,6 +172,41 @@ How the forwarder runs depends on the workstation:
   `mm ingress stop`, and `launchctl enable gui/$(id -u)/local.mm.ingress-forwarder`
   before `mm ingress start`. Forwarder output is in
   `~/Library/Logs/mm/ingress-forwarder.log`.
+
+### Put your own reverse proxy in front of mm
+
+On Linux you can run another reverse proxy, such as Caddy or nginx, on ports 80
+and 443 and have it forward to mm's Traefik, which keeps serving every mm route
+on loopback ports. Stop mm's forwarder first so the ports are free:
+
+```sh
+mm ingress stop
+mm ingress status
+```
+
+`status` reports `Public ingress: stopped by mm ingress stop` and the Traefik
+loopback ports, for example
+`Traefik loopback: HTTP 127.0.0.1:20081, HTTPS 127.0.0.1:20082`. The ports are
+fixed for this workstation. Start your proxy on ports 80 and 443 and forward
+plain TCP to them: port 80 to the HTTP loopback port and port 443 to the HTTPS
+loopback port, without terminating TLS, so Traefik serves mm's certificates and
+its HTTP-to-HTTPS redirects. mm's own forwarder sends the PROXY protocol so
+Traefik sees each client's address; send it from your proxy too if your
+services need that address. With nginx's `stream` module:
+
+```nginx
+stream {
+    server { listen 80;  proxy_pass 127.0.0.1:20081; proxy_protocol on; }
+    server { listen 443; proxy_pass 127.0.0.1:20082; proxy_protocol on; }
+}
+```
+
+Use your own ports from `mm ingress status`. Deploys such as `mm dev up` then
+leave the forwarder stopped and disabled at boot, and do not ask for sudo when
+its installed files are current. When an mm upgrade changes the forwarder's
+files, the next deploy asks for sudo once to update them and still does not
+start the forwarder. To hand ports 80 and 443 back to mm, stop your proxy and
+run `mm ingress start`.
 
 ### Rotate certificates
 

@@ -197,6 +197,19 @@ Agent output is in `~/Library/Logs/mm/`: `ingress-forwarder.log` for HAProxy,
 the ingress containers start once Docker Desktop is running; the replay retries
 every 15 seconds until then.
 
+## Deploys fail because another proxy owns ports 80 and 443 on Linux
+
+A deploy that fails with `MM_RUNTIME_RESPONSE` and “the privileged ingress
+forwarder did not produce Traefik's loopback HTTP response”, often with an HTTP
+308 or another status instead of 404, met a different program answering on
+port 80. When that program is a proxy you run in front of mm's Traefik, run
+`mm ingress stop` once. Deploys then leave the forwarder stopped and no longer
+need sudo. See
+[Put your own reverse proxy in front of mm](../local-https.md#put-your-own-reverse-proxy-in-front-of-mm).
+Otherwise find the other program with
+`sudo ss -ltnp 'sport = :80 or sport = :443'`, stop it, and run
+`mm ingress start`.
+
 ## Certificate is untrusted
 
 Run `mm dev tls status`. Linux trust generally needs `sudo`; macOS system trust
