@@ -113,7 +113,7 @@ impl JobSchedulerService {
         let mut runs = listed(self)?;
         let mut moved = false;
         for run in runs.iter().filter(|run| moves_on_read(run)) {
-            moved |= self.advance(selection, &document, run.id, approval).await?;
+            moved |= self.look(selection, &document, run.id, approval).await;
         }
         if moved {
             runs = listed(self)?;
@@ -178,6 +178,60 @@ impl JobSchedulerService {
         self.process_claim(document, selection, claim, approval)
             .await?;
         Ok(true)
+    }
+
+    /// `advance` for a look that is not about this one run: a run that
+    /// cannot be moved on is left as it is, and said in the log. Whether
+    /// its record may have changed.
+    pub(super) async fn look(
+        &self,
+        selection: &WorkspaceSelection,
+        document: &ConfigDocument,
+        run_id: Uuid,
+        approval: &ApprovalContext,
+    ) -> bool {
+        match self.advance(selection, document, run_id, approval).await {
+            Ok(moved) => moved,
+            Err(error) => {
+                tracing::warn!(%run_id, code = error.code(), %error, "a job run could not be moved on");
+                true
+            }
+        }
+    }
+
+    /// Asks run `run_id` to stop, and stops it now unless another worker
+    /// holds it. Returns the run as it is afterwards.
+    pub async fn cancel_run(
+        &self,
+        selection: &WorkspaceSelection,
+        run_id: Uuid,
+        approval: &ApprovalContext,
+    ) -> Result<JobRun, MmError> {
+        let run = self.show_run(selection, run_id, approval)?;
+        let (document, environment) = self.context(selection)?;
+        self.authorize(
+            &document,
+            &environment,
+            approval,
+            RuntimeOperation::JobCancel,
+        )?;
+        let requested = self.repository.request_cancel(
+            run.id,
+            &audit(
+                &document,
+                &environment,
+                approval,
+                self.clock.now_unix_ms(),
+                "cancel",
+                "run",
+                run.id.to_string(),
+            ),
+        )?;
+        if requested.state.is_terminal() {
+            return Ok(requested);
+        }
+        self.advance(selection, &document, run.id, approval).await?;
+        Ok(self.repository.run(run.id)?.unwrap_or(requested))
     }
 }
 
@@ -259,7 +313,7 @@ impl JobSchedulerService {
                 run.id.to_string(),
             );
             self.repository.request_cancel(run.id, &record)?;
-            self.advance(selection, &document, run.id, approval).await?;
+            self.look(selection, &document, run.id, approval).await;
             cancelled.push(self.repository.run(run.id)?.unwrap_or(run));
         }
         Ok(cancelled)
@@ -368,8 +422,7 @@ impl crate::app::ports::DeploymentJobs for JobSchedulerService {
                 );
                 self.repository.request_cancel(run.id, &record)?;
             }
-            self.advance(selection, &document, run.id, &approval)
-                .await?;
+            self.look(selection, &document, run.id, &approval).await;
         }
         let waited_for = listed(self)?
             .into_iter()
@@ -447,7 +500,7 @@ impl JobSchedulerService {
             return Ok(());
         }
         for run in waiting {
-            keeper.advance(selection, &document, run, approval).await?;
+            keeper.look(selection, &document, run, approval).await;
         }
         Ok(())
     }

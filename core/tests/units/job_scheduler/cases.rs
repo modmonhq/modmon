@@ -57,8 +57,8 @@ fn reviewed_reconciliation_is_exact_and_stale_or_unauthorized_plans_have_no_effe
     Ok(())
 }
 
-#[test]
-fn scheduler_queries_mutations_and_owner_checks_are_explicit()
+#[tokio::test]
+async fn scheduler_queries_mutations_and_owner_checks_are_explicit()
 -> Result<(), Box<dyn std::error::Error>> {
     let setup = setup(true)?;
     let approval = approval();
@@ -101,7 +101,8 @@ fn scheduler_queries_mutations_and_owner_checks_are_explicit()
     assert_eq!(retry.trigger, JobTrigger::Retry);
     let cancelled = setup
         .service
-        .cancel_run(&setup.selection, scheduled.id, &approval)?;
+        .cancel_run(&setup.selection, scheduled.id, &approval)
+        .await?;
     assert_eq!(cancelled.state, JobRunState::Cancelling);
 
     let mut foreign = terminal;

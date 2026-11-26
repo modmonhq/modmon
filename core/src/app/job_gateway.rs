@@ -216,12 +216,16 @@ impl JobGateway {
 
     /// Asks a run on this machine to stop. A run on a remote host ends at
     /// its job's timeout.
-    pub fn cancel(&self, run: uuid::Uuid, approval: &ApprovalContext) -> Result<JobRun, MmError> {
+    pub async fn cancel(
+        &self,
+        run: uuid::Uuid,
+        approval: &ApprovalContext,
+    ) -> Result<JobRun, MmError> {
         match self {
             Self::Local {
                 scheduler,
                 selection,
-            } => scheduler.cancel_run(selection, run, approval),
+            } => scheduler.cancel_run(selection, run, approval).await,
             Self::Remote { .. } => Err(MmError::Environment {
                 message: format!(
                     "job run '{run}' runs on a remote host, where mm does not stop a run; it ends at its job's timeout (jobs.<name>.timeout). `mm job status {run}` follows it"

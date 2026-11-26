@@ -51,6 +51,7 @@ pub(super) async fn apply_scheduler_action(
         Action::CancelJob(run_id) => use_cases
             .scheduler
             .cancel_run(use_cases.selection, run_id, &approval)
+            .await
             .map(|_| format!("Cancellation requested for {run_id}")),
         Action::RetryJob(run_id) => use_cases
             .scheduler
