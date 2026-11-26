@@ -21,16 +21,20 @@ pub const START_INTERVAL: &str = "1s";
 const DEFAULT_INTERVAL: Duration = Duration::from_secs(30);
 const DEFAULT_RETRIES: u64 = 3;
 
-/// Whether a Docker Engine of `version` (as it reports it, `27.3.1`)
-/// probes at `start_interval`.
+/// Whether a Docker Engine of `version` probes at `start_interval`. The
+/// version is either bare (`27.3.1`) or as the CLI prints it
+/// (`Docker version 27.3.1, build abc1234`).
 #[must_use]
 pub fn docker_probes_at_start(version: &str) -> bool {
     version
-        .trim()
-        .trim_start_matches('v')
-        .split('.')
-        .next()
-        .and_then(|major| major.parse::<u64>().ok())
+        .split(|character: char| character.is_whitespace() || character == ',')
+        .map(|word| word.trim_start_matches('v'))
+        .find_map(|word| {
+            let (major, rest) = word.split_once('.')?;
+            let minor = rest.split(['.', '-', '+']).next()?;
+            minor.parse::<u64>().ok()?;
+            major.parse::<u64>().ok()
+        })
         .is_some_and(|major| major >= START_INTERVAL_DOCKER_MAJOR)
 }
 

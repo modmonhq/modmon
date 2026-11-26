@@ -41,6 +41,11 @@ fn only_docker_engine_25_and_later_probe_at_start() {
         ("25.0.0", true),
         ("27.3.1", true),
         ("v28.1.0", true),
+        ("Docker version 29.10.1, build 54cd494", true),
+        ("Docker version 24.0.9, build 2936816", false),
+        ("Docker version 25.0.0-rc.1, build 1234567", true),
+        ("Docker version unknown, build 1234567", false),
+        ("29.10.1", true),
         ("", false),
         ("unknown", false),
     ] {
