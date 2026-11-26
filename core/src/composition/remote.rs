@@ -584,6 +584,18 @@ impl crate::app::ports::RemoteUseCases for DaemonUseCaseAdapter {
             .await
     }
 
+    async fn pull_planned(
+        &self,
+        context: &crate::app::ports::RemoteRequestContext,
+        plan: &crate::domain::deployment::DeploymentPlan,
+    ) -> Result<(), MmError> {
+        let selection = self.selection(context)?;
+        self.deployment(&selection, None)
+            .await?
+            .pull_planned(&selection, plan)
+            .await
+    }
+
     async fn roll_stack(
         &self,
         context: &crate::app::ports::RemoteRequestContext,

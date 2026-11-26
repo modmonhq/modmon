@@ -1393,6 +1393,13 @@ addresses the plan gives the cluster's networks, so a container that starts on
 a network a node did not have before is reachable and resolvable from the
 nodes whose turn has not come.
 
+Then every node pulls the images it runs, all nodes at the same time, within
+`deploy.pull-timeout`. A pull that fails stops the deployment before any
+container changes. A node whose `mmd` is older than your `mm` pulls stack by
+stack instead, and the plan names it with a line such as `node 'db-1' runs mmd
+0.1.2: images are pulled stack by stack until mm target setup plan --upgrade
+brings it up to date`.
+
 A stack that did not change is left alone: when every container of it on a
 node already runs what the deployment would start (the same Compose
 configuration, environment and secrets, the image its tag names on the node,

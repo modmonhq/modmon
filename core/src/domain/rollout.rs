@@ -41,6 +41,9 @@ pub use auto_order::{HostTies, starts_first_by_default};
 #[path = "rollout/unchanged.rs"]
 mod unchanged;
 pub use unchanged::{RunningContainer, WantedService, service_images, stack_unchanged};
+#[path = "rollout/versions.rs"]
+mod versions;
+pub use versions::{PULL_STEP_SINCE, knows_steps_since};
 #[path = "rollout/steps.rs"]
 mod steps;
 pub use steps::{
@@ -457,6 +460,15 @@ pub struct ClusterRollout {
     /// place: the ones no node ran before.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub once: Vec<StageJob>,
+    /// Every node pulls the images it runs before any node is replaced.
+    /// Only when every node's `mmd` knows the `pull` step.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pull_first: bool,
+    /// The nodes whose `mmd` is too old for the newer steps, with its
+    /// release, for the plan to say so. Not part of the plan.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub older_nodes: Vec<(String, String)>,
 }
 
 fn pull_timeout(seconds: Option<u64>) -> Duration {
@@ -583,12 +595,28 @@ impl ClusterRollout {
             stages,
             ran_once: BTreeMap::new(),
             once: placed_jobs(nodes.iter(), |job| job.run == JobWhen::Once),
+            pull_first: false,
+            older_nodes: Vec::new(),
         }
     }
 
     #[must_use]
     pub fn pull_timeout(&self) -> Duration {
         pull_timeout(self.pull_timeout_seconds)
+    }
+
+    /// Plans the newer steps when the `mmd` of every node of `versions`
+    /// (node, release) knows them, and otherwise notes the nodes that do
+    /// not. `client` is this client's release.
+    #[must_use]
+    pub fn for_daemons(mut self, versions: &[(String, String)], client: &str) -> Self {
+        self.older_nodes = versions
+            .iter()
+            .filter(|(_, version)| !knows_steps_since(version, client, PULL_STEP_SINCE))
+            .cloned()
+            .collect();
+        self.pull_first = self.older_nodes.is_empty() && !self.stages.is_empty();
+        self
     }
 
     /// Takes in what the nodes say ran once: those jobs are not started

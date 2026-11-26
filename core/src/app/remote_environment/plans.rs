@@ -585,6 +585,18 @@ fn cluster_rollout(nodes: &[NodeDeploymentPlan]) -> ClusterRollout {
             .collect::<Vec<_>>(),
     )
     .knowing_ran_once(nodes.iter().flat_map(|node| node.plan.once.clone()))
+    .for_daemons(
+        &nodes
+            .iter()
+            .map(|node| {
+                (
+                    node.node.clone().unwrap_or_default(),
+                    node.plan.binding.daemon_version.clone(),
+                )
+            })
+            .collect::<Vec<_>>(),
+        env!("CARGO_PKG_VERSION"),
+    )
 }
 
 /// Applies each node's section in declared order and stops at the first

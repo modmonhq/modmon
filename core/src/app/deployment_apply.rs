@@ -35,6 +35,7 @@ mod moves;
 mod mutation;
 mod preflight;
 mod prepared;
+mod pull;
 mod rollback;
 mod rollout;
 mod scaling;

@@ -24,6 +24,7 @@ mod progress;
 pub use progress::{
     NoProgress, ProgressReporter, on_node as progress_on_node, step as progress_step,
 };
+mod bundles;
 mod readiness;
 mod release;
 mod remote;
@@ -49,6 +50,7 @@ pub use build::{
     BuildOperationGuard, BuildSourceInspector, BuildVariantRequest, ImageBuilder,
     UpstreamBuildContext,
 };
+pub use bundles::{CommitBundles, PreparedBundle};
 pub use ca::{LocalCaStore, TrustStore};
 pub use cluster::{ClusterNodeCommand, ClusterNodeConnection, ClusterNodeShell, ClusterScript};
 pub use cluster_network::ClusterNetworkHost;
@@ -81,9 +83,7 @@ pub use readiness::{ReadinessProbe, StateInspector, StateRecoveryStore};
 pub use release::{
     DownloadedFile, InstallationFiles, ReleaseCache, ReleaseFiles, ReleaseManifestClient,
 };
-pub use remote::{
-    CommitBundles, PreparedBundle, RemoteRequestContext, RemoteTransport, RemoteUseCases,
-};
+pub use remote::{RemoteRequestContext, RemoteTransport, RemoteUseCases};
 pub use runtime::{
     IngressVerifier, LocalDeploymentRuntime, OwnedVolumeFile, PrivilegedIngressInstaller,
     RootlessIngressInstaller, RuntimeDriver, VolumeOwnership,

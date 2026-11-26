@@ -101,6 +101,18 @@ pub trait RemoteUseCases: Send + Sync {
         })
     }
 
+    /// Pulls the images `plan` (this host's reviewed part of a rollout)
+    /// runs, before the rollout begins here. No container changes.
+    async fn pull_planned(
+        &self,
+        _context: &RemoteRequestContext,
+        _plan: &crate::domain::deployment::DeploymentPlan,
+    ) -> Result<(), MmError> {
+        Err(MmError::Environment {
+            message: "this daemon does not pull a rollout's images ahead".to_owned(),
+        })
+    }
+
     /// Opens the reviewed plan's deployment and prepares the host for its
     /// stacks, without changing a workload.
     async fn begin_rollout(
@@ -454,25 +466,6 @@ pub trait RemoteUseCases: Send + Sync {
     ) -> Result<Vec<JobRun>, MmError> {
         Ok(Vec::new())
     }
-}
-
-/// One commit's bundle on this machine, ready to send to hosts that take
-/// the project's files from the client.
-#[derive(Clone)]
-pub struct PreparedBundle {
-    pub offer: crate::domain::delivery::BundleOffer,
-    pub files: u64,
-    /// The bundle's file; `None` when this checkout does not hold the
-    /// commit, so there is nothing to send.
-    pub path: Option<std::path::PathBuf>,
-    /// Keeps the file until the last copy of this is dropped.
-    pub keep: Option<std::sync::Arc<dyn std::any::Any + Send + Sync>>,
-}
-
-/// Builds the bundle of a commit from the checkout mm runs in.
-#[async_trait]
-pub trait CommitBundles: Send + Sync {
-    async fn bundle(&self, commit: &str) -> Result<PreparedBundle, MmError>;
 }
 
 #[async_trait]

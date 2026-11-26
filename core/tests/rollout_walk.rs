@@ -48,6 +48,8 @@ struct Script {
     busy: bool,
     /// The node cannot reach the storage node.
     cut_off_from_storage: bool,
+    /// The node cannot pull an image.
+    cannot_pull: bool,
     cannot_roll_back: bool,
     /// The address the node's new container gets.
     address: Option<Ipv4Addr>,
@@ -145,6 +147,11 @@ impl RemoteTransport for Node {
                     Vec::new()
                 },
             }),
+            RolloutStep::Pull if script.cannot_pull => Err(MmError::Remote {
+                code: "MM_RUNTIME_LAUNCH",
+                message: "could not pull image web:2: unauthorized".to_owned(),
+            }),
+            RolloutStep::Pull => Ok(RolloutAnswer::Pulled),
             RolloutStep::Release => Ok(RolloutAnswer::Released),
             RolloutStep::Begin if script.store_down.is_some() => Err(MmError::Remote {
                 code: "MM_SECRET_STORE_UNAVAILABLE",
@@ -494,6 +501,15 @@ impl Cluster {
         stages: Vec<RolloutStage>,
         storage: Option<mm::domain::shared_storage::SealedStorage>,
     ) -> Result<String, String> {
+        self.sealed(stages, storage, false)
+    }
+
+    fn sealed(
+        &self,
+        stages: Vec<RolloutStage>,
+        storage: Option<mm::domain::shared_storage::SealedStorage>,
+        pull_first: bool,
+    ) -> Result<String, String> {
         let seal = ClusterPlanSeal::new(
             RemotePlanKind::Deployment,
             &scope(None),
@@ -515,6 +531,8 @@ impl Cluster {
                     stages,
                     ran_once: Default::default(),
                     once: Vec::new(),
+                    pull_first,
+                    older_nodes: Vec::new(),
                 }),
                 storage,
                 ingress: None,
@@ -1619,4 +1637,93 @@ async fn a_node_where_a_start_first_service_does_not_change_says_nothing_of_it()
     );
     assert!(said.iter().any(|line| line == "app-2: app"), "{said:?}");
     Ok(())
+}
+
+#[tokio::test]
+async fn every_node_pulls_its_images_before_any_node_is_replaced() -> TestResult {
+    let cluster = cluster()?;
+    let hash = cluster.sealed(
+        vec![
+            stage("app", &[&["app-1"], &["app-2"]]),
+            stage("db", &[&["db-1"]]),
+        ],
+        None,
+        true,
+    )?;
+    let report = cluster.environment.apply_deployment(&hash, &|_| {}).await?;
+    assert!(report.succeeded());
+    let steps = cluster.steps();
+    let first_begin = steps
+        .iter()
+        .position(|step| step.ends_with(":begin"))
+        .ok_or("no node began")?;
+    for node in NODES {
+        let pulled = steps
+            .iter()
+            .position(|step| *step == format!("{node}:pull"))
+            .ok_or_else(|| format!("{node} pulled nothing: {steps:?}"))?;
+        assert!(pulled < first_begin, "{steps:?}");
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_node_that_cannot_pull_stops_the_rollout_before_anything_changed() -> TestResult {
+    let cluster = cluster()?;
+    locked(&cluster.nodes[2].script).cannot_pull = true;
+    let hash = cluster.sealed(vec![stage("app", &[&["app-1"], &["app-2"]])], None, true)?;
+    let Err(error) = cluster.environment.apply_deployment(&hash, &|_| {}).await else {
+        return Err("a node that cannot pull refuses the rollout".into());
+    };
+    let text = error.to_string();
+    assert!(
+        text.contains("db-1") && text.contains("unauthorized"),
+        "{text}"
+    );
+    let steps = cluster.steps();
+    assert!(
+        !steps.iter().any(|step| step.ends_with(":begin")),
+        "{steps:?}"
+    );
+    for node in NODES {
+        assert!(steps.contains(&format!("{node}:release")), "{steps:?}");
+    }
+    Ok(())
+}
+
+#[test]
+fn the_newer_steps_are_planned_only_when_every_node_knows_them() {
+    use mm::domain::rollout::{PULL_STEP_SINCE, knows_steps_since};
+
+    assert!(knows_steps_since("0.1.3", "0.1.3", PULL_STEP_SINCE));
+    assert!(knows_steps_since("0.2.0", "0.1.3", PULL_STEP_SINCE));
+    assert!(!knows_steps_since("0.1.2", "0.1.3", PULL_STEP_SINCE));
+    assert!(
+        knows_steps_since("0.1.2", "0.1.2", PULL_STEP_SINCE),
+        "a build of this release"
+    );
+    assert!(!knows_steps_since("", "0.1.3", PULL_STEP_SINCE));
+
+    let rollout = ClusterRollout {
+        stages: vec![stage("app", &[&["app-1"]])],
+        ..ClusterRollout::default()
+    };
+    let new = rollout.clone().for_daemons(
+        &[
+            ("app-1".to_owned(), "0.1.3".to_owned()),
+            ("db-1".to_owned(), "0.1.4".to_owned()),
+        ],
+        "0.1.3",
+    );
+    assert!(new.pull_first);
+    assert!(new.older_nodes.is_empty());
+    let mixed = rollout.for_daemons(
+        &[
+            ("app-1".to_owned(), "0.1.3".to_owned()),
+            ("db-1".to_owned(), "0.1.2".to_owned()),
+        ],
+        "0.1.3",
+    );
+    assert!(!mixed.pull_first);
+    assert_eq!(mixed.older_nodes, [("db-1".to_owned(), "0.1.2".to_owned())]);
 }

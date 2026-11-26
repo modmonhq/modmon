@@ -42,6 +42,16 @@ pub(crate) fn plan_lines(plan: &ClusterDeploymentPlan) -> Vec<String> {
         lines.push(format!(
             "{label}on failure every node this deployment changed returns to what it ran before"
         ));
+        if rollout.pull_first {
+            lines.push(format!(
+                "{label}every node pulls the images it runs before any node is replaced"
+            ));
+        }
+        for (node, version) in &rollout.older_nodes {
+            lines.push(format!(
+                "{label}node '{node}' runs mmd {version}: images are pulled stack by stack until `mm target setup plan --upgrade` brings it up to date"
+            ));
+        }
         for stage in &rollout.stages {
             if !stage.start_first.is_empty() {
                 lines.push(format!(

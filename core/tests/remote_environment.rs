@@ -268,6 +268,7 @@ impl RemoteTransport for FakeNode {
                 created: Vec::new(),
             },
             RolloutStep::Release => RolloutAnswer::Released,
+            RolloutStep::Pull => RolloutAnswer::Pulled,
             RolloutStep::Rollback => RolloutAnswer::RolledBack,
             RolloutStep::Begin => {
                 if self.fail_apply.load(Ordering::SeqCst) {

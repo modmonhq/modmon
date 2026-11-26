@@ -67,6 +67,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   secrets, the image its tag names on the node, healthy, and as many as the
   node runs. Nothing is stopped, started or waited for. Docker hosts only; a
   Podman host applies every stack as before.
+- A cluster deploy has every node pull the images it runs, all nodes at the
+  same time, before any node is replaced; a pull that fails stops the deploy
+  with nothing changed. Nodes whose `mmd` is older than the client's release
+  keep pulling stack by stack, and the plan names them until
+  `mm target setup plan --upgrade` brings them up to date.
 
 ### Fixed
 

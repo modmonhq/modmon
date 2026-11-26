@@ -125,6 +125,7 @@ impl RemoteDaemon {
                 self.holder(context, hash)?;
                 self.ready_storage(context, hash, timeout, pass).await?
             }
+            RolloutStep::Pull => self.pull_rollout(context, hash, timeout, passed()?).await?,
             RolloutStep::Begin => {
                 let authorization = plan_authorization.ok_or_else(|| MmError::State {
                     message: "the rollout's plan authorization was not checked".to_owned(),

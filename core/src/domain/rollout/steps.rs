@@ -34,6 +34,10 @@ pub enum RolloutStep {
     /// nothing, and every node before any container changes, so no node
     /// mounts a directory that is not there. Nothing is ever removed.
     Storage,
+    /// Pulls every image the host's part of the plan runs, before any node
+    /// is replaced. No container changes. Sent only to hosts whose `mmd`
+    /// knows it (`ClusterRollout::pull_first`).
+    Pull,
     /// Claims the host's section of the plan and prepares it: access,
     /// network addresses, networks, and volumes. No container changes.
     Begin,
@@ -69,6 +73,7 @@ impl RolloutStep {
             Self::Hold => "hold",
             Self::Networks => "networks",
             Self::Storage => "storage",
+            Self::Pull => "pull",
             Self::Begin => "begin",
             Self::Start { .. } => "start",
             Self::Apply { .. } => "apply",
@@ -284,6 +289,8 @@ pub enum RolloutAnswer {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         created: Vec<String>,
     },
+    /// The images of the host's part of the plan are on the host.
+    Pulled,
     Begun,
     Started {
         /// The services whose new containers now run next to the old ones.

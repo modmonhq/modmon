@@ -43,6 +43,8 @@ type Outcome = NodeApplyOutcome<DeploymentResult>;
 
 #[path = "rollout_jobs.rs"]
 mod jobs;
+#[path = "rollout_pull.rs"]
+mod pull;
 
 /// Why the rollout stopped at one node.
 struct Fault {
@@ -94,6 +96,9 @@ impl RemoteEnvironment {
         if let Some(storage) = storage {
             self.ready_storage(plan_hash, nodes, storage, progress)
                 .await?;
+        }
+        if rollout.pull_first {
+            self.pull_all(plan_hash, nodes, rollout, progress).await?;
         }
         let mut walk = Walk {
             environment: self,
