@@ -455,6 +455,7 @@ impl DeploymentService {
         if expected.is_empty() {
             return Ok(Vec::new());
         }
+        let _phase = crate::app::timing::phase_of("stack.resolve", &stack);
         let waited = tokio::time::Instant::now();
         loop {
             let report = names.report(&key(""));

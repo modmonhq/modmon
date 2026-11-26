@@ -14,6 +14,12 @@ impl Walk<'_> {
                 .iter()
                 .filter_map(|index| rollout.stages.get(*index))
                 .collect::<Vec<_>>();
+            let names = stages
+                .iter()
+                .map(|stage| stage.stack.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let _phase = crate::app::timing::phase_of("rollout.wave", &names);
             let fault = match stages.as_slice() {
                 [stage] => self.stage(stage).await,
                 _ => self.shared_wave(&stages).await,

@@ -84,6 +84,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   one batch of nodes still rolls out alone. The plan lists the stacks that go
   side by side. With a node whose `mmd` does not know the new steps, stacks
   roll out one at a time, and the plan says so.
+- With `MM_TIMING=1`, `mm deploy apply` on a cluster shows how long the
+  networks, storage, pull, each wave of stacks, each node step and the finish
+  took, and `mmd` shows each stack's leave, start, health wait and resolve.
+  `scripts/live-timing.sh --deploy` times a changed and an unchanged deploy
+  against a budget, with `examples/cluster-heavy` as the load.
 - On Docker Engine 25 and later, mm's generated Compose overlay gives each
   service with a health check `start_interval: 1s`, and a `start_period` of
   `interval` times `retries` when the service sets none, so a deploy sees a

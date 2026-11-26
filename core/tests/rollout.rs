@@ -1173,3 +1173,55 @@ fn stages_go_in_waves_by_the_layers_of_after_and_alone_when_they_cannot_share() 
         .unwrap_or_default();
     assert!(missing.contains("leave out stack 'worker'"), "{missing}");
 }
+
+#[test]
+fn the_heavy_cluster_example_rolls_out_in_layers() -> TestResult {
+    use mm::domain::rollout::{RolloutStage, StageJob, waves_of};
+
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../examples/cluster-heavy/.config/mm.yaml");
+    let config: MmConfig = serde_yaml_ng::from_str(&std::fs::read_to_string(path)?)?;
+    let policy = RolloutPolicy::from_config(&config, "production")?;
+    assert_eq!(policy.stack_order.len(), 10);
+    let stages = policy
+        .stack_order
+        .iter()
+        .map(|stack| RolloutStage {
+            stack: stack.clone(),
+            batches: vec![vec!["n1".to_owned(), "n2".to_owned(), "n3".to_owned()]],
+            start_first: Vec::new(),
+            pause_on_failure: Vec::new(),
+            jobs: if stack == "api" {
+                vec![StageJob {
+                    job: "migrate".to_owned(),
+                    node: "n1".to_owned(),
+                    timeout_seconds: 120,
+                }]
+            } else {
+                Vec::new()
+            },
+            ahead: Vec::new(),
+        })
+        .collect::<Vec<_>>();
+    let after = config
+        .stacks
+        .iter()
+        .map(|(name, stack)| (name.clone(), stack.after.iter().cloned().collect()))
+        .collect();
+    let names = |wave: &Vec<usize>| {
+        wave.iter()
+            .map(|index| stages[*index].stack.as_str())
+            .collect::<Vec<_>>()
+    };
+    let waves = waves_of(&stages, &after);
+    assert_eq!(
+        waves.iter().map(names).collect::<Vec<_>>(),
+        [
+            vec!["cache", "data", "queue"],
+            vec!["api"],
+            vec!["auth", "files", "search"],
+            vec!["admin", "web", "worker"],
+        ]
+    );
+    Ok(())
+}

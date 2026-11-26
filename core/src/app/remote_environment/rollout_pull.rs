@@ -14,6 +14,7 @@ impl RemoteEnvironment {
         rollout: &ClusterRollout,
         progress: NodeProgress<'_>,
     ) -> Result<(), MmError> {
+        let _phase = crate::app::timing::phase("rollout.pull");
         let patience = rollout.pull_timeout().saturating_add(SETUP_PATIENCE);
         let pulled = join_all(nodes.iter().map(|node| {
             self.with_heartbeat(

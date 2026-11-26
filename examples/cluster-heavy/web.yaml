@@ -1,0 +1,32 @@
+services:
+  web-1:
+    image: nginx:1.27-alpine
+    healthcheck:
+      test: [CMD-SHELL, 'wget -q -O /dev/null http://127.0.0.1/ || exit 1']
+      interval: 30s
+  web-2:
+    image: nginx:1.27-alpine
+    healthcheck:
+      test: [CMD-SHELL, 'wget -q -O /dev/null http://127.0.0.1/ || exit 1']
+      interval: 30s
+  web-3:
+    image: nginx:1.27-alpine
+    healthcheck:
+      test: [CMD-SHELL, 'wget -q -O /dev/null http://127.0.0.1/ || exit 1']
+      interval: 30s
+  web-4:
+    image: nginx:1.27-alpine
+    healthcheck:
+      test: [CMD-SHELL, 'wget -q -O /dev/null http://127.0.0.1/ || exit 1']
+      interval: 30s
+  web-5:
+    image: nginx:1.27-alpine
+    healthcheck:
+      test: [CMD-SHELL, 'wget -q -O /dev/null http://127.0.0.1/ || exit 1']
+      interval: 30s
+  web-6:
+    image: nginx:1.27-alpine
+    healthcheck:
+      test: [CMD-SHELL, 'wget -q -O /dev/null http://127.0.0.1/ || exit 1']
+      interval: 30s
+    ports: ['18008:80']

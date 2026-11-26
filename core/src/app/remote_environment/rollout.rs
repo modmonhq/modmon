@@ -193,6 +193,7 @@ impl RemoteEnvironment {
         nodes: &[&RemoteNode],
         progress: NodeProgress<'_>,
     ) -> Result<(), MmError> {
+        let _phase = crate::app::timing::phase("rollout.networks");
         let stored = join_all(nodes.iter().map(|node| {
             self.with_heartbeat(
                 Watched {
@@ -235,6 +236,7 @@ impl RemoteEnvironment {
         storage: &SealedStorage,
         progress: NodeProgress<'_>,
     ) -> Result<(), MmError> {
+        let _phase = crate::app::timing::phase("rollout.storage");
         let is_storage = |node: &&&RemoteNode| node.name.as_deref() == Some(storage.node.as_str());
         let mounting = nodes
             .iter()
@@ -401,6 +403,8 @@ impl Walk<'_> {
             RolloutStep::Rollback => "rolling back".to_owned(),
             other => other.name().to_owned(),
         };
+        let detail = format!("{}: {label}", self.name(index));
+        let _phase = crate::app::timing::phase_of("rollout.step", &detail);
         let watched = Watched {
             node,
             step: &label,
@@ -642,6 +646,7 @@ impl Walk<'_> {
     /// longer runs and records the deployment. A node whose finish fails
     /// undoes its own part; the others may have finished already.
     async fn finish(&mut self, outcomes: &mut [Outcome]) -> Option<Fault> {
+        let _phase = crate::app::timing::phase("rollout.finish");
         let fault = |index: usize, text: String, undone: bool| Fault {
             index,
             stack: None,

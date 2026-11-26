@@ -8,6 +8,7 @@ same setup works with different frameworks.
 | [Node full stack](./node-fullstack) | Frontend, API, MongoDB, and development email |
 | [.NET web API](./dotnet-web-api) | ASP.NET Core with live reload, PostgreSQL, and development email |
 | [Laravel + Rust](./laravel-rust) | Laravel web and queue, a Rust API, PostgreSQL, Valkey, and scheduled jobs |
+| [Cluster heavy](./cluster-heavy) | Ten stacks of `nginx` on a three-node cluster, for timing deploys |
 
 ## Before running
 

@@ -194,6 +194,7 @@ impl DeploymentService {
             self.awaited_services(plan, stack).as_deref(),
         )
         .await?;
+        let leaving = crate::app::timing::phase_of("stack.leave", &stack.stack);
         let start_first = plan.rollout.start_first(&stack.stack);
         let draining = if start_first.is_empty() {
             Vec::new()
@@ -203,6 +204,8 @@ impl DeploymentService {
         };
         self.retire_outdated(plan, &runtime_target, stack, &start_first)
             .await?;
+        drop(leaving);
+        let up = crate::app::timing::phase_of("stack.up", &stack.stack);
         // A cluster node removes what left it itself (`moves.rs`), so a
         // service that moved keeps running while it starts elsewhere. It
         // runs its share of each scaled service.
@@ -218,6 +221,8 @@ impl DeploymentService {
         }
         self.remove_job_only_containers(plan, &runtime_target)
             .await?;
+        drop(up);
+        let _health = crate::app::timing::phase_of("stack.health", &stack.stack);
         match self.awaited_services(plan, stack) {
             // The node runs none of the stack's services now.
             Some(awaited) if awaited.is_empty() => Ok(None),

@@ -182,7 +182,13 @@ terminal UI reads after its first frame. The terminal UI draws on the
 terminal, so send the trace to a file: `MM_TIMING=1 mm 2>timing.log`. `mmd`
 prints the same for each request it serves when `MM_TIMING=1` is in its
 environment; a systemd drop-in with `Environment=MM_TIMING=1` puts it in the
-journal. To add a phase, hold `crate::app::timing::phase("name")` for as long
+journal. A cluster deploy (`mm deploy apply`) adds `rollout.networks`,
+`rollout.storage`, `rollout.pull`, one `rollout.wave` per group of stacks that
+roll out together, one `rollout.step` per step on a node (node and step in the
+detail), and `rollout.finish`; on the node, `mmd` adds `stack.leave`,
+`stack.up`, `stack.health` and `stack.resolve` for each stack it applies.
+`scripts/live-timing.sh --deploy` times whole deploys against a budget. To
+add a phase, hold `crate::app::timing::phase("name")` for as long
 as it lasts; a phase costs nothing while the trace is off.
 
 `scripts/time-terminal-ui.py` starts the terminal UI on a pseudo-terminal and
