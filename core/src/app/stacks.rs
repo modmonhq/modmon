@@ -161,6 +161,8 @@ pub(crate) struct DeploymentStackCompilation {
     pub placement: PlacementNotes,
     /// How the stacks roll out, as the configuration says.
     pub rollout: crate::domain::rollout::RolloutPolicy,
+    /// The stacks each stack follows through `after:`.
+    pub stack_after: BTreeMap<String, std::collections::BTreeSet<String>>,
     /// The release the deployment runs, with the images resolved here.
     pub release: Option<crate::domain::release_facts::ReleaseFacts>,
     /// Keys the configuration and its middleware files set that this
@@ -359,6 +361,7 @@ impl StackManager {
             excluded_services: environment_excluded_services(&document, &environment),
             placement,
             rollout: deploy_policy::rollout_policy(&document, &environment)?,
+            stack_after: deploy_policy::stack_after(&document),
             project_id: document.config.project.id,
             project_name: document.config.project.name,
             environment,

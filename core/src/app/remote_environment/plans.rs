@@ -601,6 +601,11 @@ fn cluster_rollout(nodes: &[NodeDeploymentPlan]) -> ClusterRollout {
             })
             .collect::<Vec<_>>(),
         env!("CARGO_PKG_VERSION"),
+        &nodes
+            .iter()
+            .filter_map(|node| node.plan.plan.as_ref())
+            .flat_map(|plan| plan.stack_after.clone())
+            .collect(),
     )
 }
 

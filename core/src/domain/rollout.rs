@@ -41,6 +41,9 @@ pub use auto_order::{HostTies, starts_first_by_default};
 #[path = "rollout/unchanged.rs"]
 mod unchanged;
 pub use unchanged::{RunningContainer, WantedService, service_images, stack_unchanged};
+#[path = "rollout/waves.rs"]
+mod waves;
+pub use waves::{STACKS_AT_ONCE, check_waves, shares_a_wave, waves_of};
 #[path = "rollout/versions.rs"]
 mod versions;
 pub use versions::{PULL_STEP_SINCE, knows_steps_since};
@@ -49,7 +52,7 @@ mod steps;
 pub use steps::{
     DEFAULT_FAILURE_LOG_LINES, FAILURE_LINE_CHARS, FAILURE_LOG_BYTES, FAILURE_SUMMARY_LINES,
     LOCK_LEASE_MS, LOCK_RENEW_MS, MAX_FAILURE_LOG_LINES, RolloutAnswer, RolloutChanges,
-    RolloutStep, StepFailure, failure_log_summary, kept_failure_log, unhealthy_code,
+    RolloutStep, StackRolled, StepFailure, failure_log_summary, kept_failure_log, unhealthy_code,
 };
 
 /// What a job that did not succeed in a rollout tells the client: the
@@ -465,6 +468,11 @@ pub struct ClusterRollout {
     /// Only when every node's `mmd` knows the `pull` step.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pull_first: bool,
+    /// The stages in waves (indices into `stages`): the stages of a wave
+    /// roll out side by side. Empty when every stage rolls out alone, and
+    /// unless every node's `mmd` knows the `stacks` step.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub waves: Vec<Vec<usize>>,
     /// The nodes whose `mmd` is too old for the newer steps, with its
     /// release, for the plan to say so. Not part of the plan.
     #[serde(skip)]
@@ -637,6 +645,7 @@ impl ClusterRollout {
             ran_once: BTreeMap::new(),
             once: placed_jobs(nodes.iter(), |job| job.run == JobWhen::Once),
             pull_first: false,
+            waves: Vec::new(),
             older_nodes: Vec::new(),
         }
     }
@@ -648,15 +657,27 @@ impl ClusterRollout {
 
     /// Plans the newer steps when the `mmd` of every node of `versions`
     /// (node, release) knows them, and otherwise notes the nodes that do
-    /// not. `client` is this client's release.
+    /// not. `client` is this client's release; `after` maps a stack to the
+    /// stacks it follows.
     #[must_use]
-    pub fn for_daemons(mut self, versions: &[(String, String)], client: &str) -> Self {
+    pub fn for_daemons(
+        mut self,
+        versions: &[(String, String)],
+        client: &str,
+        after: &BTreeMap<String, BTreeSet<String>>,
+    ) -> Self {
         self.older_nodes = versions
             .iter()
             .filter(|(_, version)| !knows_steps_since(version, client, PULL_STEP_SINCE))
             .cloned()
             .collect();
-        self.pull_first = self.older_nodes.is_empty() && !self.stages.is_empty();
+        let newer = self.older_nodes.is_empty();
+        self.pull_first = newer && !self.stages.is_empty();
+        self.waves = if newer {
+            waves_of(&self.stages, after)
+        } else {
+            Vec::new()
+        };
         self
     }
 

@@ -139,6 +139,19 @@ pub trait RemoteUseCases: Send + Sync {
         })
     }
 
+    /// `Start` then `Apply` for each of `stacks` of the deployment
+    /// `begin_rollout` opened, side by side.
+    async fn roll_stacks(
+        &self,
+        _context: &RemoteRequestContext,
+        _deployment_plan_hash: &str,
+        _stacks: &[String],
+    ) -> Result<Vec<(String, crate::app::StackOutcome)>, MmError> {
+        Err(MmError::Environment {
+            message: "this daemon does not roll stacks out side by side".to_owned(),
+        })
+    }
+
     /// Runs job `job` of `stack` for the deployment `begin_rollout` opened,
     /// to its end.
     async fn roll_job(

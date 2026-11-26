@@ -42,6 +42,18 @@ pub(crate) fn plan_lines(plan: &ClusterDeploymentPlan) -> Vec<String> {
         lines.push(format!(
             "{label}on failure every node this deployment changed returns to what it ran before"
         ));
+        for wave in rollout.waves.iter().filter(|wave| wave.len() > 1) {
+            let stacks = wave
+                .iter()
+                .filter_map(|index| rollout.stages.get(*index))
+                .map(|stage| stage.stack.as_str())
+                .collect::<Vec<_>>();
+            lines.push(format!(
+                "{label}side by side, each node up to {} at once: {}",
+                crate::domain::rollout::STACKS_AT_ONCE,
+                stacks.join(", ")
+            ));
+        }
         if rollout.pull_first {
             lines.push(format!(
                 "{label}every node pulls the images it runs before any node is replaced"
@@ -49,7 +61,7 @@ pub(crate) fn plan_lines(plan: &ClusterDeploymentPlan) -> Vec<String> {
         }
         for (node, version) in &rollout.older_nodes {
             lines.push(format!(
-                "{label}node '{node}' runs mmd {version}: images are pulled stack by stack until `mm target setup plan --upgrade` brings it up to date"
+                "{label}node '{node}' runs mmd {version}: images are pulled stack by stack and stacks roll out one at a time until `mm target setup plan --upgrade` brings it up to date"
             ));
         }
         for stage in &rollout.stages {

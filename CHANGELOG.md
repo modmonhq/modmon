@@ -76,6 +76,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   replaced on all its nodes at once when no service sets `update.parallelism`;
   otherwise it still goes one node at a time. An `update.parallelism` a
   service sets keeps applying.
+- Stacks that `after:` does not order roll out side by side in a cluster
+  deploy: each node rolls out up to four of them at once in one step, and the
+  next layer of `after:` starts once every node resolves what they started. A
+  stack with `before-deploy` jobs, services that pause on failure, or more than
+  one batch of nodes still rolls out alone. The plan lists the stacks that go
+  side by side. Nodes whose `mmd` is older than the client's release roll
+  stacks out one at a time, and the plan says so.
 
 ### Fixed
 

@@ -45,6 +45,9 @@ type Outcome = NodeApplyOutcome<DeploymentResult>;
 mod jobs;
 #[path = "rollout_pull.rs"]
 mod pull;
+#[path = "rollout_waves.rs"]
+mod waves;
+use waves::clone_error;
 
 /// Why the rollout stopped at one node.
 struct Fault {
@@ -344,40 +347,6 @@ async fn still_here(nodes: &[&RemoteNode], plan_hash: &str) -> std::convert::Inf
     }
 }
 
-/// An error to hand on when the original is only borrowed.
-fn clone_error(error: &MmError) -> MmError {
-    match error {
-        MmError::Remote { code, message } => MmError::Remote {
-            code,
-            message: message.clone(),
-        },
-        MmError::Unreachable {
-            subject,
-            problem,
-            help,
-        } => MmError::Unreachable {
-            subject: subject.clone(),
-            problem: problem.clone(),
-            help: help.clone(),
-        },
-        MmError::Security { message } => MmError::Security {
-            message: message.clone(),
-        },
-        MmError::Timeout { message } => MmError::Timeout {
-            message: message.clone(),
-        },
-        MmError::Cancelled { message } => MmError::Cancelled {
-            message: message.clone(),
-        },
-        MmError::Launch { message } => MmError::Launch {
-            message: message.clone(),
-        },
-        other => MmError::Environment {
-            message: other.to_string(),
-        },
-    }
-}
-
 fn outcome(node: &str, state: NodeApplyState) -> Outcome {
     NodeApplyOutcome {
         node: node.to_owned(),
@@ -457,38 +426,50 @@ impl Walk<'_> {
         outcomes
     }
 
-    /// Every stage in order; returns where the rollout stopped, if it did.
+    /// Every stage in order, or wave by wave; returns where the rollout
+    /// stopped, if it did.
     async fn stages(&mut self) -> Option<Fault> {
         let rollout = self.rollout;
+        if !rollout.waves.is_empty() {
+            return self.waves().await;
+        }
         for stage in &rollout.stages {
-            if let Some(fault) = self.stage_jobs(stage).await {
+            if let Some(fault) = self.stage(stage).await {
                 return Some(fault);
             }
-            for batch in &stage.batches {
-                let indices = batch
-                    .iter()
-                    .filter_map(|name| {
-                        self.nodes
-                            .iter()
-                            .position(|node| node.name.as_deref() == Some(name.as_str()))
-                    })
-                    .collect::<Vec<_>>();
-                let steps = join_all(
-                    indices
+        }
+        None
+    }
+
+    /// One stage: its jobs, then its batches of nodes, one after the other.
+    async fn stage(&mut self, stage: &RolloutStage) -> Option<Fault> {
+        if let Some(fault) = self.stage_jobs(stage).await {
+            return Some(fault);
+        }
+        for batch in &stage.batches {
+            let indices = batch
+                .iter()
+                .filter_map(|name| {
+                    self.nodes
                         .iter()
-                        .map(|index| self.roll_node(stage, *index, self.begun.contains(index))),
-                )
-                .await;
-                let mut fault = None;
-                for step in steps {
-                    if step.began && !self.begun.contains(&step.index) {
-                        self.begun.push(step.index);
-                    }
-                    fault = fault.or(step.fault);
+                        .position(|node| node.name.as_deref() == Some(name.as_str()))
+                })
+                .collect::<Vec<_>>();
+            let steps = join_all(
+                indices
+                    .iter()
+                    .map(|index| self.roll_node(stage, *index, self.begun.contains(index))),
+            )
+            .await;
+            let mut fault = None;
+            for step in steps {
+                if step.began && !self.begun.contains(&step.index) {
+                    self.begun.push(step.index);
                 }
-                if fault.is_some() {
-                    return fault;
-                }
+                fault = fault.or(step.fault);
+            }
+            if fault.is_some() {
+                return fault;
             }
         }
         None

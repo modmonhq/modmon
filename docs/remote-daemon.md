@@ -1403,6 +1403,16 @@ stack instead, and the plan names it with a line such as `node 'db-1' runs mmd
 0.1.2: images are pulled stack by stack until mm target setup plan --upgrade
 brings it up to date`.
 
+Stacks that `after:` does not order roll out side by side: the stacks of one
+layer of `after:` go together, each node rolling out up to four of its stacks
+at once, and the next layer starts once every node resolves what they started.
+A stack with `before-deploy` jobs, a service with `update.failure: pause`, or
+more than one batch of nodes rolls out alone, in its turn. The plan lists the
+stacks that go together, as in `side by side, each node up to 4 at once: api,
+cache, web`. When a node's `mmd` is older than your `mm`, every stack rolls
+out alone until `mm target setup plan --upgrade` brings it up to date, and the
+plan names that node.
+
 A stack that did not change is left alone: when every container of it on a
 node already runs what the deployment would start (the same Compose
 configuration, environment and secrets, the image its tag names on the node,

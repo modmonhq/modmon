@@ -51,6 +51,10 @@ pub enum RolloutStep {
     /// stack's `before-deploy` jobs' services depend on, and waits until
     /// they are healthy. The rest of the stack waits for the jobs.
     Ahead { stack: String },
+    /// `Start` then `Apply` for each of `stacks`, side by side on this
+    /// host. Sent only to hosts whose `mmd` knows it
+    /// (`ClusterRollout::waves`).
+    Stacks { stacks: Vec<String> },
     /// Runs job `job` of `stack` to its end, in a fresh container with
     /// what the deployment gives the job's service, before the stack's
     /// service is started or replaced on any node. No container of a
@@ -78,6 +82,7 @@ impl RolloutStep {
             Self::Start { .. } => "start",
             Self::Apply { .. } => "apply",
             Self::Job { .. } => "job",
+            Self::Stacks { .. } => "stacks",
             Self::Ahead { .. } => "ahead",
             Self::Finish => "finish",
             Self::Rollback => "rollback",
@@ -149,6 +154,20 @@ impl RolloutChanges {
         }
         begun
     }
+}
+
+/// What a `Stacks` step did with one stack on a host.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct StackRolled {
+    pub stack: String,
+    /// The addresses of the stack's containers on this host, on the
+    /// networks that span the cluster.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub addresses: Vec<Ipv4Addr>,
+    /// Why the stack is not healthy here; the host is left as it is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure: Option<StepFailure>,
 }
 
 /// Why a stack did not become healthy on a host.
@@ -306,6 +325,8 @@ pub enum RolloutAnswer {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         addresses: Vec<Ipv4Addr>,
     },
+    /// What a `Stacks` step did with each stack, in the order asked.
+    StacksRolled(Vec<StackRolled>),
     /// The job of a `Job` step ran and succeeded.
     JobRan(Box<crate::domain::scheduler::JobRun>),
     /// The stack did not become healthy, or a job failed. The host is left

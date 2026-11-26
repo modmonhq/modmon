@@ -420,6 +420,7 @@ impl DeploymentManager {
             registries: BTreeMap::new(),
             node: None,
             rollout: compiled.rollout,
+            stack_after: compiled.stack_after,
             config_files: compiled.placement.config_files,
             runtime_changes: Vec::new(),
             unknown_config_keys: compiled.unknown_keys,

@@ -1080,3 +1080,96 @@ fn every_node_of_a_stack_rolls_together_when_its_shared_services_start_first() -
     );
     Ok(())
 }
+
+#[test]
+fn stages_go_in_waves_by_the_layers_of_after_and_alone_when_they_cannot_share() {
+    use mm::domain::rollout::{RolloutStage, StageJob, check_waves, waves_of};
+    use std::collections::{BTreeMap, BTreeSet};
+
+    let stage = |stack: &str, batches: &[&[&str]]| RolloutStage {
+        stack: stack.to_owned(),
+        batches: batches
+            .iter()
+            .map(|batch| batch.iter().map(|node| (*node).to_owned()).collect())
+            .collect(),
+        start_first: Vec::new(),
+        pause_on_failure: Vec::new(),
+        jobs: Vec::new(),
+        ahead: Vec::new(),
+    };
+    let after = |pairs: &[(&str, &[&str])]| {
+        pairs
+            .iter()
+            .map(|(stack, earlier)| {
+                (
+                    (*stack).to_owned(),
+                    earlier
+                        .iter()
+                        .map(|name| (*name).to_owned())
+                        .collect::<BTreeSet<_>>(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>()
+    };
+    let one = &[&["a", "b"][..]][..];
+    // The stages in the order the plan rolls them out: db first, then the
+    // stacks that follow it, by name.
+    let stages = vec![
+        stage("cache", one),
+        stage("db", one),
+        stage("api", one),
+        stage("web", one),
+        stage("worker", &[&["a"], &["b"]]),
+    ];
+    let order = after(&[("api", &["db"]), ("web", &["api"]), ("worker", &["db"])]);
+    let waves = waves_of(&stages, &order);
+    assert_eq!(
+        waves,
+        [vec![0, 1], vec![2], vec![4], vec![3]],
+        "cache and db side by side; api once db is done; worker has two batches, so alone"
+    );
+    assert!(check_waves(&waves, &stages, &order).is_ok());
+    assert_eq!(
+        waves_of(&stages, &order),
+        waves,
+        "the same plan, the same waves"
+    );
+
+    let mut with_job = stages.clone();
+    with_job[0].jobs.push(StageJob {
+        job: "migrate".to_owned(),
+        node: "a".to_owned(),
+        timeout_seconds: 60,
+    });
+    assert!(
+        waves_of(&with_job, &order)
+            .iter()
+            .all(|wave| wave.len() == 1 || !wave.contains(&0)),
+        "a stage with jobs goes alone"
+    );
+
+    assert!(
+        waves_of(&stages[1..4], &order).is_empty(),
+        "no two stages side by side: no waves"
+    );
+
+    let early = check_waves(&[vec![1, 2], vec![0], vec![3], vec![4]], &stages, &order)
+        .err()
+        .unwrap_or_default();
+    assert!(
+        early.contains("stack 'api'") && early.contains("'db'"),
+        "{early}"
+    );
+    let twice = check_waves(&[vec![0, 1], vec![1, 2], vec![3], vec![4]], &stages, &order)
+        .err()
+        .unwrap_or_default();
+    assert!(twice.contains("twice"), "{twice}");
+    let shared = check_waves(&[vec![0, 1], vec![2], vec![3, 4]], &stages, &order)
+        .err()
+        .unwrap_or_default();
+    assert!(shared.contains("stack 'worker'"), "{shared}");
+    let missing = check_waves(&[vec![0, 1], vec![2], vec![3]], &stages, &order)
+        .err()
+        .unwrap_or_default();
+    assert!(missing.contains("leave out stack 'worker'"), "{missing}");
+}

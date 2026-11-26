@@ -141,6 +141,9 @@ impl RemoteDaemon {
             RolloutStep::Ahead { stack } => {
                 self.roll_stack(context, hash, (stack, StackStep::Ahead), (timeout, passed()?)).await?
             }
+            RolloutStep::Stacks { stacks } => {
+                self.roll_stacks(context, hash, stacks, (timeout, passed()?)).await?
+            }
             RolloutStep::Job { stack, job } => {
                 self.roll_job(context, hash, (stack, job), (timeout, passed()?)).await?
             }
@@ -159,7 +162,8 @@ impl RemoteDaemon {
                     RolloutStep::Start { stack } | RolloutStep::Apply { stack } | RolloutStep::Ahead { stack } | RolloutStep::Job { stack, .. } => Some(stack),
                     _ => None,
                 },
-                "healthy": !matches!(answer, RolloutAnswer::Failed(_)),
+                "healthy": !matches!(&answer, RolloutAnswer::Failed(_))
+                    && !matches!(&answer, RolloutAnswer::StacksRolled(rolled) if rolled.iter().any(|stack| stack.failure.is_some())),
                 "daemon_version": env!("CARGO_PKG_VERSION"),
             }))?;
         }

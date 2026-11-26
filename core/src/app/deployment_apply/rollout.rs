@@ -106,18 +106,35 @@ impl DeploymentService {
                 ),
             }
         })?;
+        let mut environment = self
+            .prepare_rollout_environment(selection, &running.plan, running.operation_id)
+            .await?;
+        let rolled = self
+            .roll_with(&running, environment.bundle(), stack, step)
+            .await;
+        environment.dispose()?;
+        rolled
+    }
+
+    /// One step of one stack of `running`, with the rollout's environment.
+    pub(super) async fn roll_with(
+        &self,
+        running: &RunningRollout,
+        bundle: Option<&crate::domain::environment::PreparedEnvironmentBundle>,
+        stack: &str,
+        step: StackStep,
+    ) -> Result<StackOutcome, MmError> {
         let plan = &running.plan;
         let stack_plan = plan
             .stacks
             .iter()
             .find(|rendered| rendered.stack == stack)
             .ok_or_else(|| MmError::State {
-                message: format!("plan {plan_hash} has no stack '{stack}' on this host"),
+                message: format!(
+                    "plan {} has no stack '{stack}' on this host",
+                    plan.plan_hash
+                ),
             })?;
-        let mut environment = self
-            .prepare_rollout_environment(selection, plan, running.operation_id)
-            .await?;
-        let bundle = environment.bundle();
         // What the node answered with before a start: the new containers
         // are the addresses that come after.
         let before = match step {
@@ -146,7 +163,6 @@ impl DeploymentService {
                     .await
             }
         };
-        environment.dispose()?;
         let started = match rolled? {
             Ok(started) => started,
             Err(failure) => return Ok(StackOutcome::Failed(failure)),

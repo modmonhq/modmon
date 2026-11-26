@@ -610,6 +610,19 @@ impl crate::app::ports::RemoteUseCases for DaemonUseCaseAdapter {
             .await
     }
 
+    async fn roll_stacks(
+        &self,
+        context: &crate::app::ports::RemoteRequestContext,
+        deployment_plan_hash: &str,
+        stacks: &[String],
+    ) -> Result<Vec<(String, crate::app::StackOutcome)>, MmError> {
+        let selection = self.selection(context)?;
+        self.deployment(&selection, None)
+            .await?
+            .roll_stacks(&selection, deployment_plan_hash, stacks)
+            .await
+    }
+
     async fn roll_job(
         &self,
         context: &crate::app::ports::RemoteRequestContext,

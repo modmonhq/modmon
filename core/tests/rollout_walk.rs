@@ -111,6 +111,7 @@ impl RemoteTransport for Node {
             RolloutStep::Start { stack } | RolloutStep::Apply { stack } => format!(":{stack}"),
             RolloutStep::Job { stack, job } => format!(":{stack}/{job}"),
             RolloutStep::Ahead { stack } => format!(":{stack}"),
+            RolloutStep::Stacks { stacks } => format!(":{}", stacks.join("+")),
             _ => String::new(),
         };
         locked(&self.steps).push(format!("{}:{}{stack}", self.name, step.name()));
@@ -152,6 +153,23 @@ impl RemoteTransport for Node {
                 message: "could not pull image web:2: unauthorized".to_owned(),
             }),
             RolloutStep::Pull => Ok(RolloutAnswer::Pulled),
+            RolloutStep::Stacks { stacks } => Ok(RolloutAnswer::StacksRolled(
+                stacks
+                    .into_iter()
+                    .map(|stack| {
+                        let failure = script.sick.clone().filter(|sick| sick.stack == stack);
+                        mm::domain::rollout::StackRolled {
+                            addresses: if failure.is_some() {
+                                Vec::new()
+                            } else {
+                                addresses.clone()
+                            },
+                            failure,
+                            stack,
+                        }
+                    })
+                    .collect(),
+            )),
             RolloutStep::Release => Ok(RolloutAnswer::Released),
             RolloutStep::Begin if script.store_down.is_some() => Err(MmError::Remote {
                 code: "MM_SECRET_STORE_UNAVAILABLE",
@@ -510,6 +528,16 @@ impl Cluster {
         storage: Option<mm::domain::shared_storage::SealedStorage>,
         pull_first: bool,
     ) -> Result<String, String> {
+        self.sealed_in_waves(stages, storage, pull_first, Vec::new())
+    }
+
+    fn sealed_in_waves(
+        &self,
+        stages: Vec<RolloutStage>,
+        storage: Option<mm::domain::shared_storage::SealedStorage>,
+        pull_first: bool,
+        waves: Vec<Vec<usize>>,
+    ) -> Result<String, String> {
         let seal = ClusterPlanSeal::new(
             RemotePlanKind::Deployment,
             &scope(None),
@@ -532,6 +560,7 @@ impl Cluster {
                     ran_once: Default::default(),
                     once: Vec::new(),
                     pull_first,
+                    waves,
                     older_nodes: Vec::new(),
                 }),
                 storage,
@@ -1714,6 +1743,7 @@ fn the_newer_steps_are_planned_only_when_every_node_knows_them() {
             ("db-1".to_owned(), "0.1.4".to_owned()),
         ],
         "0.1.3",
+        &Default::default(),
     );
     assert!(new.pull_first);
     assert!(new.older_nodes.is_empty());
@@ -1723,7 +1753,89 @@ fn the_newer_steps_are_planned_only_when_every_node_knows_them() {
             ("db-1".to_owned(), "0.1.2".to_owned()),
         ],
         "0.1.3",
+        &Default::default(),
     );
     assert!(!mixed.pull_first);
     assert_eq!(mixed.older_nodes, [("db-1".to_owned(), "0.1.2".to_owned())]);
+}
+
+#[tokio::test]
+async fn the_stacks_of_a_shared_wave_roll_out_side_by_side_on_every_node() -> TestResult {
+    let cluster = cluster()?;
+    let hash = cluster.sealed_in_waves(
+        vec![
+            stage("app", &[&["app-1", "app-2"]]),
+            stage("cache", &[&["app-2", "db-1"]]),
+        ],
+        None,
+        false,
+        vec![vec![0, 1]],
+    )?;
+    let said = Mutex::new(Vec::new());
+    let report = cluster
+        .environment
+        .apply_deployment(&hash, &|line| locked(&said).push(line.to_string()))
+        .await?;
+    assert!(report.succeeded());
+    assert_eq!(
+        cluster.steps_of("app-1"),
+        ["hold", "begin", "stacks:app", "finish"]
+    );
+    assert_eq!(
+        cluster.steps_of("app-2"),
+        ["hold", "begin", "stacks:app+cache", "finish"]
+    );
+    assert_eq!(
+        cluster.steps_of("db-1"),
+        ["hold", "begin", "stacks:cache", "finish"]
+    );
+    let said = locked(&said);
+    for line in [
+        "app-2: app",
+        "app-2: cache",
+        "app-2: app: healthy",
+        "app-2: cache: healthy",
+    ] {
+        assert!(said.iter().any(|said| said == line), "{line}: {said:?}");
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_stack_that_fails_in_a_shared_wave_rolls_back_every_node_the_wave_began() -> TestResult {
+    let cluster = cluster()?;
+    locked(&cluster.nodes[2].script).sick = Some(sick("cache", "redis"));
+    let hash = cluster.sealed_in_waves(
+        vec![
+            stage("app", &[&["app-1", "app-2"]]),
+            stage("cache", &[&["db-1"]]),
+        ],
+        None,
+        false,
+        vec![vec![0, 1]],
+    )?;
+    let report = cluster.environment.apply_deployment(&hash, &|_| {}).await?;
+    assert_eq!(
+        states(&report),
+        [
+            ("app-1", NodeApplyState::RolledBack),
+            ("app-2", NodeApplyState::RolledBack),
+            ("db-1", NodeApplyState::Failed),
+        ]
+    );
+    assert!(
+        report.nodes[2]
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("redis")),
+        "{:?}",
+        report.nodes[2].error
+    );
+    for node in NODES {
+        assert!(
+            cluster.steps_of(node).contains(&"rollback".to_owned()),
+            "{node}"
+        );
+    }
+    Ok(())
 }

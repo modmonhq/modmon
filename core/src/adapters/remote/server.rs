@@ -13,6 +13,7 @@ include!("server/autoscale.rs");
 include!("server/healing.rs");
 include!("server/rollout.rs");
 include!("server/rollout_pull.rs");
+include!("server/rollout_waves.rs");
 include!("server/forward.rs");
 include!("server/deliver.rs");
 include!("server/operate.rs");

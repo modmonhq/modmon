@@ -268,6 +268,7 @@ impl RemoteTransport for FakeNode {
                 created: Vec::new(),
             },
             RolloutStep::Release => RolloutAnswer::Released,
+            RolloutStep::Stacks { .. } => RolloutAnswer::StacksRolled(Vec::new()),
             RolloutStep::Pull => RolloutAnswer::Pulled,
             RolloutStep::Rollback => RolloutAnswer::RolledBack,
             RolloutStep::Begin => {
@@ -1838,6 +1839,7 @@ fn hardened_node_plan() -> mm::domain::deployment::DeploymentPlan {
         registries: BTreeMap::new(),
         node: None,
         rollout: Default::default(),
+        stack_after: Default::default(),
         config_files: vec![ConfigFileUse {
             stack: "app".to_owned(),
             service: "web".to_owned(),

@@ -422,6 +422,7 @@ fn deployment_plan() -> TestResult<DeploymentPlan> {
         registries: BTreeMap::new(),
         node: None,
         rollout: Default::default(),
+        stack_after: Default::default(),
         config_files: Vec::new(),
         runtime_changes: Vec::new(),
         release: Some(mm::domain::release_facts::ReleaseFacts {

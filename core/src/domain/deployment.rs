@@ -125,6 +125,11 @@ pub struct DeploymentPlan {
     /// stored before rollouts existed.
     #[serde(default)]
     pub rollout: crate::domain::rollout::RolloutPolicy,
+    /// The stacks each stack follows through `after:`, so a cluster plan's
+    /// waves can be checked. Derived from the commit's configuration, so not
+    /// hashed again.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub stack_after: std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
     /// The config files the host's services mount, and which of them the
     /// last finished deployment mounted in another version: those
     /// services' containers are replaced. The stacks' artifact hashes
