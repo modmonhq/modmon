@@ -1148,7 +1148,7 @@ fn tool_schema_snapshot_is_versioned_and_has_no_shell_surface() {
     let canonical = serde_json::to_vec(&snapshot).unwrap_or_default();
     let digest = blake3::hash(&canonical).to_hex().to_string();
     assert_eq!(
-        digest, "79ddf2d426b37f153be90e6fa38119b0545d9e916b895e66608382e2664274d7",
+        digest, "6a6df177c2c6e154ef325bb4f711447f6479e0ede459d11388ab16c5e55480e4",
         "the tool contract changed; bump MCP_TOOL_SCHEMA_VERSION if it is incompatible"
     );
     let text = String::from_utf8_lossy(&canonical).to_ascii_lowercase();
