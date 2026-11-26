@@ -1393,6 +1393,14 @@ addresses the plan gives the cluster's networks, so a container that starts on
 a network a node did not have before is reachable and resolvable from the
 nodes whose turn has not come.
 
+A stack that did not change is left alone: when every container of it on a
+node already runs what the deployment would start (the same Compose
+configuration, environment and secrets, the image its tag names on the node,
+healthy, and as many containers as the node runs), the node answers at once
+without stopping, starting or waiting for anything, and a rollback does not
+touch it. A tag pushed again under the same name is only picked up once the
+node pulls it. Podman hosts apply every stack, changed or not.
+
 The plan says so before anything changes:
 
 ```text

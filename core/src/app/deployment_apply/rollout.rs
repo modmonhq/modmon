@@ -35,6 +35,8 @@ pub enum StackOutcome {
     Done {
         /// For `Start`: the services that now run two containers.
         started: Vec<String>,
+        /// The stack already ran what the plan starts, and was left alone.
+        unchanged: bool,
         /// The addresses of this node's containers of the stack that the
         /// other nodes are to resolve before the rollout goes on.
         addresses: Vec<Ipv4Addr>,
@@ -122,7 +124,12 @@ impl DeploymentService {
             StackStep::Start => self.own_addresses(plan),
             StackStep::Apply | StackStep::Ahead => std::collections::BTreeSet::new(),
         };
+        let unchanged = step == StackStep::Apply
+            && self
+                .unchanged_here(plan, &running.target, stack_plan, bundle)
+                .await;
         let rolled = match step {
+            _ if unchanged => Ok(Ok(Vec::new())),
             StackStep::Start => {
                 self.start_beside_old(plan, &running.target, stack_plan, bundle)
                     .await
@@ -153,7 +160,11 @@ impl DeploymentService {
         };
         Ok(
             match self.resolved_here(plan, stack, wanted, &before).await {
-                Ok(addresses) => StackOutcome::Done { started, addresses },
+                Ok(addresses) => StackOutcome::Done {
+                    unchanged: unchanged || (step == StackStep::Start && started.is_empty()),
+                    started,
+                    addresses,
+                },
                 Err(failure) => StackOutcome::Failed(failure),
             },
         )

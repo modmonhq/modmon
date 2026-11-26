@@ -62,6 +62,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   as every node stops sending a replaced container new requests, and the
   container drains and stops in the background, so `drain` no longer adds to
   deploy time.
+- A cluster node leaves a stack alone when its containers already run what
+  the deployment would start: the same Compose configuration, environment and
+  secrets, the image its tag names on the node, healthy, and as many as the
+  node runs. Nothing is stopped, started or waited for. Docker hosts only; a
+  Podman host applies every stack as before.
 
 ### Fixed
 

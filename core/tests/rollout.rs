@@ -847,3 +847,154 @@ fn a_service_on_several_nodes_starts_first_unless_the_host_holds_it() -> TestRes
     }
     Ok(())
 }
+
+#[test]
+fn a_stack_is_left_alone_only_when_every_container_is_what_the_files_start() {
+    use mm::domain::rollout::{RunningContainer, WantedService, stack_unchanged};
+
+    let wanted = |service: &str, count: u32| WantedService {
+        service: service.to_owned(),
+        config_hash: format!("hash-{service}"),
+        count,
+        image_id: Some(format!("sha256:{service}")),
+        always_pulled: false,
+    };
+    let running = |service: &str| RunningContainer {
+        service: service.to_owned(),
+        config_hash: Some(format!("hash-{service}")),
+        image_id: format!("sha256:{service}"),
+        running: true,
+        health: Some("healthy".to_owned()),
+    };
+    let services = [wanted("web", 2), wanted("worker", 1), wanted("idle", 0)];
+    let same = vec![running("web"), running("web"), running("worker")];
+    assert!(stack_unchanged(&services, &same));
+
+    let without_check = vec![
+        running("web"),
+        running("web"),
+        RunningContainer {
+            health: None,
+            ..running("worker")
+        },
+    ];
+    assert!(
+        stack_unchanged(&services, &without_check),
+        "no health check"
+    );
+
+    let changed: Vec<(&str, Vec<RunningContainer>)> = vec![
+        (
+            "one container short",
+            vec![running("web"), running("worker")],
+        ),
+        (
+            "an extra container",
+            vec![
+                running("web"),
+                running("web"),
+                running("worker"),
+                running("worker"),
+            ],
+        ),
+        (
+            "a service the files no longer have",
+            [same.clone(), vec![running("gone")]].concat(),
+        ),
+        (
+            "another configuration",
+            vec![
+                running("web"),
+                RunningContainer {
+                    config_hash: Some("old".to_owned()),
+                    ..running("web")
+                },
+                running("worker"),
+            ],
+        ),
+        (
+            "a tag that names another image now",
+            vec![
+                running("web"),
+                running("web"),
+                RunningContainer {
+                    image_id: "sha256:old".to_owned(),
+                    ..running("worker")
+                },
+            ],
+        ),
+        (
+            "not healthy",
+            vec![
+                running("web"),
+                running("web"),
+                RunningContainer {
+                    health: Some("starting".to_owned()),
+                    ..running("worker")
+                },
+            ],
+        ),
+        (
+            "stopped",
+            vec![
+                running("web"),
+                running("web"),
+                RunningContainer {
+                    running: false,
+                    ..running("worker")
+                },
+            ],
+        ),
+    ];
+    for (why, containers) in changed {
+        assert!(!stack_unchanged(&services, &containers), "{why}");
+    }
+
+    let always = [
+        WantedService {
+            always_pulled: true,
+            ..wanted("web", 2)
+        },
+        wanted("worker", 1),
+    ];
+    assert!(!stack_unchanged(&always, &same), "pull_policy: always");
+    let missing_image = [
+        WantedService {
+            image_id: None,
+            ..wanted("web", 2)
+        },
+        wanted("worker", 1),
+    ];
+    assert!(
+        !stack_unchanged(&missing_image, &same),
+        "the tag is not on the node"
+    );
+    assert!(!stack_unchanged(&[], &[]), "nothing to compare");
+}
+
+#[test]
+fn a_stack_a_step_left_alone_is_not_rolled_back() {
+    use mm::domain::rollout::RolloutChanges;
+
+    let mut changes = RolloutChanges::default();
+    changes.note("db", false);
+    changes.note("app", false);
+    changes.forget("app");
+    assert!(changes.whole("db"));
+    assert!(!changes.whole("app"));
+    assert_eq!(changes.begun(), ["db"]);
+}
+
+#[test]
+fn a_rendered_configuration_says_which_images_are_pulled_always() -> TestResult {
+    let images = mm::domain::rollout::service_images(
+        "services:\n  web:\n    image: web:2\n  cache:\n    image: redis:7\n    pull_policy: always\n  built:\n    build: .\n",
+    )?;
+    assert_eq!(images.get("web"), Some(&(Some("web:2".to_owned()), false)));
+    assert_eq!(
+        images.get("cache"),
+        Some(&(Some("redis:7".to_owned()), true))
+    );
+    assert_eq!(images.get("built"), Some(&(None, false)));
+    Ok(())
+}

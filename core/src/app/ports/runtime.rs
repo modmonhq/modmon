@@ -418,6 +418,18 @@ pub trait LocalDeploymentRuntime: Send + Sync {
     ) -> Result<Vec<String>, MmError> {
         Ok(Vec::new())
     }
+    /// Whether the target's project runs exactly what applying its files
+    /// would start, `counts[service]` containers of each service it names
+    /// and one of every other, so a deployment leaves it as it is
+    /// (`domain::rollout::stack_unchanged`). A runtime that cannot tell
+    /// says no.
+    async fn stack_unchanged(
+        &self,
+        _target: &RuntimeTarget,
+        _counts: &std::collections::BTreeMap<String, u32>,
+    ) -> Result<bool, MmError> {
+        Ok(false)
+    }
     /// The running containers of `services` that applying the target's
     /// files would replace: their configuration differs from the files'.
     /// A runtime that cannot tell says none.

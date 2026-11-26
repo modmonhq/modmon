@@ -38,6 +38,9 @@ pub use operations::{
 #[path = "rollout/auto_order.rs"]
 mod auto_order;
 pub use auto_order::{HostTies, starts_first_by_default};
+#[path = "rollout/unchanged.rs"]
+mod unchanged;
+pub use unchanged::{RunningContainer, WantedService, service_images, stack_unchanged};
 #[path = "rollout/steps.rs"]
 mod steps;
 pub use steps::{

@@ -1584,6 +1584,7 @@ async fn a_node_rolls_out_in_steps_and_returns_to_what_it_ran_before_when_asked(
         rolled,
         StackOutcome::Done {
             started: Vec::new(),
+            unchanged: false,
             addresses: Vec::new()
         }
     );

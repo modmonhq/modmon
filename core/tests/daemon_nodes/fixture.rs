@@ -255,6 +255,7 @@ impl RemoteUseCases for FakeUseCases {
         }
         Ok(mm::app::StackOutcome::Done {
             started: Vec::new(),
+            unchanged: false,
             addresses: vec![std::net::Ipv4Addr::new(10, 64, 0, 2)],
         })
     }

@@ -38,6 +38,7 @@ mod prepared;
 mod rollback;
 mod rollout;
 mod scaling;
+mod unchanged;
 pub use prepared::{EnvironmentMaterial, PreparedEnvironments};
 pub use rollout::{StackOutcome, StackStep};
 

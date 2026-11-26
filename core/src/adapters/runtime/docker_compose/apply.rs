@@ -389,6 +389,14 @@ impl LocalDeploymentRuntime for DockerComposeRuntime {
         self.start_beside_old(target, services).await
     }
 
+    async fn stack_unchanged(
+        &self,
+        target: &RuntimeTarget,
+        counts: &BTreeMap<String, u32>,
+    ) -> Result<bool, MmError> {
+        self.stack_runs_its_files(target, counts).await
+    }
+
     async fn replaced_containers(
         &self,
         target: &RuntimeTarget,

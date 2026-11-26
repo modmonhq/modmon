@@ -115,6 +115,11 @@ impl RolloutChanges {
         }
     }
 
+    /// Takes `stack` back out: the step that noted it changed nothing.
+    pub fn forget(&mut self, stack: &str) {
+        self.stacks.retain(|noted| noted != stack);
+    }
+
     /// Whether a step began `stack` as a whole.
     #[must_use]
     pub fn whole(&self, stack: &str) -> bool {
