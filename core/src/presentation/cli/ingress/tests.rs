@@ -30,11 +30,7 @@ async fn absent_stopped_and_failed_forwarders_stop_without_privileged_operations
         (true, true, false),
     ] {
         let control = Control {
-            status: PublicIngressStatus {
-                installed,
-                running,
-                failed,
-            },
+            status: forwarder(installed, running, failed),
             mutations: AtomicUsize::new(0),
         };
         assert_eq!(stop_if_running(&control, false).await?, running);
@@ -51,7 +47,53 @@ fn forwarder(installed: bool, running: bool, failed: bool) -> PublicIngressStatu
         installed,
         running,
         failed,
+        disabled: false,
     }
+}
+
+#[tokio::test]
+async fn stop_keeps_an_enabled_forwarder_stopped_and_skips_one_already_kept_stopped()
+-> Result<(), MmError> {
+    let kept = PublicIngressStatus {
+        disabled: true,
+        ..forwarder(true, false, false)
+    };
+    for (status, mutates) in [
+        (forwarder(false, false, false), false),
+        (forwarder(true, true, false), true),
+        (forwarder(true, false, false), true),
+        (forwarder(true, false, true), true),
+        (kept, false),
+    ] {
+        let control = Control {
+            status,
+            mutations: AtomicUsize::new(0),
+        };
+        assert_eq!(keep_stopped(&control, false).await?, mutates);
+        assert_eq!(
+            control.mutations.load(Ordering::SeqCst),
+            usize::from(mutates)
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn status_reports_a_forwarder_kept_stopped_for_another_proxy() -> Result<(), serde_json::Error> {
+    let report = status_report(
+        PublicIngressStatus {
+            disabled: true,
+            ..forwarder(true, false, false)
+        },
+        Ok(services(true)),
+        Ok(tls(true)),
+        Some((18080, 18081)),
+    );
+    assert_eq!(report.state, PublicIngressState::Stopped);
+    let json = serde_json::to_value(&report)?;
+    assert_eq!(json["forwarder"]["kept_stopped"], true);
+    assert_eq!(json["loopback_ports"], serde_json::json!([18080, 18081]));
+    Ok(())
 }
 
 fn services(healthy: bool) -> crate::domain::service_stack::ServiceStackStatus {
@@ -94,6 +136,7 @@ fn status_separates_stopped_forwarding_from_unhealthy_services() -> Result<(), s
         forwarder(true, true, false),
         Ok(services(true)),
         Ok(tls(true)),
+        None,
     );
     assert!(ready.ready);
     assert_eq!(ready.state, PublicIngressState::Running);
@@ -102,6 +145,7 @@ fn status_separates_stopped_forwarding_from_unhealthy_services() -> Result<(), s
         forwarder(true, false, false),
         Ok(services(true)),
         Ok(tls(true)),
+        None,
     );
     assert!(!stopped.ready && stopped.services.healthy && stopped.tls.ready);
     assert_eq!(stopped.state, PublicIngressState::Stopped);
@@ -110,6 +154,7 @@ fn status_separates_stopped_forwarding_from_unhealthy_services() -> Result<(), s
         forwarder(true, true, false),
         Ok(services(false)),
         Ok(tls(true)),
+        None,
     );
     assert!(!unhealthy.ready && unhealthy.forwarder.running);
     let json = serde_json::to_value(&unhealthy)?;
@@ -122,6 +167,7 @@ fn status_separates_stopped_forwarding_from_unhealthy_services() -> Result<(), s
             message: "no local Compose runtime is available".to_owned(),
         }),
         Ok(tls(false)),
+        None,
     );
     assert!(!unreachable.forwarder.running && !unreachable.tls.ready);
     assert!(unreachable.services.errors[0].contains("no local Compose runtime"));

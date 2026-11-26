@@ -177,8 +177,8 @@ pub use storage::{shared_storage, shared_storage_host, storage_keeper};
 pub use target_trust::TargetTrustReview;
 pub(crate) use target_trust::trust_repo_target;
 pub(crate) use targets::{
-    TargetServices, authorize_local_setup, local_ca_manager, prepare_public_ingress,
-    target_services,
+    TargetServices, authorize_local_setup, local_ca_manager, local_ingress_loopback_ports,
+    prepare_public_ingress, target_services,
 };
 pub use targets::{ensure_local_target, install_ingress, uninstall_ingress};
 

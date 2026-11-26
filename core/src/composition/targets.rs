@@ -95,6 +95,20 @@ pub fn ensure_local_target(explicit_home: Option<&Path>) -> Result<(), MmError> 
     Ok(())
 }
 
+pub(crate) fn local_ingress_loopback_ports(
+    explicit_home: Option<&Path>,
+) -> Result<Option<(u16, u16)>, MmError> {
+    let home = MmHome::inspect(explicit_home)?;
+    if !home.targets_file.is_file() {
+        return Ok(None);
+    }
+    Ok(FilesystemTargetStore::new(home.targets_file)
+        .list_targets()?
+        .into_iter()
+        .find(|target| target.name == "local")
+        .map(|target| crate::domain::target_ingress::ingress_proxy_ports(target.definition.id)))
+}
+
 pub(crate) async fn authorize_local_setup(
     explicit_home: Option<&Path>,
     process: Arc<dyn ProcessRunner>,

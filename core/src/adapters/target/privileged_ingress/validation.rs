@@ -21,10 +21,20 @@ fn installed_forwarder_matches(plan: &TargetIngressPlan) -> Result<bool, MmError
     let config = read_existing_fixed(Path::new(HAPROXY_CONFIG))?;
     let unit = read_existing_fixed(Path::new(SYSTEM_UNIT))?;
     if !installed_files_match(plan.target_id, config.as_deref(), unit.as_deref()) { return Ok(false); }
-    let running = Command::new("/usr/bin/systemctl")
-        .args(["is-active", "--quiet", "mm-ingress-forwarder.service"])
-        .env_clear().status().is_ok_and(|status| status.success());
-    Ok(running && verify_public_forwarder().is_ok())
+    let forwarder = systemd_forwarder_status();
+    Ok(forwarder.kept_stopped() || (forwarder.running && verify_public_forwarder().is_ok()))
+}
+
+#[cfg(unix)]
+fn systemd_forwarder_status() -> crate::domain::host_ingress::PublicIngressStatus {
+    Command::new("/usr/bin/systemctl")
+        .args(super::public_ingress::FORWARDER_SHOW_ARGUMENTS)
+        .env_clear()
+        .output()
+        .map(|output| {
+            super::public_ingress::forwarder_status_from_show(&String::from_utf8_lossy(&output.stdout))
+        })
+        .unwrap_or_default()
 }
 
 /// Any byte difference, including files written by an older mm template,
@@ -500,6 +510,7 @@ fn rollback_host_install(
     previous_config: Option<&[u8]>,
     previous_unit: Option<&[u8]>,
     service_attempted: bool,
+    restart_previous: bool,
 ) -> Vec<String> {
     let mut failures = Vec::new();
     let previous_complete =
@@ -529,7 +540,7 @@ fn rollback_host_install(
         &mut failures,
         run_checked("/usr/bin/systemctl", &["daemon-reload"]),
     );
-    if previous_complete {
+    if previous_complete && restart_previous {
         retain_cleanup_error(
             &mut failures,
             run_checked(

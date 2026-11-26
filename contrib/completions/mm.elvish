@@ -2100,7 +2100,7 @@ set edit:completion:arg-completer[mm] = {|@words|
             cand -V 'Print version'
             cand --version 'Print version'
             cand start 'Ensure ingress is installed and healthy, then start public forwarding on ports 80 and 443'
-            cand stop 'Stop global public forwarding to free ports 80 and 443; keep project containers running'
+            cand stop 'Stop global public forwarding and keep it stopped across reboots and deploys; keep project containers running'
             cand status 'Show public forwarding state and the health of the services it depends on (read-only)'
             cand restart 'Reconcile ingress prerequisites, then restart public forwarding on ports 80 and 443'
             cand help 'Print this message or the help of the given subcommand(s)'
@@ -2161,7 +2161,7 @@ set edit:completion:arg-completer[mm] = {|@words|
         }
         &'mm;ingress;help'= {
             cand start 'Ensure ingress is installed and healthy, then start public forwarding on ports 80 and 443'
-            cand stop 'Stop global public forwarding to free ports 80 and 443; keep project containers running'
+            cand stop 'Stop global public forwarding and keep it stopped across reboots and deploys; keep project containers running'
             cand status 'Show public forwarding state and the health of the services it depends on (read-only)'
             cand restart 'Reconcile ingress prerequisites, then restart public forwarding on ports 80 and 443'
             cand help 'Print this message or the help of the given subcommand(s)'
@@ -5840,7 +5840,7 @@ set edit:completion:arg-completer[mm] = {|@words|
         }
         &'mm;help;ingress'= {
             cand start 'Ensure ingress is installed and healthy, then start public forwarding on ports 80 and 443'
-            cand stop 'Stop global public forwarding to free ports 80 and 443; keep project containers running'
+            cand stop 'Stop global public forwarding and keep it stopped across reboots and deploys; keep project containers running'
             cand status 'Show public forwarding state and the health of the services it depends on (read-only)'
             cand restart 'Reconcile ingress prerequisites, then restart public forwarding on ports 80 and 443'
         }

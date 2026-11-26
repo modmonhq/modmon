@@ -9,7 +9,7 @@ pub enum IngressCommand {
         #[arg(long)]
         yes: bool,
     },
-    /// Stop global public forwarding to free ports 80 and 443; keep project containers running.
+    /// Stop global public forwarding and keep it stopped across reboots and deploys; keep project containers running.
     Stop,
     /// Show public forwarding state and the health of the services it depends on (read-only).
     Status,
@@ -31,6 +31,7 @@ struct IngressStatusReport {
     forwarder: ForwarderReport,
     services: ServicesReport,
     tls: TlsReport,
+    loopback_ports: Option<[u16; 2]>,
     /// Forwarding is running and everything it depends on is healthy.
     ready: bool,
 }
@@ -40,6 +41,7 @@ struct ForwarderReport {
     installed: bool,
     running: bool,
     failed: bool,
+    kept_stopped: bool,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -81,6 +83,7 @@ fn status_report(
     forwarder: crate::domain::host_ingress::PublicIngressStatus,
     services: Result<crate::domain::service_stack::ServiceStackStatus, MmError>,
     tls: Result<crate::domain::ca::LocalCaStatus, MmError>,
+    loopback_ports: Option<(u16, u16)>,
 ) -> IngressStatusReport {
     let services = match services {
         Ok(status) => ServicesReport {
@@ -129,7 +132,9 @@ fn status_report(
             installed: forwarder.installed,
             running,
             failed: forwarder.failed,
+            kept_stopped: forwarder.kept_stopped(),
         },
+        loopback_ports: loopback_ports.map(|(http, https)| [http, https]),
         ready: running && services.healthy && tls.ready,
         services,
         tls,
@@ -162,21 +167,27 @@ async fn inspect_status(
         Ok(ca) => ca.status().await,
         Err(error) => Err(error),
     };
-    Ok(status_report(forwarder, services, tls))
+    let loopback_ports = composition::local_ingress_loopback_ports(invocation.home())
+        .ok()
+        .flatten();
+    Ok(status_report(forwarder, services, tls, loopback_ports))
 }
 
 fn write_status(report: &IngressStatusReport, format: OutputFormat) -> Result<(), MmError> {
     if format == OutputFormat::Json {
         return output::write_json(report);
     }
-    let forwarding = match (
-        report.forwarder.installed,
-        report.forwarder.running,
-        report.forwarder.failed,
-    ) {
+    let forwarder = &report.forwarder;
+    let forwarding = match (forwarder.installed, forwarder.running, forwarder.failed) {
         (false, _, _) => "not installed; run `mm ingress start`",
         (true, true, _) => "running (ports 80 and 443)",
+        _ if forwarder.kept_stopped => {
+            "stopped by `mm ingress stop`; ports 80 and 443 stay free for another proxy until `mm ingress start`"
+        }
         (true, false, true) => "failed; run `mm ingress restart`",
+        (true, false, false) if cfg!(target_os = "linux") => {
+            "stopped until the next deploy or reboot; run `mm ingress start`, or `mm ingress stop` to keep it stopped"
+        }
         (true, false, false) => "stopped; run `mm ingress start`",
     };
     let services = if report.services.healthy {
@@ -208,6 +219,12 @@ fn write_status(report: &IngressStatusReport, format: OutputFormat) -> Result<()
         })
     };
     write(&mut stdout, format!("Public ingress: {forwarding}"))?;
+    if let Some([http, https]) = report.loopback_ports {
+        write(
+            &mut stdout,
+            format!("Traefik loopback: HTTP 127.0.0.1:{http}, HTTPS 127.0.0.1:{https}"),
+        )?;
+    }
     write(&mut stdout, format!("Shared services: {services}"))?;
     for error in &report.services.errors {
         write(&mut stdout, format!("  {error}"))?;
@@ -246,7 +263,7 @@ pub(super) async fn run(
             PublicIngressState::Running
         }
         IngressCommand::Stop => {
-            already_stopped = !stop_if_running(control.as_ref(), allow_prompt).await?;
+            already_stopped = !keep_stopped(control.as_ref(), allow_prompt).await?;
             PublicIngressState::Stopped
         }
     };
@@ -266,10 +283,16 @@ pub(super) async fn run(
             })?;
             return Ok(0);
         }
+        let kept = state == PublicIngressState::Stopped && control.inspect().await?.kept_stopped();
         writeln!(
             crate::presentation::record::stdout(),
-            "Public ingress {} (ports 80 and 443).",
-            state.description()
+            "Public ingress {} (ports 80 and 443).{}",
+            state.description(),
+            if kept {
+                " It stays stopped across reboots and deploys until `mm ingress start`."
+            } else {
+                ""
+            }
         )
         .map_err(|source| MmError::Io {
             context: "writing public ingress status".to_owned(),
@@ -285,6 +308,20 @@ async fn stop_if_running(
 ) -> Result<bool, MmError> {
     let status = control.inspect().await?;
     if !status.installed || !status.running {
+        return Ok(false);
+    }
+    control
+        .set_state(PublicIngressState::Stopped, allow_prompt)
+        .await?;
+    Ok(true)
+}
+
+async fn keep_stopped(
+    control: &dyn crate::app::ports::PublicIngressControl,
+    allow_prompt: bool,
+) -> Result<bool, MmError> {
+    let status = control.inspect().await?;
+    if !status.installed || status.kept_stopped() {
         return Ok(false);
     }
     control

@@ -2381,7 +2381,7 @@ Register-ArgumentCompleter -Native -CommandName 'mm' -ScriptBlock {
             [CompletionResult]::new('-V', '-V ', [CompletionResultType]::ParameterName, 'Print version')
             [CompletionResult]::new('--version', '--version', [CompletionResultType]::ParameterName, 'Print version')
             [CompletionResult]::new('start', 'start', [CompletionResultType]::ParameterValue, 'Ensure ingress is installed and healthy, then start public forwarding on ports 80 and 443')
-            [CompletionResult]::new('stop', 'stop', [CompletionResultType]::ParameterValue, 'Stop global public forwarding to free ports 80 and 443; keep project containers running')
+            [CompletionResult]::new('stop', 'stop', [CompletionResultType]::ParameterValue, 'Stop global public forwarding and keep it stopped across reboots and deploys; keep project containers running')
             [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'Show public forwarding state and the health of the services it depends on (read-only)')
             [CompletionResult]::new('restart', 'restart', [CompletionResultType]::ParameterValue, 'Reconcile ingress prerequisites, then restart public forwarding on ports 80 and 443')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
@@ -2447,7 +2447,7 @@ Register-ArgumentCompleter -Native -CommandName 'mm' -ScriptBlock {
         }
         'mm;ingress;help' {
             [CompletionResult]::new('start', 'start', [CompletionResultType]::ParameterValue, 'Ensure ingress is installed and healthy, then start public forwarding on ports 80 and 443')
-            [CompletionResult]::new('stop', 'stop', [CompletionResultType]::ParameterValue, 'Stop global public forwarding to free ports 80 and 443; keep project containers running')
+            [CompletionResult]::new('stop', 'stop', [CompletionResultType]::ParameterValue, 'Stop global public forwarding and keep it stopped across reboots and deploys; keep project containers running')
             [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'Show public forwarding state and the health of the services it depends on (read-only)')
             [CompletionResult]::new('restart', 'restart', [CompletionResultType]::ParameterValue, 'Reconcile ingress prerequisites, then restart public forwarding on ports 80 and 443')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
@@ -6659,7 +6659,7 @@ Register-ArgumentCompleter -Native -CommandName 'mm' -ScriptBlock {
         }
         'mm;help;ingress' {
             [CompletionResult]::new('start', 'start', [CompletionResultType]::ParameterValue, 'Ensure ingress is installed and healthy, then start public forwarding on ports 80 and 443')
-            [CompletionResult]::new('stop', 'stop', [CompletionResultType]::ParameterValue, 'Stop global public forwarding to free ports 80 and 443; keep project containers running')
+            [CompletionResult]::new('stop', 'stop', [CompletionResultType]::ParameterValue, 'Stop global public forwarding and keep it stopped across reboots and deploys; keep project containers running')
             [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'Show public forwarding state and the health of the services it depends on (read-only)')
             [CompletionResult]::new('restart', 'restart', [CompletionResultType]::ParameterValue, 'Reconcile ingress prerequisites, then restart public forwarding on ports 80 and 443')
             break

@@ -208,6 +208,7 @@ pub fn install_privileged_ingress_artifact(
         let previous_owner = read_existing_fixed(Path::new(OWNER_FILE))?;
         let previous_config = read_existing_fixed(Path::new(HAPROXY_CONFIG))?;
         let previous_unit = read_existing_fixed(Path::new(SYSTEM_UNIT))?;
+        let kept_stopped = previous_unit.is_some() && systemd_forwarder_status().kept_stopped();
         let owner = serde_json::to_vec_pretty(&HostIngressOwner {
             target_id,
             source_uid,
@@ -225,14 +226,17 @@ pub fn install_privileged_ingress_artifact(
             atomic_replace(Path::new(SYSTEM_UNIT), &artifact.unit, 0o644)?;
             configure_selinux(target_id)?;
             run_checked("/usr/bin/systemctl", &["daemon-reload"])?;
+            if kept_stopped {
+                return Ok(());
+            }
             service_attempted = true;
             run_checked(
                 "/usr/bin/systemctl",
-                &["enable", "mm-ingress-forwarder.service"],
+                &["enable", super::public_ingress::FORWARDER_UNIT],
             )?;
             run_checked(
                 "/usr/bin/systemctl",
-                &["restart", "mm-ingress-forwarder.service"],
+                &["restart", super::public_ingress::FORWARDER_UNIT],
             )?;
             verify_public_forwarder()
         })();
@@ -242,6 +246,7 @@ pub fn install_privileged_ingress_artifact(
                 previous_config.as_deref(),
                 previous_unit.as_deref(),
                 service_attempted,
+                !kept_stopped,
             );
             if !cleanup.is_empty() {
                 return Err(MmError::operation_failure(
@@ -288,6 +293,7 @@ pub fn uninstall_privileged_ingress(
         let previous_owner = read_existing_fixed(Path::new(OWNER_FILE))?;
         let previous_config = read_existing_fixed(Path::new(HAPROXY_CONFIG))?;
         let previous_unit = read_existing_fixed(Path::new(SYSTEM_UNIT))?;
+        let kept_stopped = previous_unit.is_some() && systemd_forwarder_status().kept_stopped();
         let Some(owner_bytes) = previous_owner.as_deref() else {
             if previous_config.is_some() || previous_unit.is_some() {
                 return Err(MmError::Security {
@@ -325,6 +331,7 @@ pub fn uninstall_privileged_ingress(
                 previous_config.as_deref(),
                 previous_unit.as_deref(),
                 previous_unit.is_some(),
+                !kept_stopped,
             );
             if !cleanup.is_empty() {
                 return Err(MmError::operation_failure(
