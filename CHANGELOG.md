@@ -14,6 +14,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ends with the release each remote environment's nodes run and the setup plan
   command for each environment with an older node.
 
+- The development environment on this machine runs without Compose health
+  checks, so a code change that breaks a service no longer fails each
+  `mm dev up`. `environments.<name>.healthchecks` turns them on there, or off
+  anywhere else; `service_healthy` dependencies then wait for
+  `service_started`, and `mm service status` shows `check off`.
+
 ### Fixed
 
 - A plan whose config-file template reads a release input it was not given

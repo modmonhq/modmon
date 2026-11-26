@@ -674,6 +674,7 @@ environments:
     build-variant: debug
     environment-delivery: env-file
     automatic-local-ingress: true
+    healthchecks: false # default here: this is the development environment on this machine
     deploy:
       convergence-timeout: 10m # default; how long a stack may take to become healthy
       progress-timeout: 2m # default; how long a deployment waits for a sign of progress from a host
@@ -733,6 +734,28 @@ number with `s`, `m`, or `h`, at least `1s`. The default is `10m`, and
 `mm deploy plan` shows the value in use. A stack whose container exits, or
 whose health check fails, fails at once without waiting for it. A container
 without a health check counts as healthy once it has run for five seconds.
+
+`healthchecks` says whether the services' Compose health checks run. It is
+`true` by default, and `false` by default for the project's
+`development-environment` when it runs on this machine, where a code change
+that breaks a service would otherwise fail its check and fail each
+`mm deploy` or `mm dev up`. Set it to `true` there to keep the checks, or to
+`false` in another environment to turn them off. With checks off:
+
+- every service of the environment runs without a health check, including one
+  its image defines (Compose's `healthcheck: disable: true`);
+- a `depends_on` with `condition: service_healthy` waits for
+  `condition: service_started` instead, because a dependency without a check
+  never becomes healthy;
+- a deployment counts a service as ready once its containers have run for
+  five seconds, and still fails when a container exits or keeps restarting;
+- `mm service status` shows `check off` in the `HEALTH` column, and the
+  terminal UI shows `running, check off`.
+
+Docker and Podman never restart a container because its check fails. On a
+cluster target, `mmd` does (see a service's `health:` under
+[modules, services, and builds](#modules-services-and-builds)); a container
+without a check is never restarted for it.
 
 Starting or stopping a stack (`compose up`, `compose down`, and the stop of
 containers a deployment replaces) has its own limit, which comes from the
