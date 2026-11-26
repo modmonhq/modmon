@@ -136,20 +136,36 @@ pub(crate) fn remote_environment_as(
             .and_then(|environment| environment.deploy.as_ref()),
     )
     .unwrap_or(crate::domain::config::DEFAULT_PROGRESS_TIMEOUT);
-    Ok(Some(
+    Ok(Some(with_project_files(
         crate::app::RemoteEnvironment::new(context.target.name, nodes)?
             .on_existing_interface(existing_interface)
             .with_cluster_networks(cluster_networks)
             .with_environments(document.config.environments.keys().cloned().collect())
             .with_storage_node(storage_node)
             .with_pushed_commits(pushed)
-            .with_progress_timeout(progress_timeout)
-            .with_compose_wait(compose_wait(&document))
-            .with_version_pin(crate::domain::version_pin::VersionPin::of(
-                &document.config,
-                &environment,
-            )),
-    ))
+            .with_progress_timeout(progress_timeout),
+        &document,
+        &environment,
+    )))
+}
+
+fn with_project_files(
+    remote: crate::app::RemoteEnvironment,
+    document: &crate::domain::config::ConfigDocument,
+    environment: &str,
+) -> crate::app::RemoteEnvironment {
+    let index = crate::adapters::environment::EnvironmentIndexer.index(document, environment);
+    remote
+        .with_compose_wait(compose_wait(document))
+        .with_version_pin(crate::domain::version_pin::VersionPin::of(
+            &document.config,
+            environment,
+        ))
+        .with_template_defaults(crate::app::template_defaulted_secrets(
+            document,
+            environment,
+            &index,
+        ))
 }
 
 /// The longest `domain::compose_timing::compose_wait` of the

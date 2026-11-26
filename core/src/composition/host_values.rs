@@ -250,6 +250,7 @@ pub(super) async fn host_values(
                 required: key.required,
                 active: report.active,
                 staged: report.staged,
+                defaulted: false,
             })
             .collect(),
     })

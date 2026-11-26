@@ -24,6 +24,7 @@ fn live(value: &HostValue) -> String {
             }
             text
         }
+        (None, _) if value.defaulted => "default".to_owned(),
         (None, _) => "unset".to_owned(),
     }
 }
@@ -68,6 +69,9 @@ fn kind_label(value: &HostValue) -> &'static str {
     }
 }
 
+const REMOTE_DEFAULT_HINT: &str = "default: nothing live; services use their .env.example \
+    default. Stage a value with mm secret set KEY.";
+
 fn notes(values: &RemoteValues, key: Option<&str>) -> Vec<(Tone, String)> {
     let mut notes = values
         .unreachable
@@ -86,6 +90,12 @@ fn notes(values: &RemoteValues, key: Option<&str>) -> Vec<(Tone, String)> {
                 ),
             ));
         }
+    }
+    if rows(values, key)
+        .iter()
+        .any(|(_, _, value)| value.defaulted)
+    {
+        notes.push((Tone::Idle, REMOTE_DEFAULT_HINT.to_owned()));
     }
     let unset = rows(values, key)
         .into_iter()
@@ -119,6 +129,8 @@ pub fn remote_values_card(values: &RemoteValues, key: Option<&str>) -> Card {
                 Value::new(node),
                 if value.active.is_some() || value.origin.is_some() {
                     Value::new(live(value))
+                } else if value.defaulted {
+                    Value::dim("default")
                 } else {
                     Value::tone(
                         "unset",

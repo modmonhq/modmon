@@ -401,6 +401,10 @@ pub struct HostValue {
     pub active: Option<ValueRevision>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub staged: Option<StagedRevision>,
+    /// A secret with nothing live whose readers all fall back to a
+    /// non-empty `.env.example` default, by this checkout's templates.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub defaulted: bool,
 }
 
 impl HostValue {

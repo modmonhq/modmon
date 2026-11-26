@@ -22,6 +22,30 @@ impl EnvironmentManager {
     }
 }
 
+/// The secrets every variable reading them in `environment` would take
+/// from a non-empty `.env.example` default while the secret is not stored.
+pub fn template_defaulted_secrets(
+    document: &ConfigDocument,
+    environment: &str,
+    index: &EnvironmentIndex,
+) -> BTreeSet<String> {
+    let unset = document
+        .config
+        .secrets
+        .keys()
+        .map(|name| {
+            let metadata = SecretMetadata {
+                status: SecretStatus::Unset,
+                revision: None,
+                created_at_unix_ms: None,
+                candidate_revision: None,
+            };
+            (name.clone(), metadata)
+        })
+        .collect();
+    secrets_covered_by_defaults(document, environment, index, &unset)
+}
+
 /// The unset secrets that every variable reading them in `environment`
 /// resolves from a non-empty `.env.example` default, as `mm env status` does.
 pub(super) fn secrets_covered_by_defaults(

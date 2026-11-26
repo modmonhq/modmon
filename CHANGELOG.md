@@ -40,7 +40,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `mm secret status` shows `default` instead of `unset` for a secret that is
   not stored when every variable that reads it falls back to a non-empty
-  `.env.example` default. JSON keeps `"status": "unset"` and adds
+  `.env.example` default, for this machine's store and for remote hosts
+  (`live: default`). JSON keeps `"status": "unset"` and adds
   `"defaulted": true`.
 
 - A plan whose config-file template reads a release input it was not given

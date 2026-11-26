@@ -47,6 +47,7 @@ fn value(key: &str, kind: ValueKind, staged: Option<&str>) -> HostValue {
             staged_by: "bob".to_owned(),
             staged_at_unix_ms: 2,
         }),
+        defaulted: false,
     }
 }
 
@@ -107,5 +108,33 @@ fn enter_reads_a_secret_hidden_x_stages_a_removal_and_shift_x_discards() -> Test
         screen.contains("Stage the removal of web.app-key"),
         "{screen}"
     );
+    Ok(())
+}
+
+#[test]
+fn a_secret_its_templates_default_reads_as_default() -> TestResult {
+    let mut values = values();
+    for node in &mut values.nodes {
+        let secret = &mut node.values[0];
+        secret.origin = None;
+        secret.active = None;
+        secret.staged = None;
+        secret.required = false;
+        secret.defaulted = true;
+    }
+    let card = mm::presentation::output::remote_values_card(&values, None)
+        .lines(mm::presentation::inline::Palette::plain(), 140)
+        .iter()
+        .map(mm::presentation::inline::plain)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(card.contains("default: nothing live"), "{card}");
+    assert!(!card.contains("unset"), "{card}");
+
+    let mut ui = ScriptedUi::new(snapshot()?, Some("cluster"));
+    ui.host_values(values);
+    ui.press("5");
+    let screen = ui.screen(140, 40)?;
+    assert!(screen.contains("default"), "{screen}");
     Ok(())
 }

@@ -1,14 +1,16 @@
 //! Secrets and variables set on a remote environment's hosts: every node
 //! stages a change, or none does, and the next deployment makes it live.
 
+use std::collections::BTreeSet;
+
 use futures_util::future::join_all;
 use zeroize::Zeroizing;
 
 use super::{RemoteEnvironment, RemoteNode, in_node};
 use crate::domain::error::MmError;
 use crate::domain::staged::{
-    RemoteValues, StageStep, StagedAction, StagedPayload, StagedPayloadValue, UnreachableNode,
-    ValueChange, ValueKind, ValueStage, validate_key, validate_value,
+    NodeValues, RemoteValues, StageStep, StagedAction, StagedPayload, StagedPayloadValue,
+    UnreachableNode, ValueChange, ValueKind, ValueStage, validate_key, validate_value,
 };
 
 /// Seals a stage's values to one node's store recipient.
@@ -41,6 +43,14 @@ pub struct StageReport {
 }
 
 impl RemoteEnvironment {
+    /// The secrets whose readers all fall back to a template default; a
+    /// secret among them with nothing live reads as `defaulted`.
+    #[must_use]
+    pub fn with_template_defaults(mut self, secrets: BTreeSet<String>) -> Self {
+        self.template_defaults = secrets;
+        self
+    }
+
     /// What every node holds and has staged for the deployed commit's
     /// secrets and variables. A node that does not answer is listed.
     pub async fn host_values(&self) -> Result<RemoteValues, MmError> {
@@ -60,7 +70,7 @@ impl RemoteEnvironment {
         let mut first_error = None;
         for (node, answer) in self.nodes.iter().zip(answers) {
             match answer {
-                Ok(answer) => values.nodes.push(answer),
+                Ok(answer) => values.nodes.push(self.mark_template_defaults(answer)),
                 Err(error) => {
                     values.unreachable.push(UnreachableNode {
                         node: self.name_of(node).to_owned(),
@@ -74,6 +84,16 @@ impl RemoteEnvironment {
             Some(error) if values.nodes.is_empty() => Err(error),
             _ => Ok(values),
         }
+    }
+
+    fn mark_template_defaults(&self, mut answer: NodeValues) -> NodeValues {
+        for value in &mut answer.values {
+            value.defaulted = value.kind == ValueKind::Secret
+                && value.active.is_none()
+                && value.origin.is_none()
+                && self.template_defaults.contains(&value.key);
+        }
+        answer
     }
 
     /// Stages `edits` on every node of the environment, or on none: each
