@@ -45,7 +45,7 @@ pub(crate) fn plan_lines(plan: &ClusterDeploymentPlan) -> Vec<String> {
         for stage in &rollout.stages {
             if !stage.start_first.is_empty() {
                 lines.push(format!(
-                    "{label}{}: {} start{} before the old container stops (update.order: start-first)",
+                    "{label}{}: {} start{} before the old container stops (update.order: start-first, or automatic for a service on several nodes)",
                     stage.stack,
                     stage.start_first.join(", "),
                     if stage.start_first.len() == 1 { "s" } else { "" }

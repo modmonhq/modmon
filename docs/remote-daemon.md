@@ -1456,7 +1456,7 @@ modules:
         stack: app
         placement: all
         update:
-          order: start-first # default stop-first
+          order: start-first # default: start-first on several nodes when it can, else stop-first
           parallelism: 2 # nodes at a time; default 1
           failure: pause # default rollback
 ```
@@ -1467,7 +1467,7 @@ modules:
 | `deploy.progress-timeout`         | `2m`         | How long `mm deploy apply` waits without any sign of progress from a host before it stops with `MM_TIMEOUT`, naming the host, the step, and the operation. At least `30s`.            |
 | `deploy.failure-log-lines`        | `200`        | How many last lines of a failed container's log a node keeps for the report and `mm deploy status`: 1 to 1000, and never more than 64 KiB.                                           |
 | `stacks.<stack>.after`            | none         | Stacks that roll out before this one, on every node, so that a database is healthy before the application that needs it starts.                                                      |
-| `update.order`                    | `stop-first` | `start-first` starts the new container next to the old one; see below.                                                                                                               |
+| `update.order`                    | see below    | `start-first` starts the new container next to the old one. Without it, a service on several nodes starts first when it can; see below.                                              |
 | `update.parallelism`              | `1`          | How many nodes replace the service's stack at the same time. A stack takes the smallest value among its services.                                                                    |
 | `update.failure`                  | `rollback`   | `pause` stops the deployment where it is when this service fails, so the failed container can be looked at. `mm deploy rollback` then returns the nodes to what they ran before.      |
 | `drain`                           | `1m`         | How long an old container keeps serving what it has once no node sends it requests, before it stops; see below.                                                                      |
@@ -1492,8 +1492,20 @@ requests keep going to the old one. Once every node resolves the new
 container, the old one [leaves](#take-a-container-out-without-dropping-a-request):
 no node answers with it or sends it requests any more, it finishes what it
 has during the service's `drain` (`1m` by default), and then it stops. The
-next node starts after that. A new container that never becomes healthy is
-removed and the old one keeps serving.
+deployment goes on as soon as every node confirmed that it sends the old
+container nothing new; the drain and the stop happen in the background, and
+`mm deploy status` lists the container as leaving until it is gone. A new
+container that never becomes healthy is removed and the old one keeps serving.
+A rollback during the drain takes the old container back.
+
+A service placed on more than one node that sets no `update.order` is
+`start-first` by default, unless something ties it to one container per node:
+its Compose definition publishes a host port, sets `container_name`, uses the
+host's network, PID or IPC namespace, mounts a volume that is not read-only,
+hands it devices, or runs more than one container (`scale`,
+`deploy.replicas`, `replicas`, `autoscale`, `host-network`). Set
+`update.order: stop-first` to keep such a service stopping first. Each node
+needs the memory for both containers while the old one drains.
 
 The service is reached by its name on a [network that spans the
 nodes](#networks-across-nodes) or through the [ingress](#route-traffic-into-the-cluster);

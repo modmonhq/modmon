@@ -35,6 +35,9 @@ pub use operations::{
     CancelOutcome, CancelReport, CancelledRun, DaemonHealth, LateChild, NodeCancel,
     OperationInFlight, RECENT_START_MS, SHORT_ID, STUCK_AFTER_MS, daemon_diagnostics, short_id,
 };
+#[path = "rollout/auto_order.rs"]
+mod auto_order;
+pub use auto_order::{HostTies, starts_first_by_default};
 #[path = "rollout/steps.rs"]
 mod steps;
 pub use steps::{

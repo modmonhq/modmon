@@ -54,6 +54,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   image of a stack in one look and pulls up to three at once, drained
   containers stop side by side, and the client checks every 250 ms that the
   other nodes resolve new containers.
+- A service that runs on more than one node of a cluster and sets no
+  `update.order` now starts its new container before the old one stops,
+  unless it publishes a host port, sets `container_name`, uses the host's
+  network, mounts a writable volume or runs several containers per node;
+  `update.order: stop-first` keeps the old order. A deployment goes on as soon
+  as every node stops sending a replaced container new requests, and the
+  container drains and stops in the background, so `drain` no longer adds to
+  deploy time.
 
 ### Fixed
 

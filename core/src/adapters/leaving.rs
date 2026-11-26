@@ -257,6 +257,20 @@ impl LeaveKeeper {
         Ok(ids)
     }
 
+    /// Waits until every node confirmed each of `ids`, or it is gone.
+    async fn confirmed(&self, ids: &[String]) {
+        let pending = |id: &String| {
+            read_whole(&self.directory.join(format!("{id}.json")))
+                .ok()
+                .flatten()
+                .and_then(|bytes| serde_json::from_slice::<LeaveRecord>(&bytes).ok())
+                .is_some_and(|record| record.confirmed_unix_ms.is_none())
+        };
+        while ids.iter().any(pending) {
+            tokio::time::sleep(LOOK / 2).await;
+        }
+    }
+
     /// Waits until none of `ids` is leaving any more.
     async fn gone(&self, ids: &[String]) {
         while ids
@@ -462,6 +476,12 @@ impl ContainerLeaving for LeaveKeeper {
     async fn leave(&self, containers: &[String], drain: Duration) -> Result<(), MmError> {
         let ids = self.begin(containers, drain).await?;
         self.gone(&ids).await;
+        Ok(())
+    }
+
+    async fn leave_confirmed(&self, containers: &[String], drain: Duration) -> Result<(), MmError> {
+        let ids = self.begin(containers, drain).await?;
+        self.confirmed(&ids).await;
         Ok(())
     }
 

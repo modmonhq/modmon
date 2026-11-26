@@ -65,6 +65,7 @@ pub(crate) fn inspect_document(
     )
 }
 
+mod auto_order;
 mod deploy_policy;
 mod network_overlay;
 

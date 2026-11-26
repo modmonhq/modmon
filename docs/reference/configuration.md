@@ -487,13 +487,22 @@ Wherever it runs, such a service:
 `mmd container leave` took it out)
 keeps serving the requests it already has, once no node sends it new ones:
 `30s`, `2m`, at most `15m`, default `1m`. Then it gets its stop signal and its
-`stop_grace_period`. See
+`stop_grace_period`. A deployment that replaces a `start-first` container goes
+on as soon as every node stops sending the old one new requests, so the drain
+adds nothing to how long it takes. See
 [take a container out without dropping a request](../remote-daemon.md#take-a-container-out-without-dropping-a-request).
 
 `update` says how a deployment replaces the service's containers. `order` is
 `stop-first` (the engine stops the old container, then starts the new one) or
 `start-first` (the new container starts next to the old one, which stops once
-the new one is healthy and resolved by every node). `parallelism` is how many
+the new one is healthy and resolved by every node). Without `order`, a service
+placed on more than one node of a cluster target is `start-first` unless its
+Compose definition publishes a host port, sets `container_name`, uses the
+host's network, PID or IPC namespace, mounts a volume that is not read-only,
+hands it devices, or runs more than one container (`scale`,
+`deploy.replicas`, `replicas`, `autoscale`, `host-network`); every other
+service is `stop-first`. Set `order: stop-first` to keep a service on several
+nodes stopping first. `parallelism` is how many
 nodes of a cluster target replace the service's stack at the same time.
 `failure` is `rollback` (every node the deployment changed returns to what it
 ran before) or `pause` (the deployment stops where it is). `start-first` is

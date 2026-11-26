@@ -51,6 +51,7 @@ pub(super) fn rollout_policy(
         }
     }
     policy.ahead = ahead.into_iter().collect();
+    super::auto_order::start_replicated_first(document, environment, &mut policy)?;
     Ok(policy)
 }
 

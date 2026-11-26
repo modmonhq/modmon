@@ -809,3 +809,41 @@ fn the_pull_limit_is_twenty_minutes_unless_an_environment_sets_it() -> TestResul
     }
     Ok(())
 }
+
+#[test]
+fn a_service_on_several_nodes_starts_first_unless_the_host_holds_it() -> TestResult {
+    use mm::domain::rollout::{HostTies, starts_first_by_default};
+
+    let ties = |yaml: &str| -> Result<HostTies, serde_yaml_ng::Error> {
+        Ok(HostTies::of(&serde_yaml_ng::from_str(yaml)?))
+    };
+    let free = [
+        "image: web:2",
+        "{image: web:2, volumes: ['config:/etc/web:ro', /cache]}",
+        "{image: web:2, volumes: [{type: bind, source: ./conf, target: /conf, read_only: true}, {type: tmpfs, target: /tmp}, {type: volume, target: /scratch}]}",
+        "{image: web:2, ports: []}",
+        "{image: web:2, scale: 1}",
+    ];
+    for yaml in free {
+        let ties = ties(yaml)?;
+        assert!(!ties.any(), "{yaml}: {ties:?}");
+        assert!(starts_first_by_default(2, &ties), "{yaml}");
+        assert!(!starts_first_by_default(1, &ties), "one node: {yaml}");
+        assert!(!starts_first_by_default(0, &ties), "no cluster: {yaml}");
+    }
+    let held = [
+        "{image: web:2, ports: ['8080:80']}",
+        "{image: web:2, ports: ['80']}",
+        "{image: web:2, container_name: web}",
+        "{image: web:2, network_mode: host}",
+        "{image: web:2, pid: host}",
+        "{image: db:17, volumes: ['data:/var/lib/postgresql/data']}",
+        "{image: db:17, volumes: [{type: volume, source: data, target: /data}]}",
+        "{image: web:2, devices: ['/dev/fuse']}",
+        "{image: web:2, deploy: {replicas: 2}}",
+    ];
+    for yaml in held {
+        assert!(!starts_first_by_default(3, &ties(yaml)?), "{yaml}");
+    }
+    Ok(())
+}

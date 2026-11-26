@@ -1331,3 +1331,83 @@ async fn drained_containers_stop_together_and_a_take_back_waits_for_their_stops(
     assert!(mm::adapters::leaving::leaving_ids(directory.path()).is_empty());
     Ok(())
 }
+
+fn confirm_leave(directory: &std::path::Path, id: &str) -> TestResult {
+    let path = directory
+        .join(mm::adapters::leaving::LEAVING_DIRECTORY)
+        .join(format!("{id}.json"));
+    let mut record: mm::domain::leaving::LeaveRecord =
+        serde_json::from_slice(&std::fs::read(&path)?)?;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?;
+    record.confirmed_unix_ms = Some(i64::try_from(now.as_millis())?);
+    std::fs::write(&path, serde_json::to_vec(&record)?)?;
+    Ok(())
+}
+
+/// A rollout step that replaces a container goes on as soon as every node
+/// confirmed that it sends the old one nothing new: the drain and the stop
+/// follow without it, and a rollback during the drain takes the container
+/// back.
+#[tokio::test]
+async fn a_step_goes_on_once_the_leave_is_confirmed_and_the_drain_and_stop_follow() -> TestResult {
+    use mm::app::ports::ContainerLeaving;
+
+    let directory = temp_dirs::tempdir()?;
+    let options = ResolverOptions {
+        lookup_port: free_port(GATEWAY_A).await?,
+        exchange_port: free_port(MESH_A).await?,
+        upstream_port: free_port(UPSTREAM).await?,
+        resolv_conf: directory.path().join("resolv.conf"),
+        address_patience: Duration::from_secs(30),
+    };
+    let id = "0123456789abcdef".repeat(4);
+    let node = NameResolver::with_options(
+        Arc::new(Networks(networks("a")?)),
+        Arc::new(Mesh(mesh(MESH_A, "b", MESH_B))),
+        Engine::new(Vec::new()),
+        options,
+    );
+    let keeper = mm::adapters::leaving::LeaveKeeper::new(
+        directory.path(),
+        node,
+        Arc::new(EngineCli { id: id.clone() }),
+        RuntimeKind::DockerCompose,
+    );
+    tokio::spawn(Arc::clone(&keeper).run());
+
+    for drain in [Duration::from_secs(600), Duration::ZERO] {
+        let leaving = tokio::spawn({
+            let keeper = Arc::clone(&keeper);
+            async move { keeper.leave_confirmed(&["api-1".to_owned()], drain).await }
+        });
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert!(!leaving.is_finished(), "no node confirmed the leave yet");
+        confirm_leave(directory.path(), &id)?;
+        tokio::time::timeout(Duration::from_secs(5), leaving).await???;
+        if drain.is_zero() {
+            for _ in 0..100 {
+                if mm::adapters::leaving::leaving_ids(directory.path()).is_empty() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            assert!(
+                mm::adapters::leaving::leaving_ids(directory.path()).is_empty(),
+                "the container stopped after the step went on"
+            );
+        } else {
+            assert_eq!(
+                mm::adapters::leaving::leaving_ids(directory.path()),
+                std::slice::from_ref(&id),
+                "the container drains after the step went on"
+            );
+            let recalled = keeper.recall("mm-shop-production-app").await?;
+            assert_eq!(
+                recalled,
+                ["api-1"],
+                "a rollback during the drain takes it back"
+            );
+        }
+    }
+    Ok(())
+}
