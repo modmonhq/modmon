@@ -1,36 +1,23 @@
-//! The sockets a node serves its metrics on: one per address the domain's
-//! [`listeners`] names, each answering `GET /metrics` to the peers it
-//! admits, with the scope it was opened for.
+//! Where a node serves its metrics, decided again every few seconds from
+//! the host policy, the cluster networks the node holds and what its
+//! deployments ask for (`domain::node_metrics::listeners`).
 
 use std::collections::BTreeSet;
-use std::net::{IpAddr, SocketAddr, SocketAddrV4};
+use std::io::Read as _;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, PoisonError, RwLock};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, SystemTime};
 
-use subtle::ConstantTimeEq as _;
-use tokio::io::{AsyncRead, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _};
-use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::Semaphore;
-use tokio::task::JoinHandle;
 use zeroize::Zeroizing;
 
+use super::server::MetricsServer;
 use crate::app::NodeMetricsCollector;
 use crate::app::ports::{ClusterNetworkHost, MeshHost};
 use crate::domain::host_policy::HostMetrics;
-use crate::domain::node_metrics::{
-    MAX_BODY_BYTES, MAX_REQUEST_BYTES, METRICS_PORT, MetricsListener, MetricsScope, RequestProblem,
-    listeners, parse_request, render,
-};
+use crate::domain::node_metrics::{METRICS_PORT, MetricsListener, listeners};
 
 /// How often the node looks again where it should serve.
 const REFRESH: Duration = Duration::from_secs(10);
-/// The most scrapes answered at once; one more is closed unanswered.
-const MAX_CONNECTIONS: usize = 16;
-/// How long a scraper may take to send its request.
-const REQUEST_PATIENCE: Duration = Duration::from_secs(5);
-/// How long one connection may last in all.
-const CONNECTION_PATIENCE: Duration = Duration::from_secs(30);
 const MAX_TOKEN_BYTES: u64 = 4096;
 
 /// What decides where the node serves.
@@ -41,13 +28,10 @@ pub struct EndpointSources {
     pub mesh: Arc<dyn MeshHost>,
 }
 
-type Token = Option<Zeroizing<Vec<u8>>>;
-
 pub struct MetricsEndpoint {
     collector: Arc<NodeMetricsCollector>,
+    server: Arc<MetricsServer>,
     sources: EndpointSources,
-    connections: Arc<Semaphore>,
-    token: RwLock<Token>,
     policy: Mutex<Option<(SystemTime, u64, HostMetrics)>>,
     problems: Mutex<BTreeSet<String>>,
 }
@@ -65,10 +49,9 @@ impl MetricsEndpoint {
     #[must_use]
     pub fn new(collector: Arc<NodeMetricsCollector>, sources: EndpointSources) -> Arc<Self> {
         Arc::new(Self {
+            server: MetricsServer::new(Arc::clone(&collector), METRICS_PORT),
             collector,
             sources,
-            connections: Arc::new(Semaphore::new(MAX_CONNECTIONS)),
-            token: RwLock::new(None),
             policy: Mutex::new(None),
             problems: Mutex::new(BTreeSet::new()),
         })
@@ -76,11 +59,10 @@ impl MetricsEndpoint {
 
     /// Serves until the process ends, looking every few seconds where.
     pub async fn run(self: Arc<Self>) {
-        let mut serving = Vec::new();
         loop {
             let mut problems = Vec::new();
             if let Some(wanted) = self.wanted(&mut problems).await {
-                self.reconcile(&mut serving, wanted, &mut problems);
+                problems.extend(self.server.serve(wanted));
             }
             self.report(problems);
             tokio::time::sleep(REFRESH).await;
@@ -131,28 +113,33 @@ impl MetricsEndpoint {
         let Some(policy) = self.host_metrics(problems) else {
             return Some(Vec::new());
         };
-        let token = match &policy.token_file {
-            Some(path) => match read_token(path) {
-                Ok(token) => Some(token),
-                Err(problem) => {
-                    problems.push(format!(
-                        "metrics: {problem}; the node serves no metrics until it can"
-                    ));
-                    return Some(Vec::new());
-                }
-            },
-            None => None,
+        let read = |key: &str, path: Option<&PathBuf>| match path {
+            Some(path) => read_token(key, path).map(Some),
+            None => Ok(None),
         };
-        *self.token.write().unwrap_or_else(PoisonError::into_inner) = token;
+        let tokens = read("token-file", policy.token_file.as_ref()).and_then(|project| {
+            let mesh = if policy.mesh {
+                read("mesh-token-file", policy.mesh_token_file.as_ref())?
+            } else {
+                None
+            };
+            Ok((project, mesh))
+        });
+        match tokens {
+            Ok((project, mesh)) => self.server.set_tokens(project, mesh),
+            Err(problem) => {
+                problems.push(format!(
+                    "metrics: {problem}; the node serves no metrics until it can"
+                ));
+                return Some(Vec::new());
+            }
+        }
         if !policy.enabled {
             return Some(Vec::new());
         }
         let deployed = self.collector.deployed().await?;
         let networks = self.sources.networks.stored().ok().flatten();
-        let mesh = policy
-            .mesh
-            .then(|| self.sources.mesh.stored().ok().flatten())
-            .flatten();
+        let mesh = self.sources.mesh.stored().ok().flatten();
         Some(listeners(
             &policy,
             networks.as_ref(),
@@ -160,213 +147,47 @@ impl MetricsEndpoint {
             mesh.as_ref(),
         ))
     }
-
-    fn reconcile(
-        self: &Arc<Self>,
-        serving: &mut Vec<(MetricsListener, JoinHandle<()>)>,
-        wanted: Vec<MetricsListener>,
-        problems: &mut Vec<String>,
-    ) {
-        serving.retain(|(listener, task)| {
-            let keep = wanted.contains(listener) && !task.is_finished();
-            if !keep {
-                task.abort();
-            }
-            keep
-        });
-        for listener in wanted {
-            if serving.iter().any(|(known, _)| *known == listener) {
-                continue;
-            }
-            let address = SocketAddr::V4(SocketAddrV4::new(listener.address, METRICS_PORT));
-            let socket = crate::adapters::discovery::free_tcp(address).and_then(|socket| {
-                socket.set_nonblocking(true)?;
-                TcpListener::from_std(socket)
-            });
-            match socket {
-                Ok(socket) => {
-                    let task = tokio::spawn(Arc::clone(self).serve(socket, Arc::new(listener.clone())));
-                    serving.push((listener, task));
-                }
-                Err(error) => problems.push(format!(
-                    "metrics: cannot listen on {address} ({error}); free that TCP port on that address, and mmd takes it within ten seconds"
-                )),
-            }
-        }
-    }
-
-    async fn serve(self: Arc<Self>, socket: TcpListener, listener: Arc<MetricsListener>) {
-        loop {
-            let (stream, peer) = match socket.accept().await {
-                Ok(accepted) => accepted,
-                Err(error) => {
-                    tracing::debug!(%error, "accepting a metrics scrape failed");
-                    tokio::time::sleep(Duration::from_millis(100)).await;
-                    continue;
-                }
-            };
-            let Ok(permit) = Arc::clone(&self.connections).try_acquire_owned() else {
-                continue;
-            };
-            let endpoint = Arc::clone(&self);
-            let listener = Arc::clone(&listener);
-            tokio::spawn(async move {
-                let _permit = permit;
-                let _ = tokio::time::timeout(
-                    CONNECTION_PATIENCE,
-                    endpoint.connection(stream, peer, &listener),
-                )
-                .await;
-            });
-        }
-    }
-
-    async fn connection(
-        &self,
-        mut stream: TcpStream,
-        peer: SocketAddr,
-        listener: &MetricsListener,
-    ) {
-        let admitted = match peer.ip() {
-            IpAddr::V4(address) => listener.admits(address),
-            IpAddr::V6(_) => false,
-        };
-        let token = self
-            .token
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone();
-        let scrape = Scrape {
-            admitted,
-            token: token.as_deref().map(Vec::as_slice),
-            scope: &listener.scope,
-        };
-        if let Err(error) = answer(&mut stream, &scrape, &self.collector).await {
-            tracing::debug!(%error, %peer, "answering a metrics scrape failed");
-        }
-    }
 }
 
-/// Who asks, and what they may see.
-#[derive(Debug, Clone, Copy)]
-pub struct Scrape<'a> {
-    /// Whether the peer is one the listener admits.
-    pub admitted: bool,
-    /// The bearer token every scrape has to send, when the host sets one.
-    pub token: Option<&'a [u8]>,
-    pub scope: &'a MetricsScope,
-}
-
-/// Reads one request from `stream` and answers it.
-pub async fn answer<S: AsyncRead + AsyncWrite + Unpin>(
-    stream: &mut S,
-    scrape: &Scrape<'_>,
-    collector: &NodeMetricsCollector,
-) -> std::io::Result<()> {
-    let head = tokio::time::timeout(REQUEST_PATIENCE, read_head(stream))
-        .await
-        .unwrap_or(Ok(None))?;
-    let request = match head.as_deref().map(parse_request) {
-        None | Some(Err(RequestProblem::BadRequest)) => {
-            return respond(stream, "400 Bad Request", "", false).await;
-        }
-        Some(Err(problem)) => return respond(stream, problem.status(), "", false).await,
-        Some(Ok(request)) => request,
-    };
-    if !scrape.admitted {
-        return respond(stream, "403 Forbidden", "", false).await;
-    }
-    if let Some(expected) = scrape.token {
-        let given = request.bearer.as_deref().unwrap_or_default().as_bytes();
-        if !bool::from(given.ct_eq(expected)) {
-            return respond(stream, "401 Unauthorized", "", false).await;
-        }
-    }
-    let snapshot = collector.snapshot().await;
-    let body = render(&snapshot, scrape.scope, MAX_BODY_BYTES);
-    respond(stream, "200 OK", &body, request.head).await
-}
-
-/// The request's line and headers, up to the empty line. `None` when they
-/// are longer than [`MAX_REQUEST_BYTES`], not text, or cut off.
-async fn read_head<S: AsyncRead + Unpin>(stream: &mut S) -> std::io::Result<Option<String>> {
-    let mut head = Vec::new();
-    let mut buffer = [0_u8; 1024];
-    loop {
-        let read = stream.read(&mut buffer).await?;
-        if read == 0 {
-            return Ok(None);
-        }
-        head.extend_from_slice(buffer.get(..read).unwrap_or_default());
-        let end = head.windows(4).position(|window| window == b"\r\n\r\n");
-        if end.unwrap_or(head.len()) > MAX_REQUEST_BYTES {
-            return Ok(None);
-        }
-        if let Some(end) = end {
-            head.truncate(end);
-            return Ok(String::from_utf8(head).ok());
-        }
-    }
-}
-
-async fn respond<S: AsyncWrite + Unpin>(
-    stream: &mut S,
-    status: &str,
-    body: &str,
-    head_only: bool,
-) -> std::io::Result<()> {
-    let challenge = if status.starts_with("401") {
-        "WWW-Authenticate: Bearer\r\n"
-    } else {
-        ""
-    };
-    let header = format!(
-        "HTTP/1.1 {status}\r\nContent-Type: text/plain; version=0.0.4; charset=utf-8\r\nContent-Length: {}\r\nCache-Control: no-store\r\n{challenge}Connection: close\r\n\r\n",
-        body.len()
-    );
-    stream.write_all(header.as_bytes()).await?;
-    if !head_only {
-        stream.write_all(body.as_bytes()).await?;
-    }
-    stream.shutdown().await
-}
-
-/// The token in `path`: a regular file only root can read, of at most a
-/// few kilobytes. Never says what it holds.
-fn read_token(path: &Path) -> Result<Zeroizing<Vec<u8>>, String> {
-    let metadata = std::fs::symlink_metadata(path).map_err(|error| {
+/// The token in `path`, the file of the host policy's `metrics.<key>`: a
+/// regular file only root can read, of at most a few kilobytes, opened
+/// without following a link. Never says what it holds.
+fn read_token(key: &str, path: &Path) -> Result<Zeroizing<Vec<u8>>, String> {
+    use rustix::fs::{FileType, Mode, OFlags};
+    let shown = path.display();
+    let file = rustix::fs::open(
+        path,
+        OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
+        Mode::empty(),
+    )
+    .map_err(|error| {
         format!(
-            "cannot read metrics.token-file {} ({error})",
-            path.display()
+            "cannot open metrics.{key} {shown} ({error}); it must be a regular file, not a link"
         )
     })?;
-    if !metadata.is_file() || metadata.len() > MAX_TOKEN_BYTES {
+    let stat = rustix::fs::fstat(&file)
+        .map_err(|error| format!("cannot read metrics.{key} {shown} ({error})"))?;
+    let size = u64::try_from(stat.st_size).unwrap_or(u64::MAX);
+    if FileType::from_raw_mode(stat.st_mode) != FileType::RegularFile || size > MAX_TOKEN_BYTES {
         return Err(format!(
-            "metrics.token-file {} must be a regular file of at most {MAX_TOKEN_BYTES} bytes, not a link",
-            path.display()
+            "metrics.{key} {shown} must be a regular file of at most {MAX_TOKEN_BYTES} bytes"
         ));
     }
-    #[cfg(unix)]
+    if stat.st_uid != rustix::process::getuid().as_raw()
+        || Mode::from_raw_mode(stat.st_mode).intersects(Mode::RWXG | Mode::RWXO)
     {
-        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
-        if metadata.uid() != rustix::process::getuid().as_raw()
-            || metadata.permissions().mode() & 0o077 != 0
-        {
-            let shown = path.display();
-            return Err(format!(
-                "metrics.token-file {shown} must belong to root and be readable by root only: chown root: {shown} && chmod 600 {shown}"
-            ));
-        }
+        return Err(format!(
+            "metrics.{key} {shown} must belong to root and be readable by root only: chown root: {shown} && chmod 600 {shown}"
+        ));
     }
-    let content = Zeroizing::new(std::fs::read(path).map_err(|error| {
-        format!(
-            "cannot read metrics.token-file {} ({error})",
-            path.display()
-        )
-    })?);
+    let mut content = Zeroizing::new(Vec::new());
+    std::fs::File::from(file)
+        .take(MAX_TOKEN_BYTES)
+        .read_to_end(&mut content)
+        .map_err(|error| format!("cannot read metrics.{key} {shown} ({error})"))?;
     let token = Zeroizing::new(content.trim_ascii().to_vec());
     if token.is_empty() {
-        return Err(format!("metrics.token-file {} is empty", path.display()));
+        return Err(format!("metrics.{key} {shown} is empty"));
     }
     Ok(token)
 }

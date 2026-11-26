@@ -57,7 +57,7 @@ impl ProcHostStats {
         Some(text)
     }
 
-    fn filesystems(&self) -> Vec<FilesystemSample> {
+    fn mounted(&self) -> Vec<FilesystemSample> {
         let Some(table) = self
             .text("proc/1/mounts")
             .or_else(|| self.text("proc/self/mounts"))
@@ -95,7 +95,6 @@ impl HostStats for ProcHostStats {
             cpu: self.text("proc/stat").as_deref().and_then(parse_stat),
             memory: self.text("proc/meminfo").as_deref().and_then(parse_meminfo),
             load: self.text("proc/loadavg").as_deref().and_then(parse_loadavg),
-            filesystems: self.filesystems(),
             disks: self
                 .text("proc/diskstats")
                 .as_deref()
@@ -107,5 +106,9 @@ impl HostStats for ProcHostStats {
                 .map(parse_net_dev)
                 .unwrap_or_default(),
         }
+    }
+
+    fn filesystems(&self) -> Vec<FilesystemSample> {
+        self.mounted()
     }
 }

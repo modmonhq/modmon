@@ -196,17 +196,19 @@ impl PeerSample {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Part {
     Host,
+    Filesystems,
     Mesh,
     Services,
 }
 
 impl Part {
-    pub const ALL: [Self; 3] = [Self::Host, Self::Mesh, Self::Services];
+    pub const ALL: [Self; 4] = [Self::Host, Self::Filesystems, Self::Mesh, Self::Services];
 
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Host => "host",
+            Self::Filesystems => "filesystems",
             Self::Mesh => "mesh",
             Self::Services => "services",
         }
@@ -221,6 +223,9 @@ pub struct NodeSnapshot {
     pub engine: String,
     pub collect_seconds: f64,
     pub host: Option<procfs::HostSample>,
+    /// Read apart from the rest of the host: a filesystem that hangs
+    /// leaves only these out.
+    pub filesystems: Option<Vec<procfs::FilesystemSample>>,
     pub peers: Option<Vec<PeerSample>>,
     pub environments: Option<Vec<EnvironmentSample>>,
 }
@@ -230,6 +235,7 @@ impl NodeSnapshot {
     pub fn collected(&self, part: Part) -> bool {
         match part {
             Part::Host => self.host.is_some(),
+            Part::Filesystems => self.filesystems.is_some(),
             Part::Mesh => self.peers.is_some(),
             Part::Services => self.environments.is_some(),
         }

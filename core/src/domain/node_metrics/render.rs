@@ -21,9 +21,11 @@ pub fn render(snapshot: &NodeSnapshot, scope: &MetricsScope, limit: usize) -> St
     if let Some(host) = &snapshot.host {
         let node = snapshot.node.as_str();
         machine(&mut out, node, host);
-        filesystems(&mut out, node, host);
         disks(&mut out, node, host);
         interfaces(&mut out, node, host);
+    }
+    if let Some(measured) = &snapshot.filesystems {
+        filesystems(&mut out, &snapshot.node, measured);
     }
     if let Some(environments) = &snapshot.environments {
         let seen = environments
@@ -209,7 +211,7 @@ fn machine(out: &mut Exposition, node: &str, host: &HostSample) {
     }
 }
 
-fn filesystems(out: &mut Exposition, node: &str, host: &HostSample) {
+fn filesystems(out: &mut Exposition, node: &str, measured: &[super::procfs::FilesystemSample]) {
     type Field = fn(&super::procfs::FilesystemSample) -> f64;
     let fields: [(&str, &str, Field); 6] = [
         (
@@ -245,7 +247,7 @@ fn filesystems(out: &mut Exposition, node: &str, host: &HostSample) {
     ];
     for (name, help, value) in fields {
         out.family(name, Kind::Gauge, help);
-        for sample in &host.filesystems {
+        for sample in measured {
             let mount = &sample.mount;
             out.sample(
                 name,

@@ -37,7 +37,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   interfaces), mesh and service metrics at `http://mmd.internal:9753/metrics`
   to that network's containers, with that environment's services only. The
   host policy's `metrics:` can turn it off, require a bearer token, or serve
-  every project to the hosts on the mesh address. See
+  every project to the other hosts on the mesh address with a token of its
+  own. See
   `docs/how-to/metrics.md`.
 
 ### Fixed

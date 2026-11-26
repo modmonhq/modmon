@@ -5,7 +5,7 @@
 use std::net::Ipv4Addr;
 use std::sync::Arc;
 
-use mm::adapters::node_metrics::{ProcHostStats, Scrape, answer};
+use mm::adapters::node_metrics::{MetricsServer, ProcHostStats, Scrape, answer};
 use mm::app::ports::{DeployedEnvironments, HostStats, MeshPeers, NodeContainers};
 use mm::app::{NodeIdentity, NodeMetricsCollector, NodeMetricsSources};
 use mm::domain::cluster_network::{NetworkNeed, NetworkTable, NodeNetworks, network_key};
@@ -13,14 +13,16 @@ use mm::domain::discovery::Health;
 use mm::domain::error::MmError;
 use mm::domain::host_policy::HostMetrics;
 use mm::domain::mesh::{MeshPeer, MeshState};
+use mm::domain::node_metrics::MetricsListener;
 use mm::domain::node_metrics::procfs::{
-    HostSample, parse_diskstats, parse_loadavg, parse_meminfo, parse_mounts, parse_net_dev,
-    parse_stat,
+    FilesystemSample, HostSample, parse_diskstats, parse_loadavg, parse_meminfo, parse_mounts,
+    parse_net_dev, parse_stat,
 };
 use mm::domain::node_metrics::{
     DeployedEnvironment, LabelledContainer, MetricsScope, NodeSnapshot, PeerSample, RequestProblem,
     RolloutOutcome, environment_samples, listeners, parse_request, render,
 };
+use mm::domain::repo_target::Ipv4Cidr;
 use mm::domain::workspace::ProjectId;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
@@ -186,13 +188,14 @@ fn a_host_root_is_read_whole_with_its_filesystems_measured() -> TestResult {
         root.path().join("proc/1/mounts"),
         "/dev/vda1 / ext4 rw 0 0\n/dev/vdb /data xfs rw 0 0\n/dev/vdc /missing xfs rw 0 0\n",
     )?;
-    let sample = ProcHostStats::at(root.path()).read();
+    let host = ProcHostStats::at(root.path());
+    let sample = host.read();
+    let filesystems = host.filesystems();
     assert_eq!(sample.load, Some([1.0, 2.0, 3.0]));
     assert_eq!(sample.cpu.map(|cpu| cpu.cpus), Some(2));
     assert_eq!(sample.disks.len(), 3);
     assert_eq!(sample.interfaces.len(), 3);
-    let measured = sample
-        .filesystems
+    let measured = filesystems
         .iter()
         .map(|filesystem| filesystem.mount.mountpoint.as_str())
         .collect::<Vec<_>>();
@@ -202,8 +205,7 @@ fn a_host_root_is_read_whole_with_its_filesystems_measured() -> TestResult {
         "a mountpoint that is not there is left out"
     );
     assert!(
-        sample
-            .filesystems
+        filesystems
             .iter()
             .all(|filesystem| filesystem.usage.size > 0)
     );
@@ -336,9 +338,9 @@ fn snapshot() -> NodeSnapshot {
         collect_seconds: 0.25,
         host: Some(HostSample {
             load: Some([0.5, 0.25, 0.125]),
-            filesystems: Vec::new(),
             ..HostSample::default()
         }),
+        filesystems: Some(Vec::new()),
         peers: Some(vec![PeerSample {
             peer: "db-1".to_owned(),
             handshake_age_seconds: Some(30),
@@ -481,10 +483,16 @@ fn a_node_listens_on_each_network_that_asks_and_on_the_mesh_for_its_admin() -> T
         !listener.admits(Ipv4Addr::new(10, 64, 16, 2)),
         "a container of another network"
     );
+    assert!(
+        !listener.admits(Ipv4Addr::new(10, 64, 0, 1)),
+        "the node itself, as any process on the host reaches it"
+    );
+    assert!(listener.own.contains(&Ipv4Addr::new(10, 64, 16, 1)));
+    assert!(listener.own.contains(&Ipv4Addr::new(10, 90, 0, 1)));
 
     let admin = HostMetrics {
         mesh: true,
-        token_file: Some("/etc/mm/metrics-token".into()),
+        mesh_token_file: Some("/etc/mm/metrics-mesh-token".into()),
         ..HostMetrics::default()
     };
     let wanted = listeners(&admin, Some(&networks), &[shop()], Some(&mesh));
@@ -495,8 +503,8 @@ fn a_node_listens_on_each_network_that_asks_and_on_the_mesh_for_its_admin() -> T
     );
     assert!(host.admits(Ipv4Addr::new(10, 90, 0, 2)));
     assert!(
-        host.admits(Ipv4Addr::new(10, 90, 0, 1)),
-        "the node's own host"
+        !host.admits(Ipv4Addr::new(10, 90, 0, 1)),
+        "the node's own host, where every project's host-network service runs"
     );
     assert!(
         !host.admits(Ipv4Addr::new(10, 90, 0, 9)),
@@ -521,14 +529,28 @@ fn a_node_listens_on_each_network_that_asks_and_on_the_mesh_for_its_admin() -> T
 
 #[test]
 fn the_host_policy_reads_metrics_and_refuses_a_mesh_without_a_token() -> TestResult {
-    let read: HostMetrics =
-        serde_yaml_ng::from_str("token-file: /etc/mm/metrics-token\nmesh: true\n")?;
+    let read: HostMetrics = serde_yaml_ng::from_str(
+        "token-file: /etc/mm/metrics-token\nmesh: true\nmesh-token-file: /etc/mm/metrics-mesh-token\n",
+    )?;
     assert!(read.enabled && read.mesh);
     read.validate()?;
     let open: HostMetrics = serde_yaml_ng::from_str("mesh: true\n")?;
     assert!(
         open.validate()
-            .is_err_and(|problem| problem.contains("metrics.token-file"))
+            .is_err_and(|problem| problem.contains("metrics.mesh-token-file"))
+    );
+    let project_token: HostMetrics =
+        serde_yaml_ng::from_str("token-file: /etc/mm/metrics-token\nmesh: true\n")?;
+    assert!(
+        project_token.validate().is_err(),
+        "the projects' token never unlocks every project"
+    );
+    let shared: HostMetrics =
+        serde_yaml_ng::from_str("token-file: /etc/mm/t\nmesh: true\nmesh-token-file: /etc/mm/t\n")?;
+    assert!(
+        shared
+            .validate()
+            .is_err_and(|problem| problem.contains("another file"))
     );
     let relative: HostMetrics = serde_yaml_ng::from_str("token-file: token\n")?;
     assert!(relative.validate().is_err());
@@ -579,6 +601,24 @@ impl HostStats for Fixed {
             ..HostSample::default()
         }
     }
+
+    fn filesystems(&self) -> Vec<FilesystemSample> {
+        Vec::new()
+    }
+}
+
+/// A host one of whose filesystems hangs.
+struct Hanging;
+
+impl HostStats for Hanging {
+    fn read(&self) -> HostSample {
+        Fixed.read()
+    }
+
+    fn filesystems(&self) -> Vec<FilesystemSample> {
+        std::thread::sleep(std::time::Duration::from_secs(8));
+        Vec::new()
+    }
 }
 
 #[async_trait::async_trait]
@@ -602,6 +642,10 @@ impl DeployedEnvironments for Fixed {
 }
 
 fn collector() -> Arc<NodeMetricsCollector> {
+    collector_on(Arc::new(Fixed))
+}
+
+fn collector_on(host: Arc<dyn HostStats>) -> Arc<NodeMetricsCollector> {
     let fixed = Arc::new(Fixed);
     NodeMetricsCollector::new(
         NodeIdentity {
@@ -610,7 +654,7 @@ fn collector() -> Arc<NodeMetricsCollector> {
             engine: "podman-compose".to_owned(),
         },
         NodeMetricsSources {
-            host: fixed.clone(),
+            host,
             containers: fixed.clone(),
             mesh: fixed.clone(),
             deployed: fixed,
@@ -687,5 +731,107 @@ async fn a_scrape_is_answered_only_for_an_admitted_peer_with_the_token() -> Test
     );
     let long = format!("GET /metrics HTTP/1.1\r\nX: {}\r\n\r\n", "a".repeat(9000));
     assert!(exchange(&long, &open).await?.starts_with("HTTP/1.1 400"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_filesystem_that_hangs_leaves_only_the_filesystems_out() {
+    let snapshot = collector_on(Arc::new(Hanging)).snapshot().await;
+    assert_eq!(
+        snapshot.host.as_ref().and_then(|host| host.load),
+        Some([1.0, 1.0, 1.0])
+    );
+    assert_eq!(snapshot.filesystems, None);
+    let text = render(&snapshot, &MetricsScope::Host, 1024 * 1024);
+    assert!(text.contains("mm_metrics_collected{node=\"app-1\",part=\"filesystems\"} 0\n"));
+    assert!(text.contains("mm_metrics_collected{node=\"app-1\",part=\"host\"} 1\n"));
+}
+
+fn on_loopback(address: [u8; 4], own: Vec<Ipv4Addr>, scope: MetricsScope) -> MetricsListener {
+    MetricsListener {
+        address: Ipv4Addr::from(address),
+        peers: vec![Ipv4Cidr {
+            address: Ipv4Addr::new(127, 0, 0, 0),
+            prefix: 8,
+        }],
+        own,
+        scope,
+    }
+}
+
+async fn scrape_at(
+    address: std::net::SocketAddr,
+    token: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let mut stream = tokio::net::TcpStream::connect(address).await?;
+    stream
+        .write_all(
+            format!("GET /metrics HTTP/1.1\r\nAuthorization: Bearer {token}\r\n\r\n").as_bytes(),
+        )
+        .await?;
+    let mut response = Vec::new();
+    let _ = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        stream.read_to_end(&mut response),
+    )
+    .await?;
+    Ok(String::from_utf8_lossy(&response).into_owned())
+}
+
+#[tokio::test]
+async fn a_server_keeps_its_socket_closes_on_the_node_itself_and_splits_its_tokens() -> TestResult {
+    let server = MetricsServer::new(collector(), 0);
+    server.set_tokens(
+        Some(zeroize::Zeroizing::new(b"project".to_vec())),
+        Some(zeroize::Zeroizing::new(b"mesh".to_vec())),
+    );
+    let environment = MetricsScope::Environment {
+        project_id: project(1),
+        environment: "production".to_owned(),
+    };
+    let problems = server.serve(vec![
+        on_loopback([127, 0, 0, 1], Vec::new(), environment.clone()),
+        on_loopback([127, 0, 0, 2], Vec::new(), MetricsScope::Host),
+    ]);
+    assert!(problems.is_empty(), "{problems:?}");
+    let listening = server.listening();
+    let (project_address, mesh_address) = (listening[0], listening[1]);
+
+    assert!(
+        scrape_at(project_address, "project")
+            .await?
+            .starts_with("HTTP/1.1 200 OK")
+    );
+    assert!(
+        scrape_at(project_address, "mesh")
+            .await?
+            .starts_with("HTTP/1.1 401")
+    );
+    assert!(
+        scrape_at(mesh_address, "project")
+            .await?
+            .starts_with("HTTP/1.1 401"),
+        "a project's token never reads every project"
+    );
+    let everything = scrape_at(mesh_address, "mesh").await?;
+    assert!(everything.starts_with("HTTP/1.1 200 OK") && everything.contains("project=\"blog\""));
+
+    let problems = server.serve(vec![on_loopback(
+        [127, 0, 0, 1],
+        vec![Ipv4Addr::new(127, 0, 0, 1)],
+        environment,
+    )]);
+    assert!(
+        problems.is_empty(),
+        "the same address changes in place: {problems:?}"
+    );
+    assert_eq!(server.listening(), vec![project_address]);
+    assert_eq!(
+        scrape_at(project_address, "project")
+            .await
+            .unwrap_or_default(),
+        "",
+        "the node's own address is closed without an answer"
+    );
     Ok(())
 }

@@ -1,13 +1,17 @@
 use async_trait::async_trait;
 
 use crate::domain::error::MmError;
-use crate::domain::node_metrics::procfs::HostSample;
+use crate::domain::node_metrics::procfs::{FilesystemSample, HostSample};
 use crate::domain::node_metrics::{DeployedEnvironment, LabelledContainer, PeerSample};
 
 /// The host's own numbers. Reading them reads files and can block on a
 /// filesystem, so it belongs on a thread that serves nothing else.
 pub trait HostStats: Send + Sync {
     fn read(&self) -> HostSample;
+
+    /// The host's local filesystems with their usage. `statvfs` waits for
+    /// a filesystem that hangs, so this is read apart from the rest.
+    fn filesystems(&self) -> Vec<FilesystemSample>;
 }
 
 /// The containers of every environment on this node, as the engine shows

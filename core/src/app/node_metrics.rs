@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use crate::app::ports::{DeployedEnvironments, HostStats, MeshPeers, NodeContainers};
-use crate::domain::node_metrics::procfs::HostSample;
+use crate::domain::node_metrics::procfs::{FilesystemSample, HostSample};
 use crate::domain::node_metrics::{
     CACHE_FOR, EnvironmentSample, NodeSnapshot, PeerSample, environment_samples,
 };
@@ -41,7 +41,9 @@ pub struct NodeMetricsCollector {
     sources: NodeMetricsSources,
     cached: tokio::sync::Mutex<Option<(Instant, Arc<NodeSnapshot>)>>,
     reading_host: Arc<AtomicBool>,
+    reading_filesystems: Arc<AtomicBool>,
     reading_records: Arc<AtomicBool>,
+    refreshing_records: Arc<AtomicBool>,
 }
 
 impl std::fmt::Debug for NodeMetricsCollector {
@@ -61,7 +63,9 @@ impl NodeMetricsCollector {
             sources,
             cached: tokio::sync::Mutex::new(None),
             reading_host: Arc::new(AtomicBool::new(false)),
+            reading_filesystems: Arc::new(AtomicBool::new(false)),
             reading_records: Arc::new(AtomicBool::new(false)),
+            refreshing_records: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -81,27 +85,36 @@ impl NodeMetricsCollector {
     }
 
     /// What each environment's last deployment runs here, read the way a
-    /// collection reads it.
+    /// collection reads it, apart from the collections.
     pub async fn deployed(&self) -> Option<Vec<crate::domain::node_metrics::DeployedEnvironment>> {
+        self.read_deployed(&self.refreshing_records).await
+    }
+
+    async fn read_deployed(
+        &self,
+        busy: &Arc<AtomicBool>,
+    ) -> Option<Vec<crate::domain::node_metrics::DeployedEnvironment>> {
         let deployed = Arc::clone(&self.sources.deployed);
-        let read = blocking(&self.reading_records, RECORDS_PATIENCE, move || {
-            deployed.deployed()
-        })
-        .await?;
+        let read = blocking(busy, RECORDS_PATIENCE, move || deployed.deployed()).await?;
         read.inspect_err(|error| tracing::debug!(%error, "cannot read what the node's deployments run, for its metrics"))
             .ok()
     }
 
     async fn collect(&self) -> NodeSnapshot {
         let started = Instant::now();
-        let (host, peers, environments) =
-            tokio::join!(self.host(), self.peers(), self.environments());
+        let (host, filesystems, peers, environments) = tokio::join!(
+            self.host(),
+            self.filesystems(),
+            self.peers(),
+            self.environments()
+        );
         NodeSnapshot {
             node: self.identity.node.clone(),
             version: self.identity.version.clone(),
             engine: self.identity.engine.clone(),
             collect_seconds: started.elapsed().as_secs_f64(),
             host,
+            filesystems,
             peers,
             environments,
         }
@@ -110,6 +123,14 @@ impl NodeMetricsCollector {
     async fn host(&self) -> Option<HostSample> {
         let host = Arc::clone(&self.sources.host);
         blocking(&self.reading_host, HOST_PATIENCE, move || host.read()).await
+    }
+
+    async fn filesystems(&self) -> Option<Vec<FilesystemSample>> {
+        let host = Arc::clone(&self.sources.host);
+        blocking(&self.reading_filesystems, HOST_PATIENCE, move || {
+            host.filesystems()
+        })
+        .await
     }
 
     async fn peers(&self) -> Option<Vec<PeerSample>> {
@@ -125,7 +146,7 @@ impl NodeMetricsCollector {
 
     async fn environments(&self) -> Option<Vec<EnvironmentSample>> {
         let (deployed, containers) = tokio::join!(
-            self.deployed(),
+            self.read_deployed(&self.reading_records),
             tokio::time::timeout(ENGINE_PATIENCE, self.sources.containers.containers())
         );
         let containers = match containers {

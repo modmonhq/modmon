@@ -14,20 +14,25 @@ pub struct MetricsListener {
     pub address: Ipv4Addr,
     /// The only addresses a scrape may come from.
     pub peers: Vec<Ipv4Cidr>,
+    /// The node's own addresses, which a scrape never comes from: a
+    /// process on the host itself reaches every one of them.
+    pub own: Vec<Ipv4Addr>,
     pub scope: MetricsScope,
 }
 
 impl MetricsListener {
     #[must_use]
     pub fn admits(&self, peer: Ipv4Addr) -> bool {
-        self.peers.iter().any(|allowed| allowed.contains(peer))
+        !self.own.contains(&peer) && self.peers.iter().any(|allowed| allowed.contains(peer))
     }
 }
 
 /// Every address the node serves its metrics on: its own address on each
 /// cluster network an environment asks for them on (`metrics: true`),
 /// for the containers of that network, and, when the host's admin asks
-/// for it, its mesh address for the hosts of the mesh.
+/// for it, its mesh address for the other hosts of the mesh. `mesh` is
+/// the node's mesh whether or not it serves there: its address is never a
+/// peer.
 #[must_use]
 pub fn listeners(
     policy: &HostMetrics,
@@ -38,6 +43,15 @@ pub fn listeners(
     if !policy.enabled {
         return Vec::new();
     }
+    let mut own = networks
+        .map(NodeNetworks::local)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|local| local.gateway)
+        .chain(mesh.map(|mesh| mesh.address))
+        .collect::<Vec<_>>();
+    own.sort_unstable();
+    own.dedup();
     let mut listeners = Vec::new();
     for environment in deployed {
         for key in &environment.metrics_networks {
@@ -47,6 +61,7 @@ pub fn listeners(
             listeners.push(MetricsListener {
                 address: local.gateway,
                 peers: vec![local.block],
+                own: own.clone(),
                 scope: MetricsScope::Environment {
                     project_id: environment.project_id,
                     environment: environment.environment.clone(),
@@ -57,13 +72,15 @@ pub fn listeners(
     if let (true, Some(mesh)) = (policy.mesh, mesh) {
         listeners.push(MetricsListener {
             address: mesh.address,
-            peers: std::iter::once(mesh.address)
-                .chain(mesh.peer_addresses().into_values())
+            peers: mesh
+                .peer_addresses()
+                .into_values()
                 .map(|address| Ipv4Cidr {
                     address,
                     prefix: 32,
                 })
                 .collect(),
+            own: own.clone(),
             scope: MetricsScope::Host,
         });
     }

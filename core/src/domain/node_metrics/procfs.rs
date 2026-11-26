@@ -79,14 +79,13 @@ pub struct InterfaceSample {
     pub transmit_drops: u64,
 }
 
-/// Everything read from the host in one collection. A part the host did
-/// not show is empty.
+/// Everything read from the host in one collection but its filesystems.
+/// A part the host did not show is empty.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct HostSample {
     pub cpu: Option<CpuSample>,
     pub memory: Option<MemorySample>,
     pub load: Option<[f64; 3]>,
-    pub filesystems: Vec<FilesystemSample>,
     pub disks: Vec<DiskSample>,
     pub interfaces: Vec<InterfaceSample>,
 }
