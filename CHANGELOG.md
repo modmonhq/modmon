@@ -20,8 +20,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   anywhere else; `service_healthy` dependencies then wait for
   `service_started`, and `mm service status` shows `check off`.
 
+### Added
+
+- `mm mcp serve` has `mm_service_restart_plan` and `mm_service_restart_apply`:
+  an agent with `operate` in an environment restarts one service from a
+  reviewed plan, through the same path as `mm service restart`; below
+  `operate` it hands the user that command. `mm_access` lists what each
+  grant allows under `allows`.
+- `mm_read` kind `env` returns what `mm env status` prints, or one variable
+  with `key`, never with a sensitive variable's value; kind `secrets` takes
+  `key` too, and `health` adds the readiness checks `mm doctor` lists for an
+  environment on this machine.
+
 ### Fixed
 
+- `mm_read` kind `secrets` for an environment on this machine returned every
+  field as `[REDACTED]`; it now lists each secret's key, provider, status and
+  revision under `bindings`.
 - A plan whose config-file template reads a release input it was not given
   fails with `MM_RELEASE_INPUT`, as one whose environment file does, instead
   of `MM_ENVIRONMENT`.

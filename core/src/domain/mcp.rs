@@ -113,12 +113,12 @@ impl McpServerConfig {
     }
 
     /// How long a call of `operation` may take: `request_timeout_ms`, except
-    /// for applying a deployment, a build, or a job.
+    /// for applying a deployment, a build, a job, a setup step or a restart.
     #[must_use]
     pub fn call_bound(&self, operation: &str) -> Option<std::time::Duration> {
         (!matches!(
             operation,
-            "deploy_apply" | "build_apply" | "job_apply" | "setup_apply"
+            "deploy_apply" | "build_apply" | "job_apply" | "setup_apply" | "service_restart_apply"
         ))
         .then(|| std::time::Duration::from_millis(self.request_timeout_ms))
     }
@@ -234,6 +234,9 @@ pub struct McpEnvironmentAccess {
     pub level: crate::domain::host_policy::AccessLevel,
     /// Services `mm_exec` may run in: `true`, `false`, or names.
     pub exec: crate::domain::host_policy::ServiceSelection,
+    /// Every action the grant covers, such as `job_run` and `service_restart`.
+    #[serde(default)]
+    pub allows: Vec<AgentAction>,
 }
 
 /// What the agent may do in every environment of the project.
@@ -301,6 +304,10 @@ pub enum McpReadKind {
     /// The `development: optional` modules, services and jobs, and which
     /// run in the development environment on this machine.
     Optional,
+    /// Each service's variables as `mm env status` prints them, or one
+    /// variable with `key` as `mm env explain KEY` does. Never a value of a
+    /// sensitive variable.
+    Env,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -319,6 +326,10 @@ pub struct McpReadRequest {
     /// With kind `commands`: which commands to list.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filter: Option<crate::domain::command_log::CommandFilter>,
+    /// With kind `env`: one variable name or global key. With kind
+    /// `secrets`: one secret.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -763,6 +774,9 @@ const fn default_exec_seconds() -> u64 {
 fn default_principal() -> String {
     "agent".to_owned()
 }
+
+mod restart;
+pub use restart::*;
 
 #[cfg(test)]
 mod tests;

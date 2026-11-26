@@ -20,13 +20,15 @@ use crate::domain::mcp::{
     McpDenialReason, McpDeployPlanRequest, McpEnvironmentAccess, McpExecRequest, McpExecResult,
     McpJobAction, McpJobApplyRequest, McpJobPlanRequest, McpLogRequest, McpReadKind,
     McpReadRequest, McpRequestContext, McpScope, McpSelectedScope, McpServerConfig,
+    McpServiceRestartApplyRequest, McpServiceRestartPlan, McpServiceRestartPlanRequest,
 };
-use crate::domain::observability::{LogRecord, OperationCancellation};
+use crate::domain::observability::{LogRecord, OperationCancellation, RestartOutcome};
 use crate::domain::onboarding::{
     ConfigMutationAction, ConfigMutationPlan, ConfigMutationRequest, ConfigMutationResult,
     ConfigResourceKind,
 };
-use crate::domain::runtime::RuntimeKind;
+use crate::domain::runtime::{RuntimeKind, ServiceIdentity, ServiceState};
+use crate::domain::workspace::ProjectId;
 
 const SENTINEL: &str = "TOP_SECRET_MCP_SENTINEL";
 
@@ -76,6 +78,7 @@ struct FakeUseCases {
     execs: AtomicUsize,
     jobs: AtomicUsize,
     deploys: AtomicUsize,
+    restarts: AtomicUsize,
     dropped_operation: Arc<AtomicBool>,
     access: BTreeMap<String, AgentAccess>,
     /// The `agents:` block was edited: only `view` is in force.
@@ -99,6 +102,7 @@ impl Default for FakeUseCases {
             execs: AtomicUsize::new(0),
             jobs: AtomicUsize::new(0),
             deploys: AtomicUsize::new(0),
+            restarts: AtomicUsize::new(0),
             dropped_operation: Arc::new(AtomicBool::new(false)),
             access: BTreeMap::from([
                 (
@@ -220,6 +224,7 @@ impl McpUseCases for FakeUseCases {
                     access: access.summary(),
                     level: access.level,
                     exec: access.exec.clone(),
+                    allows: access.allowed(),
                 })
                 .collect(),
             outside_the_grant: "ask the user".to_owned(),
@@ -356,6 +361,50 @@ impl McpUseCases for FakeUseCases {
         context.require(action.agent_action(), None)?;
         self.jobs.fetch_add(1, Ordering::SeqCst);
         Ok(serde_json::json!({ "queued": true }))
+    }
+
+    async fn plan_service_restart(
+        &self,
+        context: &McpRequestContext,
+        service: &str,
+    ) -> Result<McpServiceRestartPlan, MmError> {
+        Ok(McpServiceRestartPlan {
+            plan_hash: "f".repeat(64),
+            environment: context.scope.environment.clone(),
+            target: context.scope.target.clone(),
+            runtime: context.scope.runtime,
+            remote: context.remote,
+            stack: "app".to_owned(),
+            module: None,
+            service: service.to_owned(),
+            state: ServiceState::Running,
+            containers: vec![format!("app-{service}-1")],
+            nodes: Vec::new(),
+        })
+    }
+
+    async fn apply_service_restart(
+        &self,
+        context: &McpRequestContext,
+        service: &str,
+        _plan_hash: &str,
+    ) -> Result<RestartOutcome, MmError> {
+        context.require(AgentAction::ServiceRestart, None)?;
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        self.restarts.fetch_add(1, Ordering::SeqCst);
+        Ok(RestartOutcome {
+            runtime: context.scope.runtime,
+            identity: ServiceIdentity {
+                project_id: ProjectId(uuid::Uuid::from_u128(7)),
+                environment: context.scope.environment.clone(),
+                stack: "app".to_owned(),
+                module: None,
+                service: service.to_owned(),
+            },
+            containers: vec![format!("app-{service}-1")],
+            rolling: false,
+            nodes: Vec::new(),
+        })
     }
 }
 
@@ -642,6 +691,93 @@ async fn job_actions_need_operate_and_schedule_changes_need_deploy() {
 }
 
 #[tokio::test]
+async fn a_restart_needs_operate_applies_its_review_once_and_outlives_the_call_bound() {
+    let (server, use_cases, audit) = fixture(50, 64 * 1024);
+    let plan = |environment: &str| {
+        let server = server.clone();
+        let scope = scope_in(environment);
+        async move {
+            structured(
+                server
+                    .service_restart_plan(Parameters(McpServiceRestartPlanRequest {
+                        scope,
+                        service: "api".to_owned(),
+                    }))
+                    .await,
+            )
+        }
+    };
+    let apply = |environment: &str, service: &str, plan: &serde_json::Value| {
+        let plan_hash = plan["plan_hash"].as_str().unwrap_or_default().to_owned();
+        McpServiceRestartApplyRequest {
+            scope: scope_in(environment),
+            service: service.to_owned(),
+            confirmation: format!("apply:{plan_hash}"),
+            plan_hash,
+            approval_token: plan["approval_token"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned(),
+        }
+    };
+
+    let reviewed = plan("staging").await;
+    assert_eq!(reviewed["applied_by"], "agent", "{reviewed}");
+    assert_eq!(
+        reviewed["plan"]["containers"],
+        serde_json::json!(["app-api-1"])
+    );
+    let other = structured(
+        server
+            .service_restart_apply(Parameters(apply("staging", "worker", &reviewed)))
+            .await,
+    );
+    assert_eq!(other["error"]["code"], "MM_SECURITY", "{other}");
+
+    let reviewed = plan("staging").await;
+    let request = apply("staging", "api", &reviewed);
+    let restarted = structured(
+        server
+            .service_restart_apply(Parameters(request.clone()))
+            .await,
+    );
+    assert_eq!(
+        restarted["containers"],
+        serde_json::json!(["app-api-1"]),
+        "{restarted}"
+    );
+    let again = structured(server.service_restart_apply(Parameters(request)).await);
+    assert_eq!(again["error"]["code"], "MM_SECURITY", "{again}");
+    assert_eq!(use_cases.restarts.load(Ordering::SeqCst), 1);
+
+    let viewed = plan("production").await;
+    assert_eq!(viewed["applied_by"], "user");
+    assert_eq!(
+        viewed["user_commands"],
+        serde_json::json!(["mm --environment production service restart api"])
+    );
+    let refused = structured(
+        server
+            .service_restart_apply(Parameters(apply("production", "api", &reviewed)))
+            .await,
+    );
+    assert_eq!(refused["error"]["code"], "MM_AGENT_HANDOFF");
+    assert_eq!(refused["error"]["handoff"]["requires"], "level operate");
+    assert_eq!(
+        user_commands(&refused),
+        ["mm --environment production service restart api"]
+    );
+    assert_eq!(use_cases.restarts.load(Ordering::SeqCst), 1);
+    let outcomes = audit.outcomes();
+    for expected in ["STARTED", "OK"] {
+        assert!(
+            outcomes.contains(&("service_restart_apply".to_owned(), expected.to_owned())),
+            "{outcomes:?}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn an_edited_agents_block_and_a_missing_agent_key_name_the_fix() {
     let (server, use_cases, _audit) = fixture(1_000, 64 * 1024);
     use_cases.untrusted.store(true, Ordering::SeqCst);
@@ -674,6 +810,7 @@ async fn an_edited_agents_block_and_a_missing_agent_key_name_the_fix() {
                 limit: 10,
                 command: None,
                 filter: None,
+                key: None,
             }))
             .await,
     );
@@ -758,6 +895,7 @@ async fn access_lists_every_environment_and_instructions_name_the_handoff() {
                 limit: 10,
                 command: None,
                 filter: None,
+                key: None,
             }))
             .await,
     );
@@ -907,6 +1045,7 @@ async fn sensitive_arguments_are_rejected_before_the_use_case_and_outputs_are_sc
                 limit: 10,
                 command: None,
                 filter: None,
+                key: None,
             }))
             .await,
     );
@@ -927,6 +1066,7 @@ async fn bounds_and_timeout_drop_in_flight_operations() {
                 limit: 10,
                 command: None,
                 filter: None,
+                key: None,
             }))
             .await,
     );
@@ -942,6 +1082,7 @@ async fn bounds_and_timeout_drop_in_flight_operations() {
                 limit: 10,
                 command: None,
                 filter: None,
+                key: None,
             }))
             .await,
     );
@@ -995,6 +1136,8 @@ fn tool_schema_snapshot_is_versioned_and_has_no_shell_surface() {
             "mm_job_plan",
             "mm_logs",
             "mm_read",
+            "mm_service_restart_apply",
+            "mm_service_restart_plan",
             "mm_setup_apply",
             "mm_setup_plan",
             "mm_stage_value",
@@ -1005,7 +1148,7 @@ fn tool_schema_snapshot_is_versioned_and_has_no_shell_surface() {
     let canonical = serde_json::to_vec(&snapshot).unwrap_or_default();
     let digest = blake3::hash(&canonical).to_hex().to_string();
     assert_eq!(
-        digest, "89b285c0b3c19c5c9f55933c3072a694a575dd948cf9888f626ca658c37746f4",
+        digest, "79ddf2d426b37f153be90e6fa38119b0545d9e916b895e66608382e2664274d7",
         "the tool contract changed; bump MCP_TOOL_SCHEMA_VERSION if it is incompatible"
     );
     let text = String::from_utf8_lossy(&canonical).to_ascii_lowercase();

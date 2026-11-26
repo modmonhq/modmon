@@ -127,25 +127,4 @@ impl McpApplicationAdapter {
             .await?,
         )
     }
-
-    pub(super) async fn read_secrets(
-        &self,
-        context: &McpRequestContext,
-        selection: &WorkspaceSelection,
-        runtime: &RuntimeComposition,
-    ) -> Result<serde_json::Value, MmError> {
-        match self.remote(selection, context)? {
-            Some(environment) => json_value(environment.host_values().await?),
-            None => json_value(
-                crate::composition::environment_services(
-                    &context.project_root,
-                    Some(&self.mm_home),
-                    runtime.clock(),
-                )?
-                .manager
-                .secret_status(selection, None)
-                .await?,
-            ),
-        }
-    }
 }

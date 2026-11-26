@@ -169,6 +169,7 @@ impl McpApplicationAdapter {
                     environment: environment.clone(),
                     access: access.summary(),
                     level: access.level,
+                    allows: access.allowed(),
                     exec: access.exec,
                 }
             })

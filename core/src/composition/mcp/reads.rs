@@ -79,7 +79,8 @@ impl McpApplicationAdapter {
     }
 
     /// `mm_read` of `health`: the runtime and the validation of the
-    /// environment. When its status cannot be read, the findings of `mm
+    /// environment, and for one on this machine the readiness checks `mm
+    /// doctor` lists. When its status cannot be read, the findings of `mm
     /// config validate` and the error that stopped it.
     pub(super) async fn read_health(
         &self,
@@ -87,14 +88,18 @@ impl McpApplicationAdapter {
         runtime: &RuntimeComposition,
         selection: &WorkspaceSelection,
     ) -> Result<serde_json::Value, MmError> {
-        let status = match self.gateway(selection, context, runtime) {
-            Ok(gateway) => gateway.status(&self.approval()).await,
-            Err(error) => Err(error),
+        let status = async {
+            match self.gateway(selection, context, runtime) {
+                Ok(gateway) => gateway.status(&self.approval()).await,
+                Err(error) => Err(error),
+            }
         };
+        let (status, readiness) = tokio::join!(status, self.readiness(context, runtime, selection));
         let error = match status {
             Ok(snapshot) => {
                 return json_value(serde_json::json!({
                     "runtime": snapshot.runtime, "validation": snapshot.validation,
+                    "readiness": readiness,
                 }));
             }
             Err(error) => error,
@@ -113,6 +118,25 @@ impl McpApplicationAdapter {
             error.code(),
             error.agent_message(),
         ));
-        json_value(serde_json::json!({ "runtime": null, "validation": validation }))
+        json_value(serde_json::json!({
+            "runtime": null, "validation": validation, "readiness": readiness,
+        }))
+    }
+
+    /// The checks of this machine and the project that `mm doctor` lists,
+    /// for an environment that runs here. The checks that ask remote hosts
+    /// with the user's key, of the user's own keys, and for updates are left
+    /// out; `mm_read` `nodes` asks a cluster's nodes as the agent.
+    async fn readiness(
+        &self,
+        context: &McpRequestContext,
+        runtime: &RuntimeComposition,
+        selection: &WorkspaceSelection,
+    ) -> Option<crate::domain::readiness::ReadinessReport> {
+        if context.remote {
+            return None;
+        }
+        let service = crate::composition::readiness_service(Some(&self.mm_home), runtime).ok()?;
+        service.inspect(selection).await.readiness
     }
 }
