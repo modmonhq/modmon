@@ -41,6 +41,7 @@ use crate::domain::workspace::{WorkspaceRecord, WorkspaceRegistration};
 mod status;
 use status::*;
 mod compilation;
+mod secret_defaults;
 use compilation::*;
 mod store_outage;
 use store_outage::StoreOutage;

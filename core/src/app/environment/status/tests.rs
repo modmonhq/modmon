@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use super::*;
+use crate::app::environment::secret_defaults::secrets_covered_by_defaults;
 use crate::domain::config::{MmConfig, SecretBinding};
 use crate::domain::environment::{ModuleEnvironmentIndex, SourceLocation};
 
@@ -278,5 +279,111 @@ fn variable_status_preserves_precedence_and_failure_semantics() -> Result<(), se
             .iter()
             .any(|diagnostic| diagnostic.code == "MM_SECRET_REFERENCE_INVALID")
     );
+    Ok(())
+}
+
+fn defaults_document() -> Result<ConfigDocument, serde_yaml_ng::Error> {
+    let config = serde_yaml_ng::from_str::<MmConfig>(
+        "schema-version: 1\n\
+             project:\n  id: 00000000-0000-0000-0000-000000000001\n  name: project\n\
+             target: local\n\
+             stacks:\n  app:\n    files: [compose.yaml]\n\
+             modules:\n  api:\n    path: api\n    services:\n      web:\n        stack: app\n  worker:\n    path: worker\n    services:\n      jobs:\n        stack: app\n        secret-files:\n          /run/secrets/key:\n            secret: files.key\n\
+             secrets:\n  cache.password:\n    storage:\n      provider: age\n      location: local/cache\n  files.key:\n    storage:\n      provider: age\n      location: local/files\n  unused.token:\n    storage:\n      provider: age\n      location: local/unused\n\
+             environments:\n  development:\n    bindings:\n      CACHE.PASSWORD:\n        secret: cache.password\n      FILES.KEY:\n        secret: files.key\n",
+    )?;
+    Ok(ConfigDocument {
+        config,
+        root: PathBuf::from("/project"),
+        path: PathBuf::from("/project/.config/mm.yaml"),
+        sources: Default::default(),
+        source_hash: "source".to_owned(),
+        unknown_keys: Vec::new(),
+    })
+}
+
+fn defaults_index(
+    api: Vec<VariableDeclaration>,
+    worker: Vec<VariableDeclaration>,
+) -> EnvironmentIndex {
+    let module = |module: &str, service: &str, variables| ModuleEnvironmentIndex {
+        module: module.to_owned(),
+        template_path: PathBuf::from(format!("{module}/.env.example")),
+        services: vec![crate::domain::environment::StackService {
+            stack: "app".to_owned(),
+            name: service.to_owned(),
+        }],
+        variables,
+    };
+    EnvironmentIndex {
+        environment: "development".to_owned(),
+        input_hash: "input".to_owned(),
+        modules: vec![module("api", "web", api), module("worker", "jobs", worker)],
+        diagnostics: Vec::new(),
+    }
+}
+
+fn covered(
+    index: &EnvironmentIndex,
+    status: SecretStatus,
+) -> Result<BTreeSet<String>, serde_yaml_ng::Error> {
+    let metadata = ["cache.password", "files.key", "unused.token"]
+        .into_iter()
+        .map(|name| (name.to_owned(), metadata(status)))
+        .collect();
+    Ok(secrets_covered_by_defaults(
+        &defaults_document()?,
+        "development",
+        index,
+        &metadata,
+    ))
+}
+
+#[test]
+fn an_unset_secret_is_defaulted_only_when_every_reader_has_a_default()
+-> Result<(), serde_yaml_ng::Error> {
+    let cache = |default| declaration("CACHE.PASSWORD", false, default);
+    let both = defaults_index(vec![cache(Some("devpass"))], vec![cache(Some("other"))]);
+    assert_eq!(
+        covered(&both, SecretStatus::Unset)?,
+        BTreeSet::from(["cache.password".to_owned()])
+    );
+
+    let one_missing = defaults_index(vec![cache(Some("devpass"))], vec![cache(None)]);
+    assert!(covered(&one_missing, SecretStatus::Unset)?.is_empty());
+
+    let empty = defaults_index(vec![cache(Some(""))], Vec::new());
+    assert!(covered(&empty, SecretStatus::Unset)?.is_empty());
+
+    let required_empty = defaults_index(
+        vec![declaration("CACHE.PASSWORD", true, Some(""))],
+        Vec::new(),
+    );
+    assert!(covered(&required_empty, SecretStatus::Unset)?.is_empty());
+
+    let unused = defaults_index(Vec::new(), Vec::new());
+    assert!(covered(&unused, SecretStatus::Unset)?.is_empty());
+
+    let file = defaults_index(
+        vec![declaration("FILES.KEY", false, Some("devkey"))],
+        Vec::new(),
+    );
+    assert!(covered(&file, SecretStatus::Unset)?.is_empty());
+    Ok(())
+}
+
+#[test]
+fn a_stored_or_unknown_secret_is_never_defaulted() -> Result<(), serde_yaml_ng::Error> {
+    let cache = |default| declaration("CACHE.PASSWORD", false, default);
+    let index = defaults_index(vec![cache(Some("devpass"))], vec![cache(Some("other"))]);
+    for status in [
+        SecretStatus::Set,
+        SecretStatus::NotChecked,
+        SecretStatus::ProviderUnavailable,
+        SecretStatus::AccessDenied,
+        SecretStatus::Invalid,
+    ] {
+        assert!(covered(&index, status)?.is_empty(), "{status:?}");
+    }
     Ok(())
 }

@@ -332,6 +332,10 @@ pub struct SecretBindingStatus {
     pub status: SecretStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub revision: Option<String>,
+    /// Not stored, and every variable that reads it in this environment
+    /// falls back to a non-empty `.env.example` default.
+    #[serde(default)]
+    pub defaulted: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

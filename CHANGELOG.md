@@ -37,6 +37,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `mm_read` kind `secrets` for an environment on this machine returned every
   field as `[REDACTED]`; it now lists each secret's key, provider, status and
   revision under `bindings`.
+
+- `mm secret status` shows `default` instead of `unset` for a secret that is
+  not stored when every variable that reads it falls back to a non-empty
+  `.env.example` default. JSON keeps `"status": "unset"` and adds
+  `"defaulted": true`.
+
 - A plan whose config-file template reads a release input it was not given
   fails with `MM_RELEASE_INPUT`, as one whose environment file does, instead
   of `MM_ENVIRONMENT`.

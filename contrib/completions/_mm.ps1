@@ -3410,7 +3410,7 @@ Register-ArgumentCompleter -Native -CommandName 'mm' -ScriptBlock {
             [CompletionResult]::new('--version', '--version', [CompletionResultType]::ParameterName, 'Print version')
             [CompletionResult]::new('providers', 'providers', [CompletionResultType]::ParameterValue, 'List available provider capabilities')
             [CompletionResult]::new('init', 'init', [CompletionResultType]::ParameterValue, 'Initialize a secret provider for this project')
-            [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'Show secret set/unset state without revealing values. On a remote environment: what each host holds and has staged')
+            [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'Show secret set/unset/default state without revealing values. On a remote environment: what each host holds and has staged')
             [CompletionResult]::new('set', 'set', [CompletionResultType]::ParameterValue, 'Set a configured secret using a hidden prompt or stdin. On a remote environment the value is staged on every host for the next deployment')
             [CompletionResult]::new('unset', 'unset', [CompletionResultType]::ParameterValue, 'Remove a configured secret. On a remote environment the removal is staged for the next deployment')
             [CompletionResult]::new('discard', 'discard', [CompletionResultType]::ParameterValue, 'Drop a change staged on a remote environment''s hosts before it is deployed')
@@ -3976,7 +3976,7 @@ Register-ArgumentCompleter -Native -CommandName 'mm' -ScriptBlock {
         'mm;secret;help' {
             [CompletionResult]::new('providers', 'providers', [CompletionResultType]::ParameterValue, 'List available provider capabilities')
             [CompletionResult]::new('init', 'init', [CompletionResultType]::ParameterValue, 'Initialize a secret provider for this project')
-            [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'Show secret set/unset state without revealing values. On a remote environment: what each host holds and has staged')
+            [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'Show secret set/unset/default state without revealing values. On a remote environment: what each host holds and has staged')
             [CompletionResult]::new('set', 'set', [CompletionResultType]::ParameterValue, 'Set a configured secret using a hidden prompt or stdin. On a remote environment the value is staged on every host for the next deployment')
             [CompletionResult]::new('unset', 'unset', [CompletionResultType]::ParameterValue, 'Remove a configured secret. On a remote environment the removal is staged for the next deployment')
             [CompletionResult]::new('discard', 'discard', [CompletionResultType]::ParameterValue, 'Drop a change staged on a remote environment''s hosts before it is deployed')
@@ -6844,7 +6844,7 @@ Register-ArgumentCompleter -Native -CommandName 'mm' -ScriptBlock {
         'mm;help;secret' {
             [CompletionResult]::new('providers', 'providers', [CompletionResultType]::ParameterValue, 'List available provider capabilities')
             [CompletionResult]::new('init', 'init', [CompletionResultType]::ParameterValue, 'Initialize a secret provider for this project')
-            [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'Show secret set/unset state without revealing values. On a remote environment: what each host holds and has staged')
+            [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'Show secret set/unset/default state without revealing values. On a remote environment: what each host holds and has staged')
             [CompletionResult]::new('set', 'set', [CompletionResultType]::ParameterValue, 'Set a configured secret using a hidden prompt or stdin. On a remote environment the value is staged on every host for the next deployment')
             [CompletionResult]::new('unset', 'unset', [CompletionResultType]::ParameterValue, 'Remove a configured secret. On a remote environment the removal is staged for the next deployment')
             [CompletionResult]::new('discard', 'discard', [CompletionResultType]::ParameterValue, 'Drop a change staged on a remote environment''s hosts before it is deployed')

@@ -3010,7 +3010,7 @@ set edit:completion:arg-completer[mm] = {|@words|
             cand --version 'Print version'
             cand providers 'List available provider capabilities'
             cand init 'Initialize a secret provider for this project'
-            cand status 'Show secret set/unset state without revealing values. On a remote environment: what each host holds and has staged'
+            cand status 'Show secret set/unset/default state without revealing values. On a remote environment: what each host holds and has staged'
             cand set 'Set a configured secret using a hidden prompt or stdin. On a remote environment the value is staged on every host for the next deployment'
             cand unset 'Remove a configured secret. On a remote environment the removal is staged for the next deployment'
             cand discard 'Drop a change staged on a remote environment''s hosts before it is deployed'
@@ -3522,7 +3522,7 @@ set edit:completion:arg-completer[mm] = {|@words|
         &'mm;secret;help'= {
             cand providers 'List available provider capabilities'
             cand init 'Initialize a secret provider for this project'
-            cand status 'Show secret set/unset state without revealing values. On a remote environment: what each host holds and has staged'
+            cand status 'Show secret set/unset/default state without revealing values. On a remote environment: what each host holds and has staged'
             cand set 'Set a configured secret using a hidden prompt or stdin. On a remote environment the value is staged on every host for the next deployment'
             cand unset 'Remove a configured secret. On a remote environment the removal is staged for the next deployment'
             cand discard 'Drop a change staged on a remote environment''s hosts before it is deployed'
@@ -5978,7 +5978,7 @@ set edit:completion:arg-completer[mm] = {|@words|
         &'mm;help;secret'= {
             cand providers 'List available provider capabilities'
             cand init 'Initialize a secret provider for this project'
-            cand status 'Show secret set/unset state without revealing values. On a remote environment: what each host holds and has staged'
+            cand status 'Show secret set/unset/default state without revealing values. On a remote environment: what each host holds and has staged'
             cand set 'Set a configured secret using a hidden prompt or stdin. On a remote environment the value is staged on every host for the next deployment'
             cand unset 'Remove a configured secret. On a remote environment the removal is staged for the next deployment'
             cand discard 'Drop a change staged on a remote environment''s hosts before it is deployed'
