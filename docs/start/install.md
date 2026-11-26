@@ -62,14 +62,56 @@ the latest release's `manifest.json`, prints what it replaces, such as
 archive for your platform, checks its SHA-256 and size against the manifest,
 runs the new `mm --version`, and then replaces `mm`, and `mmd` and
 `mm-ingress-helper` when they sit beside it, all at once: if one cannot be
-replaced, every one is put back. Expected result: `mm --version` prints the new
-release.
+replaced, every one is put back.
+
+The same plan and confirmation cover the rest of the update:
+
+- **Local services.** The local dashboard control API runs `mm` as a user
+  service (`mm-dashboard.service` under systemd on Linux, the launchd agent
+  `local.mm.dashboard` on macOS). `mm update` restarts it so it runs the new
+  release, and checks it is still running a few seconds later. Local ingress
+  (`mm-ingress.service`) starts Traefik through Compose, not `mm`, so it keeps
+  running. Without a new release, `mm update` restarts only a service whose
+  process started before the `mm` on disk was written.
+- **MCP servers.** `mm mcp serve` processes belong to the agent client that
+  started them. `mm update` lists each one still on the old `mm` by process
+  ID; reload the client's MCP servers, or restart the client.
+- **Hosts.** Run in a project, `mm update` asks the nodes of each remote
+  environment which `mmd` they run (`--environment NAME` checks one), and for
+  each environment with an older node prints the command that plans the
+  upgrade, such as `mm --environment production target setup plan --upgrade`.
+  That plan prints the apply command with every flag it needs. Hosts are not
+  changed by `mm update`.
+
+It ends with what runs which release:
+
+```text
+Updated mm 0.1.1 to 0.1.2 in ~/.local/bin: mm, mmd.
+
+Now running:
+  mm on this machine    0.1.2
+  mm-dashboard.service  0.1.2, restarted
+  mm-ingress.service    runs /usr/bin/podman, not mm; left running
+Environment production (cluster fleet):
+  app-1  mmd 0.1.1, older
+  app-2  mmd 0.1.1, older
+Upgrade the hosts of production:
+  mm --environment production target setup plan --upgrade
+  then run the apply command that plan prints
+```
+
+Expected result: `mm --version` prints the new release, and every local
+service in the summary shows it. A service that did not come back is named
+with the commands that show why, such as `systemctl --user status
+mm-dashboard.service`, and `mm update` exits with status 1. A node that did not
+answer is listed with the reason; `mm --environment NAME target nodes` asks
+again.
 
 | Option             | Effect                                                                                 |
 | ------------------ | -------------------------------------------------------------------------------------- |
 | `--version vX.Y.Z` | Install that release; a candidate (`vX.Y.Z-rc.N`) is checked against its `SHA256SUMS` |
 | `--force`          | Install an older release named with `--version`, the same release again, or replace an `mm` built from a checkout |
-| `--yes`            | Do not ask; needed when standard input is not a terminal                               |
+| `--yes`            | Do not ask before replacing and restarting; needed when standard input is not a terminal |
 
 `mm update` refuses, and names what to run instead, when the directory of
 `mm` is not writable (run `sudo mm update`, or install into a directory you
@@ -77,8 +119,8 @@ own with the installer's `--install-dir`), when `mm` was built from a checkout
 (update the checkout, see below), and when no release is built for your
 platform. On Linux, if local ingress runs a root-owned copy of
 `mm-ingress-helper` that differs from the new one, it prints the `sudo install`
-command that refreshes it. Hosts keep the release they run: see
-[upgrade mm and your hosts](../how-to/upgrade.md).
+command that refreshes it. Hosts keep the release they run until you upgrade
+them: see [upgrade mm and your hosts](../how-to/upgrade.md).
 
 Running the installer again also updates `mm`: it replaces the existing
 binaries only after the new archive is verified, and refuses to downgrade

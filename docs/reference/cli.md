@@ -34,7 +34,7 @@ Commands:
   agent      Show and trust what AI agents may do, and connect coding tools
   history    List the commands run in this project on this machine, and show what one printed
   workspace  List the project folders mm knows on this machine, and forget the ones that are gone
-  update     Update this machine's mm, and the mmd and mm-ingress-helper beside it, from a verified release
+  update     Update this machine's mm, and the mmd and mm-ingress-helper beside it, from a verified release, and restart the local services that run it
   mcp        Serve the Model Context Protocol server that AI agents use
   help       Print this message or the help of the given subcommand(s)
 
@@ -5650,7 +5650,7 @@ A folder that still exists is registered again the next time mm runs there.
 ## `mm update`
 
 ```text
-Update this machine's mm, and the mmd and mm-ingress-helper beside it, from a verified release
+Update this machine's mm, and the mmd and mm-ingress-helper beside it, from a verified release, and restart the local services that run it
 
 Usage: update [OPTIONS]
 
@@ -5665,7 +5665,7 @@ Options:
           Install an older release named with --version, install the same release again, or replace an mm built from a checkout
 
       --yes
-          Replace without asking. Needed when standard input is not a terminal
+          Replace and restart without asking. Needed when standard input is not a terminal
 
   -h, --help
           Print help
@@ -5676,7 +5676,7 @@ Examples:
   mm update --yes
   mm update --version v0.1.2 --force
 
-mm update downloads the release's archive for this platform, checks its SHA-256 and size against the release's manifest.json (SHA256SUMS for a release candidate), runs the new mm, and then replaces every binary at once or none. It replaces mm, and mmd and mm-ingress-helper when they sit beside it. Hosts keep the release they run: upgrade them with `mm target setup plan --upgrade`. Exit codes: 0 updated or nothing to do; 1 the release could not be read or installed, or this installation is refused; 3 the archive failed its checks.
+mm update downloads the release's archive for this platform, checks its SHA-256 and size against the release's manifest.json (SHA256SUMS for a release candidate), runs the new mm, and then replaces every binary at once or none. It replaces mm, and mmd and mm-ingress-helper when they sit beside it, then restarts the local user services that run mm (the dashboard control API) and checks they come back. It ends with what runs which release: this mm, those services, `mm mcp serve` processes left on an older mm, and, run in a project, each remote environment's nodes, with the commands that upgrade older hosts. Hosts keep the release they run until you run those. Exit codes: 0 updated or nothing to do; 1 the release could not be read or installed, this installation is refused, or a restarted service did not come back; 3 the archive failed its checks.
 ```
 
 ## `mm mcp`

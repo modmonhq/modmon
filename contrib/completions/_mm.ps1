@@ -52,7 +52,7 @@ Register-ArgumentCompleter -Native -CommandName 'mm' -ScriptBlock {
             [CompletionResult]::new('agent', 'agent', [CompletionResultType]::ParameterValue, 'Show and trust what AI agents may do, and connect coding tools')
             [CompletionResult]::new('history', 'history', [CompletionResultType]::ParameterValue, 'List the commands run in this project on this machine, and show what one printed')
             [CompletionResult]::new('workspace', 'workspace', [CompletionResultType]::ParameterValue, 'List the project folders mm knows on this machine, and forget the ones that are gone')
-            [CompletionResult]::new('update', 'update', [CompletionResultType]::ParameterValue, 'Update this machine''s mm, and the mmd and mm-ingress-helper beside it, from a verified release')
+            [CompletionResult]::new('update', 'update', [CompletionResultType]::ParameterValue, 'Update this machine''s mm, and the mmd and mm-ingress-helper beside it, from a verified release, and restart the local services that run it')
             [CompletionResult]::new('mcp', 'mcp', [CompletionResultType]::ParameterValue, 'Serve the Model Context Protocol server that AI agents use')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
@@ -6225,7 +6225,7 @@ Register-ArgumentCompleter -Native -CommandName 'mm' -ScriptBlock {
             [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Human text or machine-readable JSON. JSON errors stay JSON')
             [CompletionResult]::new('--check', '--check', [CompletionResultType]::ParameterName, 'Only say whether a newer stable release exists; change nothing')
             [CompletionResult]::new('--force', '--force', [CompletionResultType]::ParameterName, 'Install an older release named with --version, install the same release again, or replace an mm built from a checkout')
-            [CompletionResult]::new('--yes', '--yes', [CompletionResultType]::ParameterName, 'Replace without asking. Needed when standard input is not a terminal')
+            [CompletionResult]::new('--yes', '--yes', [CompletionResultType]::ParameterName, 'Replace and restart without asking. Needed when standard input is not a terminal')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
@@ -6292,7 +6292,7 @@ Register-ArgumentCompleter -Native -CommandName 'mm' -ScriptBlock {
             [CompletionResult]::new('agent', 'agent', [CompletionResultType]::ParameterValue, 'Show and trust what AI agents may do, and connect coding tools')
             [CompletionResult]::new('history', 'history', [CompletionResultType]::ParameterValue, 'List the commands run in this project on this machine, and show what one printed')
             [CompletionResult]::new('workspace', 'workspace', [CompletionResultType]::ParameterValue, 'List the project folders mm knows on this machine, and forget the ones that are gone')
-            [CompletionResult]::new('update', 'update', [CompletionResultType]::ParameterValue, 'Update this machine''s mm, and the mmd and mm-ingress-helper beside it, from a verified release')
+            [CompletionResult]::new('update', 'update', [CompletionResultType]::ParameterValue, 'Update this machine''s mm, and the mmd and mm-ingress-helper beside it, from a verified release, and restart the local services that run it')
             [CompletionResult]::new('mcp', 'mcp', [CompletionResultType]::ParameterValue, 'Serve the Model Context Protocol server that AI agents use')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break

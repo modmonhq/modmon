@@ -54,7 +54,7 @@ complete -c mm -n "__fish_mm_needs_command" -f -a "target" -d 'Manage targets, p
 complete -c mm -n "__fish_mm_needs_command" -f -a "agent" -d 'Show and trust what AI agents may do, and connect coding tools'
 complete -c mm -n "__fish_mm_needs_command" -f -a "history" -d 'List the commands run in this project on this machine, and show what one printed'
 complete -c mm -n "__fish_mm_needs_command" -f -a "workspace" -d 'List the project folders mm knows on this machine, and forget the ones that are gone'
-complete -c mm -n "__fish_mm_needs_command" -f -a "update" -d 'Update this machine\'s mm, and the mmd and mm-ingress-helper beside it, from a verified release'
+complete -c mm -n "__fish_mm_needs_command" -f -a "update" -d 'Update this machine\'s mm, and the mmd and mm-ingress-helper beside it, from a verified release, and restart the local services that run it'
 complete -c mm -n "__fish_mm_needs_command" -f -a "mcp" -d 'Serve the Model Context Protocol server that AI agents use'
 complete -c mm -n "__fish_mm_needs_command" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
 complete -c mm -n "__fish_mm_using_subcommand init" -l name -d 'Override the project name inferred from the directory' -r
@@ -2137,7 +2137,7 @@ complete -c mm -n "__fish_mm_using_subcommand update" -l output -d 'Human text o
 json\t''"
 complete -c mm -n "__fish_mm_using_subcommand update" -l check -d 'Only say whether a newer stable release exists; change nothing'
 complete -c mm -n "__fish_mm_using_subcommand update" -l force -d 'Install an older release named with --version, install the same release again, or replace an mm built from a checkout'
-complete -c mm -n "__fish_mm_using_subcommand update" -l yes -d 'Replace without asking. Needed when standard input is not a terminal'
+complete -c mm -n "__fish_mm_using_subcommand update" -l yes -d 'Replace and restart without asking. Needed when standard input is not a terminal'
 complete -c mm -n "__fish_mm_using_subcommand update" -s h -l help -d 'Print help'
 complete -c mm -n "__fish_mm_using_subcommand mcp; and not __fish_seen_subcommand_from serve help" -l root -d 'Project root or a path inside the project' -r -F
 complete -c mm -n "__fish_mm_using_subcommand mcp; and not __fish_seen_subcommand_from serve help" -s e -l environment -d 'Environment to operate on (overrides MM_ENVIRONMENT and default-environment)' -r
@@ -2183,7 +2183,7 @@ complete -c mm -n "__fish_mm_using_subcommand help; and not __fish_seen_subcomma
 complete -c mm -n "__fish_mm_using_subcommand help; and not __fish_seen_subcommand_from init dev config doctor ingress service job env secret access build deploy team forward key target agent history workspace update mcp help" -f -a "agent" -d 'Show and trust what AI agents may do, and connect coding tools'
 complete -c mm -n "__fish_mm_using_subcommand help; and not __fish_seen_subcommand_from init dev config doctor ingress service job env secret access build deploy team forward key target agent history workspace update mcp help" -f -a "history" -d 'List the commands run in this project on this machine, and show what one printed'
 complete -c mm -n "__fish_mm_using_subcommand help; and not __fish_seen_subcommand_from init dev config doctor ingress service job env secret access build deploy team forward key target agent history workspace update mcp help" -f -a "workspace" -d 'List the project folders mm knows on this machine, and forget the ones that are gone'
-complete -c mm -n "__fish_mm_using_subcommand help; and not __fish_seen_subcommand_from init dev config doctor ingress service job env secret access build deploy team forward key target agent history workspace update mcp help" -f -a "update" -d 'Update this machine\'s mm, and the mmd and mm-ingress-helper beside it, from a verified release'
+complete -c mm -n "__fish_mm_using_subcommand help; and not __fish_seen_subcommand_from init dev config doctor ingress service job env secret access build deploy team forward key target agent history workspace update mcp help" -f -a "update" -d 'Update this machine\'s mm, and the mmd and mm-ingress-helper beside it, from a verified release, and restart the local services that run it'
 complete -c mm -n "__fish_mm_using_subcommand help; and not __fish_seen_subcommand_from init dev config doctor ingress service job env secret access build deploy team forward key target agent history workspace update mcp help" -f -a "mcp" -d 'Serve the Model Context Protocol server that AI agents use'
 complete -c mm -n "__fish_mm_using_subcommand help; and not __fish_seen_subcommand_from init dev config doctor ingress service job env secret access build deploy team forward key target agent history workspace update mcp help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
 complete -c mm -n "__fish_mm_using_subcommand help; and __fish_seen_subcommand_from dev" -f -a "setup" -d 'Set up local trust, ingress, Mailpit, Cap, dashboard, and project routes'
