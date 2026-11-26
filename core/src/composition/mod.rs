@@ -162,7 +162,7 @@ pub use mesh::{
     autoscaler, cluster_networks, healer, ingress_keeper, leave_keeper, mesh_host, name_resolver,
     node_network_status, request_leave,
 };
-pub use metrics::container_metrics;
+pub use metrics::{container_metrics, metrics_endpoint};
 pub use providers::serve_as_host;
 pub(crate) use providers::*;
 pub(crate) use releases::{host_binary_source, self_update_service, update_check_service};

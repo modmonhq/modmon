@@ -540,6 +540,7 @@ async fn run(
         )),
     );
     let healing = mm::composition::healer(&config, names.clone());
+    let metrics = mm::composition::metrics_endpoint(&config);
     let config_for_unsealer = config.clone();
     let daemon = daemon(config, Some(names.clone()), Some(node_host))?
         .with_autoscale(autoscale)
@@ -557,6 +558,7 @@ async fn run(
     keeping.spawn(jobs.run());
     mm::adapters::own_runtime::OwnRuntime::start("mm-openbao")?
         .spawn(mm::composition::store_unsealer(&config_for_unsealer)?.run());
+    mm::adapters::own_runtime::OwnRuntime::start("mm-metrics")?.spawn(metrics.run());
     let liveness = mm::adapters::remote::Liveness::from_environment()
         .keeping(sockets)
         .watching("the name resolver", move |patience| {

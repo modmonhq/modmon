@@ -646,7 +646,7 @@ for command in "key show" "key show --agent" "key protect" "key rotate" "key rot
 done
 [ "$(keyring_entries)" -eq 2 ] || fail "a refused command changed the keyring"
 mcp mm_access '{}' | tee "$TMP/mcp-access.log"
-grep -q '"access": "view", "environment": "staging"' "$TMP/mcp-access.log" || fail "mm_access should report view on staging"
+grep -Eq '"access": "view", ("allows": \[[^]]*\], )?"environment": "staging"' "$TMP/mcp-access.log" || fail "mm_access should report view on staging"
 mcp mm_logs "{$STAGING, \"service\": \"api\"}" | grep access-live-started >/dev/null || fail "the agent could not read logs through MCP"
 mcp mm_exec "{$STAGING, \"service\": \"api\", \"argv\": [\"echo\", \"escaped\"]}" | tee "$TMP/mcp-exec.log"
 grep -q MM_AGENT_HANDOFF "$TMP/mcp-exec.log" || fail "exec outside the grant was not handed to the user"

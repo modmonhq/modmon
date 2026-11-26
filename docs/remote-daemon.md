@@ -178,6 +178,11 @@ projects:
   [what a deploy may run](./remote-access.md#what-a-deploy-may-run); `mm config
   validate --for-remote --host-policy FILE` checks a project against a copy of
   this file.
+- **`metrics`**, at the top of the file, turns off or guards the metrics `mmd`
+  serves: `enabled: false`, a `token-file` every scrape of a project's network
+  has to send, and `mesh: true` with a `mesh-token-file` of its own to serve
+  every project's metrics to the other hosts of the cluster.
+  See [collect node and service metrics](./how-to/metrics.md#settings-in-the-host-policy).
 - **`runtimes`** and **`exposed-runtime`**, at the top of the file, say which
   OCI runtimes a service may name and which one the host runs everything
   under that is reachable from outside. Without them a service that sets

@@ -627,6 +627,11 @@ can run every service that is reachable from outside under one of them. See
 
 ### Collect host metrics
 
+On a cluster target, `mmd` serves each node's host and service metrics to a
+collector that needs none of the grants below: see
+[collect node and service metrics](./how-to/metrics.md). The rest of this
+section is for an exporter that reads the host itself.
+
 A metrics exporter such as Prometheus node-exporter or Grafana Alloy's
 `prometheus.exporter.unix` reads the host's `/proc` and `/sys`. Mount them
 read-only and put the exporter on the host's network:

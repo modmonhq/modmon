@@ -31,6 +31,7 @@ impl HostPolicy {
             projects: std::collections::BTreeMap::new(),
             runtimes: std::collections::BTreeSet::new(),
             exposed_runtime: None,
+            metrics: None,
         }
     }
 

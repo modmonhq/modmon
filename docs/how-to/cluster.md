@@ -429,6 +429,10 @@ rollout and while a node is down. `mm service exec` runs a command in the
 service's container on the first node of its placement; the terminal UI runs
 it in the container of the node row you select.
 
+For dashboards and alerts, each node can serve its host, mesh and service
+metrics to a Prometheus or Alloy that runs as one of your services: see
+[collect node and service metrics](./metrics.md).
+
 ## Harden the containers
 
 One line in `.config/mm.yaml` gives every service of a deployment a read-only
