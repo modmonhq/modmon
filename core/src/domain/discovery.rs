@@ -15,7 +15,9 @@
 //!   node ([`Reach::EveryNode`]);
 //! - `<service>.<node>`: the service's healthy container on that node;
 //! - a network alias: like `<service>`, for the containers that carry it;
-//! - a container's own name or short id, on the container's node.
+//! - a container's own name or short id, on the container's node;
+//! - [`NODE_NAME`]: the asking container's own node, at its address on
+//!   the network the container asks from.
 //!
 //! Each node answers its own containers, so the answer for `<service>`
 //! differs between nodes on purpose: a lookup stays on the node when it
@@ -50,6 +52,8 @@ pub const RESOLVER_PORT: u16 = 53;
 /// The TCP port, on the node's mesh address, where a node tells the other
 /// nodes what it runs.
 pub const EXCHANGE_PORT: u16 = 7953;
+/// The name a container finds its own node by.
+pub const NODE_NAME: &str = "mmd.internal";
 /// How often a node asks each other node what it runs.
 pub const EXCHANGE_INTERVAL_MS: u64 = 2_000;
 /// How long a node keeps answering with another node's containers after it
@@ -514,6 +518,16 @@ impl ServiceMap<'_> {
         };
         let asker = self.asker(source);
         let name = name.trim_end_matches('.');
+        if same(name, NODE_NAME) {
+            return Resolution::Addresses(
+                self.networks
+                    .local()
+                    .into_iter()
+                    .filter(|network| network.slice.contains(source))
+                    .map(|network| network.gateway)
+                    .collect(),
+            );
+        }
         // Names compare without case, the prefix too.
         let service = name
             .split_at_checked(TASKS_PREFIX.len())

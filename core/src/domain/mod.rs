@@ -39,6 +39,7 @@ pub mod managed_service;
 pub mod mcp;
 pub mod mesh;
 pub mod metrics;
+pub mod node_metrics;
 pub mod node_state;
 pub mod observability;
 pub mod onboarding;

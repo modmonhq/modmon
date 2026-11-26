@@ -41,6 +41,7 @@ fn host() -> HostPolicy {
         )]),
         runtimes: BTreeSet::new(),
         exposed_runtime: None,
+        metrics: None,
     }
 }
 

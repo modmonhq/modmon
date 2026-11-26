@@ -32,6 +32,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `key` too, and `health` adds the readiness checks `mm doctor` lists for an
   environment on this machine.
 
+- Prometheus metrics from every cluster node: `networks.<name>.metrics: true`
+  has each node serve its host (CPU, memory, load, filesystems, disks,
+  interfaces), mesh and service metrics at `http://mmd.internal:9753/metrics`
+  to that network's containers, with that environment's services only. The
+  host policy's `metrics:` can turn it off, require a bearer token, or serve
+  every project to the hosts on the mesh address. See
+  `docs/how-to/metrics.md`.
+
 ### Fixed
 
 - `mm_read` kind `secrets` for an environment on this machine returned every

@@ -32,6 +32,8 @@ mod keys;
 pub use keys::{KeyOutcome, KeyService, KeyServiceDependencies, VaultPreference};
 mod metrics;
 pub use metrics::{MetricsSampler, NodeMetrics, Sampled};
+mod node_metrics;
+pub use node_metrics::{NodeIdentity, NodeMetricsCollector, NodeMetricsSources};
 mod job_gateway;
 mod observability;
 mod onboarding;

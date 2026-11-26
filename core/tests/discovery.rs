@@ -409,6 +409,19 @@ fn a_service_name_is_the_nodes_own_healthy_containers_first() -> TestResult {
 }
 
 #[test]
+fn a_container_finds_its_own_node_on_the_network_it_asks_from() -> TestResult {
+    let cluster = cluster()?;
+    let name = mm::domain::discovery::NODE_NAME;
+    assert_eq!(cluster.lookup("10.64.0.2", name)?, answer(&["10.64.0.1"])?);
+    assert_eq!(
+        cluster.lookup("10.64.16.2", "MMD.internal.")?,
+        answer(&["10.64.16.1"])?
+    );
+    assert_eq!(cluster.lookup("10.99.0.5", name)?, Resolution::NotAsked);
+    Ok(())
+}
+
+#[test]
 fn a_node_without_a_healthy_container_answers_with_the_other_nodes() -> TestResult {
     let mut cluster = cluster()?;
     // db runs on db-1 only: app-1 has none of its own.

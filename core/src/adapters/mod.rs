@@ -26,6 +26,7 @@ pub mod mcp;
 pub mod mesh;
 pub mod metrics;
 pub(crate) mod node_files;
+pub mod node_metrics;
 pub mod own_runtime;
 pub(crate) mod private_fs;
 pub mod process;

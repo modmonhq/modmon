@@ -13,6 +13,10 @@
         "internal": {
           "description": "Containers on the network reach its members and nothing else: no\noutbound access.",
           "type": "boolean"
+        },
+        "metrics": {
+          "description": "On a cluster target: every node that holds a part of the network\nserves its metrics to the network's containers, at\n`http://<the node's address on the network>:9753/metrics`. A scrape\nsees the host, the node, and this environment's services.",
+          "type": "boolean"
         }
       },
       "additionalProperties": false

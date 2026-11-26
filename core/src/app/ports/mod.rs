@@ -17,6 +17,7 @@ pub use host_ingress::PublicIngressControl;
 mod mcp;
 mod mesh;
 mod metrics;
+mod node_metrics;
 mod observability;
 mod process;
 mod progress;
@@ -68,6 +69,7 @@ pub use keys::{
 pub use mcp::{McpAuditJournal, McpUseCases};
 pub use mesh::MeshHost;
 pub use metrics::{EngineUsage, MeteredContainers, Metrics, UsageCounters};
+pub use node_metrics::{DeployedEnvironments, HostStats, MeshPeers, NodeContainers};
 pub use observability::{
     ExecAuditJournal, ExecStream, LogStream, RuntimeOperationAuthorizer, RuntimeOperationDriver,
 };
