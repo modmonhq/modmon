@@ -90,6 +90,7 @@ pub struct ServiceUpdate {
     pub stack: String,
     pub service: String,
     pub order: UpdateOrder,
+    /// `update.parallelism`; 0 when the service sets none.
     pub parallelism: u32,
     pub failure: UpdateFailure,
 }
@@ -209,7 +210,7 @@ impl RolloutPolicy {
                     format!("modules.{module_name}.services.{name}.update.{problem}")
                 })?;
                 if update.order != UpdateOrder::default()
-                    || update.parallelism != 1
+                    || update.parallelism != 0
                     || update.failure != UpdateFailure::default()
                 {
                     services.push(update);
@@ -341,10 +342,10 @@ fn service_update(
     service: &str,
     update: &UpdateConfig,
 ) -> Result<ServiceUpdate, String> {
-    let parallelism = update.parallelism.unwrap_or(1);
-    if parallelism == 0 {
+    if update.parallelism == Some(0) {
         return Err("parallelism must be at least 1".to_owned());
     }
+    let parallelism = update.parallelism.unwrap_or(0);
     Ok(ServiceUpdate {
         stack: stack.to_owned(),
         service: service.to_owned(),
@@ -485,6 +486,8 @@ pub struct NodeRolloutInput<'a> {
     pub node: &'a str,
     pub stacks: &'a [String],
     pub policy: &'a RolloutPolicy,
+    /// The services the node runs; empty when its plan does not say.
+    pub services: &'a [crate::domain::placement::PlacedService],
 }
 
 /// The jobs of `nodes`' policies that `keep` takes, each on its node.
@@ -505,6 +508,49 @@ fn placed_jobs<'a, 'b: 'a>(
                 })
         })
         .collect()
+}
+
+/// How many of `running`, the nodes that run `stack`, replace it at once:
+/// the smallest `update.parallelism` its services set, or with none set,
+/// every node together when each service on more than one of them starts
+/// first, and otherwise one at a time.
+fn stage_parallelism(
+    stack: &str,
+    running: &[&NodeRolloutInput<'_>],
+    updates: &[&ServiceUpdate],
+) -> usize {
+    if let Some(set) = updates
+        .iter()
+        .map(|service| service.parallelism)
+        .filter(|parallelism| *parallelism > 0)
+        .min()
+    {
+        return set as usize;
+    }
+    if running.iter().any(|node| node.services.is_empty()) {
+        return 1;
+    }
+    let mut nodes_of = BTreeMap::<&str, usize>::new();
+    for placed in running
+        .iter()
+        .flat_map(|node| node.services)
+        .filter(|placed| placed.stack == stack)
+    {
+        *nodes_of.entry(placed.service.as_str()).or_default() += 1;
+    }
+    let starts_first = |service: &str| {
+        updates
+            .iter()
+            .any(|update| update.service == service && update.order == UpdateOrder::StartFirst)
+    };
+    if nodes_of
+        .iter()
+        .all(|(service, nodes)| *nodes < 2 || starts_first(service))
+    {
+        running.len().max(1)
+    } else {
+        1
+    }
 }
 
 impl ClusterRollout {
@@ -543,12 +589,7 @@ impl ClusterRollout {
                 .flat_map(|node| &node.policy.services)
                 .filter(|service| service.stack == stack)
                 .collect::<Vec<_>>();
-            let parallelism = updates
-                .iter()
-                .map(|service| service.parallelism)
-                .min()
-                .unwrap_or(1)
-                .max(1) as usize;
+            let parallelism = stage_parallelism(stack, &running, &updates);
             let names = |keep: &dyn Fn(&ServiceUpdate) -> bool| {
                 updates
                     .iter()

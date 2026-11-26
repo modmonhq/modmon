@@ -503,7 +503,10 @@ hands it devices, or runs more than one container (`scale`,
 `deploy.replicas`, `replicas`, `autoscale`, `host-network`); every other
 service is `stop-first`. Set `order: stop-first` to keep a service on several
 nodes stopping first. `parallelism` is how many
-nodes of a cluster target replace the service's stack at the same time.
+nodes of a cluster target replace the service's stack at the same time; a stack
+takes the smallest value its services set. When none sets it, every node of the
+stack is replaced together if each service on more than one node is
+`start-first`, and one node at a time otherwise.
 `failure` is `rollback` (every node the deployment changed returns to what it
 ran before) or `pause` (the deployment stops where it is). `start-first` is
 refused with `MM_UPDATE_ORDER` for a service that publishes a fixed host port,

@@ -41,7 +41,7 @@ pub(super) fn start_replicated_first(
                     stack: service.stack.clone(),
                     service: name.clone(),
                     order: UpdateOrder::StartFirst,
-                    parallelism: 1,
+                    parallelism: 0,
                     failure: UpdateFailure::default(),
                 }),
             }

@@ -72,6 +72,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   with nothing changed. Nodes whose `mmd` is older than the client's release
   keep pulling stack by stack, and the plan names them until
   `mm target setup plan --upgrade` brings them up to date.
+- A stack whose services that run on several nodes all start first is
+  replaced on all its nodes at once when no service sets `update.parallelism`;
+  otherwise it still goes one node at a time. An `update.parallelism` a
+  service sets keeps applying.
 
 ### Fixed
 

@@ -571,16 +571,21 @@ fn cluster_rollout(nodes: &[NodeDeploymentPlan]) -> ClusterRollout {
                 .iter()
                 .map(|stack| stack.stack.clone())
                 .collect::<Vec<_>>();
-            Some((node.node.as_deref()?, stacks, &plan.rollout))
+            let services = plan
+                .node
+                .as_ref()
+                .map_or(&[][..], |node| &node.services[..]);
+            Some((node.node.as_deref()?, stacks, &plan.rollout, services))
         })
         .collect::<Vec<_>>();
     ClusterRollout::of(
         &rendered
             .iter()
-            .map(|(node, stacks, policy)| NodeRolloutInput {
+            .map(|(node, stacks, policy, services)| NodeRolloutInput {
                 node,
                 stacks,
                 policy,
+                services,
             })
             .collect::<Vec<_>>(),
     )

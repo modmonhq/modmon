@@ -1382,8 +1382,11 @@ mm --environment production deploy apply --plan "$PLAN" --yes
 ### Rolling deploys and rollback
 
 A deployment to a cluster needs no configuration to be safe. Stacks roll out
-in name order, and each stack one node at a time in the order the target lists
-the nodes. A node is done when the stack's containers pass their health checks
+in name order. Each stack is replaced on every node at once when each of its
+services that runs on more than one node is `start-first` (by default where it
+can be), since those keep serving from the old containers until the new ones
+are healthy; otherwise one node at a time, in the order the target lists the
+nodes. A node is done when the stack's containers pass their health checks
 (a service without a health check counts as healthy once it runs) and every
 other node resolves the new containers by name. Only then does the next node
 start.
@@ -1472,7 +1475,7 @@ modules:
         placement: all
         update:
           order: start-first # default: start-first on several nodes when it can, else stop-first
-          parallelism: 2 # nodes at a time; default 1
+          parallelism: 2 # nodes at a time; default: all when it is safe, else 1
           failure: pause # default rollback
 ```
 
@@ -1483,7 +1486,7 @@ modules:
 | `deploy.failure-log-lines`        | `200`        | How many last lines of a failed container's log a node keeps for the report and `mm deploy status`: 1 to 1000, and never more than 64 KiB.                                           |
 | `stacks.<stack>.after`            | none         | Stacks that roll out before this one, on every node, so that a database is healthy before the application that needs it starts.                                                      |
 | `update.order`                    | see below    | `start-first` starts the new container next to the old one. Without it, a service on several nodes starts first when it can; see below.                                              |
-| `update.parallelism`              | `1`          | How many nodes replace the service's stack at the same time. A stack takes the smallest value among its services.                                                                    |
+| `update.parallelism`              | see above    | How many nodes replace the service's stack at the same time. A stack takes the smallest value among its services; with none set, all of them or one, as described above.            |
 | `update.failure`                  | `rollback`   | `pause` stops the deployment where it is when this service fails, so the failed container can be looked at. `mm deploy rollback` then returns the nodes to what they ran before.      |
 | `drain`                           | `1m`         | How long an old container keeps serving what it has once no node sends it requests, before it stops; see below.                                                                      |
 

@@ -148,6 +148,7 @@ fn a_scaled_services_before_deploy_job_runs_once_per_deployment() -> TestResult 
                 node,
                 stacks: &stacks,
                 policy,
+                services: &[],
             })
             .collect::<Vec<_>>(),
     );

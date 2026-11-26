@@ -120,9 +120,12 @@ fn a_policy_carries_the_window_and_only_the_update_settings_that_differ() -> Tes
             .collect::<Vec<_>>(),
         [
             ("api", UpdateOrder::StopFirst, 2, UpdateFailure::Pause),
-            ("web", UpdateOrder::StartFirst, 1, UpdateFailure::Rollback),
-        ]
+            ("web", UpdateOrder::StartFirst, 0, UpdateFailure::Rollback),
+            ("pg", UpdateOrder::StopFirst, 1, UpdateFailure::Rollback),
+        ],
+        "a parallelism the service sets is kept, even 1; 0 is none set"
     );
+    assert_eq!(policy.services.len(), 3);
     assert_eq!(policy.start_first("app"), ["web"]);
     assert!(policy.start_first("db").is_empty());
 
@@ -200,21 +203,25 @@ fn a_cluster_rolls_one_stack_at_a_time_over_the_nodes_that_run_it() -> TestResul
             node: "app-1",
             stacks: &app,
             policy: &policy,
+            services: &[],
         },
         NodeRolloutInput {
             node: "app-2",
             stacks: &app,
             policy: &policy,
+            services: &[],
         },
         NodeRolloutInput {
             node: "db-1",
             stacks: &both,
             policy: &policy,
+            services: &[],
         },
         NodeRolloutInput {
             node: "idle",
             stacks: &none,
             policy: &policy,
+            services: &[],
         },
     ]);
     assert_eq!(rollout.convergence_timeout_seconds, 120);
@@ -268,6 +275,7 @@ fn parallelism_batches_the_nodes_and_pause_is_per_service() -> TestResult {
                 node,
                 stacks: &app,
                 policy: &policy,
+                services: &[],
             })
             .collect::<Vec<_>>(),
     );
@@ -775,6 +783,7 @@ fn the_pull_limit_is_twenty_minutes_unless_an_environment_sets_it() -> TestResul
         node: "app-1",
         stacks: &app,
         policy: &default,
+        services: &[],
     }]);
     assert_eq!(alone.pull_timeout_seconds, None);
     assert_eq!(alone.pull_timeout().as_secs(), 20 * 60);
@@ -783,11 +792,13 @@ fn the_pull_limit_is_twenty_minutes_unless_an_environment_sets_it() -> TestResul
             node: "app-1",
             stacks: &app,
             policy: &default,
+            services: &[],
         },
         NodeRolloutInput {
             node: "app-2",
             stacks: &app,
             policy: &longer,
+            services: &[],
         },
     ]);
     assert_eq!(mixed.pull_timeout().as_secs(), 45 * 60);
@@ -996,5 +1007,76 @@ fn a_rendered_configuration_says_which_images_are_pulled_always() -> TestResult 
         Some(&(Some("redis:7".to_owned()), true))
     );
     assert_eq!(images.get("built"), Some(&(None, false)));
+    Ok(())
+}
+
+#[test]
+fn every_node_of_a_stack_rolls_together_when_its_shared_services_start_first() -> TestResult {
+    use mm::domain::placement::PlacedService;
+
+    let placed = |services: &[&str]| {
+        services
+            .iter()
+            .map(|service| PlacedService {
+                stack: "app".to_owned(),
+                service: (*service).to_owned(),
+            })
+            .collect::<Vec<_>>()
+    };
+    let (web_and_cache, web, worker) = (
+        placed(&["web", "cache"]),
+        placed(&["web"]),
+        placed(&["worker"]),
+    );
+    let app = names(&["app"]);
+    let stage = |services: &str,
+                 lists: [&[PlacedService]; 3]|
+     -> Result<String, Box<dyn std::error::Error>> {
+        let config = config("  app: {files: [a.yaml]}", "{}", services)?;
+        let policy = RolloutPolicy::from_config(&config, "production")?;
+        let rollout = ClusterRollout::of(
+            &["n1", "n2", "n3"]
+                .iter()
+                .zip(lists)
+                .map(|(node, services)| NodeRolloutInput {
+                    node,
+                    stacks: &app,
+                    policy: &policy,
+                    services,
+                })
+                .collect::<Vec<_>>(),
+        );
+        Ok(rollout.stages[0].describe())
+    };
+    let lists = [&web_and_cache[..], &web[..], &worker[..]];
+    assert_eq!(
+        stage(
+            "      web: {stack: app, update: {order: start-first}}",
+            lists
+        )?,
+        "app on n1 and n2 and n3",
+        "web runs on two nodes and starts first; cache and worker run on one each"
+    );
+    assert_eq!(
+        stage("      web: {stack: app}", lists)?,
+        "app on n1, then n2, then n3",
+        "a stop-first service on two nodes keeps them one at a time"
+    );
+    assert_eq!(
+        stage(
+            "      web: {stack: app, update: {order: start-first, parallelism: 1}}",
+            lists
+        )?,
+        "app on n1, then n2, then n3",
+        "a parallelism the stack sets wins"
+    );
+    assert_eq!(
+        stage(
+            "      web: {stack: app, update: {order: start-first}}",
+            [&web[..], &web[..], &[][..]]
+        )?,
+        "app on n1, then n2, then n3",
+        "a node that does not say what it runs keeps them one at a time"
+    );
     Ok(())
 }

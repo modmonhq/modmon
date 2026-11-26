@@ -2793,7 +2793,7 @@
           ]
         },
         "order": {
-          "description": "`stop-first` (the default) or `start-first`.",
+          "description": "`stop-first` or `start-first`. The default is `start-first` for a\nservice on several nodes that nothing of the host ties to one\ncontainer, and `stop-first` otherwise.",
           "anyOf": [
             {
               "$ref": "#/$defs/UpdateOrder"
@@ -2804,7 +2804,7 @@
           ]
         },
         "parallelism": {
-          "description": "How many nodes of a cluster target replace the service's stack at\nthe same time. The default is 1.",
+          "description": "How many nodes of a cluster target replace the service's stack at\nthe same time. Without it, every node of the stack together when each\nservice on more than one node starts first, and one at a time\notherwise.",
           "type": [
             "integer",
             "null"
