@@ -396,6 +396,9 @@ fn service_cells<'a>(model: &Model, service: &ServiceSnapshot, expanded: bool) -
 /// How a container is doing: its tone and a short word for it.
 fn container_health(container: &ContainerObservation) -> (Tone, String) {
     match (container.state.as_str(), container.health.as_deref()) {
+        ("running", None) if container.healthcheck_off() => {
+            (Tone::Ok, "running, check off".to_owned())
+        }
         ("running", None | Some("healthy")) => (Tone::Ok, "running".to_owned()),
         ("running", Some(health)) => (Tone::Warn, terminal_safe(health)),
         (state, _) => (Tone::Bad, terminal_safe(state)),

@@ -590,6 +590,10 @@ pub struct EnvironmentConfig {
     pub tls: Option<EnvironmentTlsConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ingress: Option<EnvironmentIngressConfig>,
+    /// Whether the services' Compose health checks run. Default `true`,
+    /// except `false` for the development environment on this machine.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub healthchecks: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

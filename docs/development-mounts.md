@@ -144,6 +144,24 @@ The plan lists each path under its stack, for example
 Masked paths are skipped by the source scan because their host contents are
 hidden in the container.
 
+## Health checks while you develop
+
+A code change that breaks a service would fail its health check, and with it
+the next `mm dev up`. So the development environment on this machine runs
+without health checks: a service counts as ready once its containers have run
+for five seconds, and `depends_on` conditions on `service_healthy` wait for
+`service_started`. To keep the checks, set `healthchecks: true` on the
+environment:
+
+```yaml
+environments:
+  local:
+    healthchecks: true
+```
+
+See [`healthchecks`](./reference/configuration.md#bindings-environments-and-secrets)
+for what changes when the checks are off.
+
 ## Safety
 
 `mm` resolves the source and symlinks and requires all content to remain inside

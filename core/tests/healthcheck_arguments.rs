@@ -201,5 +201,10 @@ fn config_validate_names_each_podman_cmd_check_with_whitespace_arguments() -> Te
     );
 
     assert_eq!(warnings(&application, &project, "docker")?, Vec::new());
+    assert_eq!(
+        warnings(&application, &project, "dev")?,
+        Vec::new(),
+        "the development environment on this machine runs no checks"
+    );
     Ok(())
 }

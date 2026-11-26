@@ -36,6 +36,8 @@ struct GeneratedService {
     sysctls: BTreeMap<&'static str, &'static str>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     profiles: Vec<&'static str>,
+    #[serde(flatten)]
+    health: super::healthchecks::GeneratedHealth,
 }
 
 #[derive(Serialize)]
@@ -198,6 +200,7 @@ pub(super) fn generated_overlay(
             .sysctls
             .insert(super::low_ports::UNPRIVILEGED_PORT_START, "0");
     }
+    turn_off_healthchecks(&input, &labels, &mut services)?;
     let uses_development_services = attach_mail_bindings(&input, &labels, &mut services);
     let networks = overlay_networks(&input, uses_development_services);
     let mut development = development_volumes(&input, &labels, &mut services)?;
@@ -256,6 +259,28 @@ pub(super) fn generated_overlay(
         preserved_volumes: development.manifests.into_values().collect(),
         masked_paths: development.masked.into_iter().collect(),
     })
+}
+
+fn turn_off_healthchecks(
+    input: &GeneratedOverlayInput<'_>,
+    labels: &BTreeMap<String, String>,
+    services: &mut BTreeMap<String, GeneratedService>,
+) -> Result<(), MmError> {
+    let off = super::healthchecks::turn_off(
+        input.document,
+        input.environment,
+        input.target,
+        input.source_files,
+    )?;
+    for (name, health) in off {
+        let service = services
+            .entry(name)
+            .or_insert_with(|| empty_generated_service(None, labels));
+        let (label, value) = super::healthchecks::OFF;
+        service.labels.insert(label.to_owned(), value.to_owned());
+        service.health = health;
+    }
+    Ok(())
 }
 
 /// The host's user namespace for the services that keep it, and each
@@ -326,6 +351,7 @@ fn empty_generated_service(
         userns_mode: None,
         sysctls: BTreeMap::new(),
         profiles: Vec::new(),
+        health: Default::default(),
     }
 }
 

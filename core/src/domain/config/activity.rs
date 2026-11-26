@@ -22,6 +22,18 @@ impl MmConfig {
             == "local"
     }
 
+    /// Whether `environment` runs its services' health checks, when it
+    /// runs on this machine (`here`) or on a host.
+    #[must_use]
+    pub fn healthchecks_on(&self, environment: &str, here: bool) -> bool {
+        self.environments
+            .get(environment)
+            .and_then(|config| config.healthchecks)
+            .unwrap_or_else(|| {
+                !(here && self.project.development_environment.as_deref() == Some(environment))
+            })
+    }
+
     /// Modules with a service active in `environment`.
     pub fn active_modules<'a>(
         &'a self,
