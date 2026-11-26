@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- `mm update` restarts the local user services that run `mm` (the dashboard
+  control API under systemd or launchd) and checks they come back, lists
+  `mm mcp serve` processes still on the old release, and, run in a project,
+  ends with the release each remote environment's nodes run and the setup plan
+  command for each environment with an older node.
+
 ### Fixed
 
 - A plan whose config-file template reads a release input it was not given

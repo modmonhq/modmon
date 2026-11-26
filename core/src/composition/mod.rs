@@ -55,6 +55,8 @@ mod target_trust;
 mod targets;
 mod telemetry;
 pub use telemetry::install_timing_trace;
+mod update_steps;
+pub(crate) use update_steps::update_follow_up_service;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

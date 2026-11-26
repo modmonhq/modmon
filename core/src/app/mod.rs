@@ -61,6 +61,7 @@ pub mod timing;
 mod traefik_dynamic;
 pub mod unknown_keys;
 mod update_check;
+mod update_steps;
 mod workspaces;
 
 pub use application::{
@@ -115,4 +116,5 @@ pub use targets::{BootstrapAccessRequest, SshTargetInput, TargetManager};
 pub use targets_apply::{TargetBootstrapExecutionPorts, TargetBootstrapService};
 pub use traefik_dynamic::render_traefik_dynamic_routes;
 pub use update_check::UpdateCheckService;
+pub use update_steps::UpdateFollowUpService;
 pub use workspaces::{RegisteredWorkspacesCheck, WorkspaceRegistry, registered_workspaces};

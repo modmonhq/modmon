@@ -72,7 +72,7 @@ pub async fn run(
         return super::history::run(&cli, args);
     }
     if let Some(Command::Update(args)) = &cli.command {
-        return super::update::run(args, cli.output).await;
+        return super::update::run(&cli, args).await;
     }
     if warns_of_unknown_keys(cli.command.as_ref()) {
         crate::presentation::notices::listen();

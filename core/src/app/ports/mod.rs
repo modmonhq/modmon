@@ -35,6 +35,7 @@ mod services;
 mod shared_storage;
 mod state;
 mod transport;
+mod update_steps;
 mod user_namespace;
 pub use user_namespace::ServiceUserIds;
 
@@ -109,3 +110,4 @@ pub use transport::{
     BuildOperationLock, HostReleaseReader, TargetBootstrapExecutor, TargetOperationLock,
     TargetOperationLockGuard, TargetStore,
 };
+pub use update_steps::{HostVersions, LocalUserServices};

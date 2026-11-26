@@ -678,3 +678,66 @@ fn release_tags_archive_paths_and_versions_follow_the_installer() -> TestResult 
     assert!(!reports_version("", "mm", "0.1.2"));
     Ok(())
 }
+
+#[test]
+fn an_up_to_date_mm_ends_with_what_runs_which_release() -> TestResult {
+    let current = env!("CARGO_PKG_VERSION");
+    let tag = format!("v{current}");
+    let origin = Origin::start()?;
+    publish(&origin, &tag, &release_archive(&tag, current)?)?;
+    let home = temp_dirs::tempdir()?;
+    let elsewhere = temp_dirs::tempdir()?;
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/minimal");
+    let run = |directory: &Path| {
+        temp_dirs::mm()
+            .current_dir(directory)
+            .env("HOME", home.path())
+            .env_remove("MM_HOME")
+            .env_remove("MM_ENVIRONMENT")
+            .env("MM_RELEASE_TEST_ORIGIN", &origin.url)
+            .env("MM_RELEASE_ALLOW_INSECURE_TEST_ORIGIN", "1")
+            .args(["--output", "json", "update"])
+            .output()
+    };
+
+    let outside = run(elsewhere.path())?;
+    let report: serde_json::Value = serde_json::from_slice(&outside.stdout)?;
+    assert!(outside.status.success(), "{report}");
+    assert_eq!(report["action"], "up-to-date", "{report}");
+    assert_eq!(report["summary"]["version"], current, "{report}");
+    assert_eq!(
+        report["summary"]["services"],
+        serde_json::json!([]),
+        "{report}"
+    );
+    assert_eq!(
+        report["summary"]["hosts"]["scope"], "no-project",
+        "{report}"
+    );
+
+    let human = temp_dirs::mm()
+        .current_dir(elsewhere.path())
+        .env("HOME", home.path())
+        .env_remove("MM_HOME")
+        .env("MM_RELEASE_TEST_ORIGIN", &origin.url)
+        .env("MM_RELEASE_ALLOW_INSECURE_TEST_ORIGIN", "1")
+        .arg("update")
+        .output()?;
+    let stdout = String::from_utf8(human.stdout)?;
+    assert!(
+        stdout.contains(&format!("mm {current} is up to date.")),
+        "{stdout}"
+    );
+    assert!(stdout.contains("Now running:"), "{stdout}");
+    assert!(stdout.contains("target setup plan --upgrade"), "{stdout}");
+
+    let project = run(&fixture)?;
+    let report: serde_json::Value = serde_json::from_slice(&project.stdout)?;
+    assert!(project.status.success(), "{report}");
+    assert_eq!(
+        report["summary"]["hosts"],
+        serde_json::json!({"scope": "project", "environments": []}),
+        "{report}"
+    );
+    Ok(())
+}

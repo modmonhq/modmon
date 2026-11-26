@@ -13,9 +13,12 @@ warns until they run the same release. See
 
 ## Before you start
 
-- Update `mm` on your machine with `mm update` (see
+- Update `mm` on your machine with `mm update` from the project (see
   [update mm](../start/install.md#update-mm)). `mm --version` prints the new
   release. This works from Linux or macOS, with or without `mmd` installed.
+  It restarts the local services that run `mm`, and ends with the release each
+  environment's nodes run and the setup plan command for each environment
+  with an older node.
 - Check that no deployment runs: `mm deploy status`. A deployment that runs on
   a node while its `mmd` restarts fails at its current step and rolls back.
 - If the environment pins the release with

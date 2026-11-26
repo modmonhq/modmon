@@ -194,10 +194,11 @@ pub enum Command {
     },
 
     /// Update this machine's mm, and the mmd and mm-ingress-helper beside
-    /// it, from a verified release.
+    /// it, from a verified release, and restart the local services that run
+    /// it.
     #[command(
         disable_version_flag = true,
-        after_help = "Examples:\n  mm update --check\n  mm update\n  mm update --yes\n  mm update --version v0.1.2 --force\n\nmm update downloads the release's archive for this platform, checks its SHA-256 and size against the release's manifest.json (SHA256SUMS for a release candidate), runs the new mm, and then replaces every binary at once or none. It replaces mm, and mmd and mm-ingress-helper when they sit beside it. Hosts keep the release they run: upgrade them with `mm target setup plan --upgrade`. Exit codes: 0 updated or nothing to do; 1 the release could not be read or installed, or this installation is refused; 3 the archive failed its checks."
+        after_help = "Examples:\n  mm update --check\n  mm update\n  mm update --yes\n  mm update --version v0.1.2 --force\n\nmm update downloads the release's archive for this platform, checks its SHA-256 and size against the release's manifest.json (SHA256SUMS for a release candidate), runs the new mm, and then replaces every binary at once or none. It replaces mm, and mmd and mm-ingress-helper when they sit beside it, then restarts the local user services that run mm (the dashboard control API) and checks they come back. It ends with what runs which release: this mm, those services, `mm mcp serve` processes left on an older mm, and, run in a project, each remote environment's nodes, with the commands that upgrade older hosts. Hosts keep the release they run until you run those. Exit codes: 0 updated or nothing to do; 1 the release could not be read or installed, this installation is refused, or a restarted service did not come back; 3 the archive failed its checks."
     )]
     Update(super::UpdateArgs),
 
