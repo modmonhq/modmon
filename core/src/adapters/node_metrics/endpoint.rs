@@ -8,9 +8,10 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, SystemTime};
 
+use subtle::ConstantTimeEq as _;
 use zeroize::Zeroizing;
 
-use super::server::MetricsServer;
+use super::server::{MetricsServer, Token};
 use crate::app::NodeMetricsCollector;
 use crate::app::ports::{ClusterNetworkHost, MeshHost};
 use crate::domain::host_policy::HostMetrics;
@@ -19,6 +20,9 @@ use crate::domain::node_metrics::{METRICS_PORT, MetricsListener, listeners};
 /// How often the node looks again where it should serve.
 const REFRESH: Duration = Duration::from_secs(10);
 const MAX_TOKEN_BYTES: u64 = 4096;
+
+/// A file's device and inode: the same for every name of one file.
+type FileId = (rustix::fs::Dev, u64);
 
 /// What decides where the node serves.
 pub struct EndpointSources {
@@ -113,19 +117,11 @@ impl MetricsEndpoint {
         let Some(policy) = self.host_metrics(problems) else {
             return Some(Vec::new());
         };
-        let read = |key: &str, path: Option<&PathBuf>| match path {
-            Some(path) => read_token(key, path).map(Some),
-            None => Ok(None),
-        };
-        let tokens = read("token-file", policy.token_file.as_ref()).and_then(|project| {
-            let mesh = if policy.mesh {
-                read("mesh-token-file", policy.mesh_token_file.as_ref())?
-            } else {
-                None
-            };
-            Ok((project, mesh))
-        });
-        match tokens {
+        let mesh = policy
+            .mesh
+            .then_some(policy.mesh_token_file.as_deref())
+            .flatten();
+        match read_tokens(policy.token_file.as_deref(), mesh) {
             Ok((project, mesh)) => self.server.set_tokens(project, mesh),
             Err(problem) => {
                 problems.push(format!(
@@ -149,10 +145,32 @@ impl MetricsEndpoint {
     }
 }
 
+/// The projects' token and the mesh's, from the host policy's
+/// `metrics.token-file` and `metrics.mesh-token-file`. Two names of one
+/// file (a hard link, another path to it) or two files that hold the same
+/// token are refused: the mesh token must be one no project holds.
+pub fn read_tokens(project: Option<&Path>, mesh: Option<&Path>) -> Result<(Token, Token), String> {
+    let project = project
+        .map(|path| read_token("token-file", path))
+        .transpose()?;
+    let mesh = mesh
+        .map(|path| read_token("mesh-token-file", path))
+        .transpose()?;
+    if let (Some((project, project_file)), Some((mesh, mesh_file))) = (&project, &mesh)
+        && (project_file == mesh_file || bool::from(project.as_slice().ct_eq(mesh.as_slice())))
+    {
+        return Err("metrics.mesh-token-file must hold a token of its own, not the projects' metrics.token-file under another name or the same token".to_owned());
+    }
+    Ok((
+        project.map(|(token, _)| token),
+        mesh.map(|(token, _)| token),
+    ))
+}
+
 /// The token in `path`, the file of the host policy's `metrics.<key>`: a
 /// regular file only root can read, of at most a few kilobytes, opened
 /// without following a link. Never says what it holds.
-fn read_token(key: &str, path: &Path) -> Result<Zeroizing<Vec<u8>>, String> {
+fn read_token(key: &str, path: &Path) -> Result<(Zeroizing<Vec<u8>>, FileId), String> {
     use rustix::fs::{FileType, Mode, OFlags};
     let shown = path.display();
     let file = rustix::fs::open(
@@ -189,5 +207,5 @@ fn read_token(key: &str, path: &Path) -> Result<Zeroizing<Vec<u8>>, String> {
     if token.is_empty() {
         return Err(format!("metrics.{key} {shown} is empty"));
     }
-    Ok(token)
+    Ok((token, (stat.st_dev, stat.st_ino)))
 }

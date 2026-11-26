@@ -5,7 +5,7 @@
 use std::net::Ipv4Addr;
 use std::sync::Arc;
 
-use mm::adapters::node_metrics::{MetricsServer, ProcHostStats, Scrape, answer};
+use mm::adapters::node_metrics::{MetricsServer, ProcHostStats, Scrape, answer, read_tokens};
 use mm::app::ports::{DeployedEnvironments, HostStats, MeshPeers, NodeContainers};
 use mm::app::{NodeIdentity, NodeMetricsCollector, NodeMetricsSources};
 use mm::domain::cluster_network::{NetworkNeed, NetworkTable, NodeNetworks, network_key};
@@ -833,5 +833,80 @@ async fn a_server_keeps_its_socket_closes_on_the_node_itself_and_splits_its_toke
         "",
         "the node's own address is closed without an answer"
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_peer_holds_one_connection_of_an_address_at_a_time() -> TestResult {
+    let server = MetricsServer::new(collector(), 0);
+    let problems = server.serve(vec![on_loopback(
+        [127, 0, 0, 3],
+        Vec::new(),
+        MetricsScope::Host,
+    )]);
+    assert!(problems.is_empty(), "{problems:?}");
+    let address = server.listening()[0];
+    let slow = tokio::net::TcpStream::connect(address).await?;
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    assert_eq!(
+        scrape_at(address, "").await.unwrap_or_default(),
+        "",
+        "a second connection of the same peer is closed unanswered"
+    );
+    drop(slow);
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    assert!(scrape_at(address, "").await?.starts_with("HTTP/1.1 200 OK"));
+    Ok(())
+}
+
+#[test]
+fn the_mesh_token_is_never_the_projects_under_another_name() -> TestResult {
+    use std::os::unix::fs::PermissionsExt as _;
+    let directory = tempfile::tempdir()?;
+    let write = |name: &str, content: &str| -> std::io::Result<std::path::PathBuf> {
+        let path = directory.path().join(name);
+        std::fs::write(&path, content)?;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+        Ok(path)
+    };
+    let project = write("project", "first\n")?;
+    let mesh = write("mesh", "second\n")?;
+    let (read_project, read_mesh) = read_tokens(Some(&project), Some(&mesh))?;
+    assert_eq!(
+        read_project.as_deref().map(Vec::as_slice),
+        Some(b"first".as_slice())
+    );
+    assert_eq!(
+        read_mesh.as_deref().map(Vec::as_slice),
+        Some(b"second".as_slice())
+    );
+
+    let linked = directory.path().join("linked");
+    std::fs::hard_link(&project, &linked)?;
+    assert!(
+        read_tokens(Some(&project), Some(&linked)).is_err(),
+        "a hard link"
+    );
+    let dotted = directory.path().join("sub/../project");
+    std::fs::create_dir(directory.path().join("sub"))?;
+    assert!(
+        read_tokens(Some(&project), Some(&dotted)).is_err(),
+        "another path"
+    );
+    let copy = write("copy", "first")?;
+    assert!(
+        read_tokens(Some(&project), Some(&copy))
+            .is_err_and(|problem| problem.contains("token of its own")),
+        "the same token in another file"
+    );
+    let open = write("open", "x")?;
+    std::fs::set_permissions(&open, std::fs::Permissions::from_mode(0o644))?;
+    assert!(
+        read_tokens(None, Some(&open)).is_err(),
+        "readable by others"
+    );
+    let link = directory.path().join("symlink");
+    std::os::unix::fs::symlink(&mesh, &link)?;
+    assert!(read_tokens(Some(&link), None).is_err(), "a symbolic link");
     Ok(())
 }

@@ -10,7 +10,7 @@ mod server;
 
 pub use containers::EngineServiceContainers;
 pub use deployed::NodeDeployments;
-pub use endpoint::{EndpointSources, MetricsEndpoint};
+pub use endpoint::{EndpointSources, MetricsEndpoint, read_tokens};
 pub use mesh::InterfacePeers;
 pub use procfs::ProcHostStats;
 pub use server::{MetricsServer, Scrape, Token, answer};

@@ -3,7 +3,7 @@
 //! scope it was opened for. A peer it does not admit is closed at once,
 //! before it can take one of the address's few connections.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
 use std::time::Duration;
@@ -144,6 +144,7 @@ impl MetricsServer {
 
     async fn accept(self: Arc<Self>, socket: TcpListener, shared: SharedListener) {
         let slots = Arc::new(Semaphore::new(CONNECTIONS_PER_ADDRESS));
+        let busy = Arc::new(Mutex::new(BTreeSet::new()));
         loop {
             let (stream, peer) = match socket.accept().await {
                 Ok(accepted) => accepted,
@@ -154,19 +155,22 @@ impl MetricsServer {
                 }
             };
             let listener = Arc::clone(&shared.read().unwrap_or_else(PoisonError::into_inner));
-            let admitted = match peer.ip() {
-                IpAddr::V4(address) => listener.admits(address),
-                IpAddr::V6(_) => false,
+            let IpAddr::V4(address) = peer.ip() else {
+                continue;
             };
-            if !admitted {
+            if !listener.admits(address) {
                 continue;
             }
+            let Some(peer_turn) = PeerTurn::take(&busy, address) else {
+                continue;
+            };
             let Ok(permit) = Arc::clone(&slots).try_acquire_owned() else {
                 continue;
             };
             let server = Arc::clone(&self);
             tokio::spawn(async move {
                 let _permit = permit;
+                let _peer_turn = peer_turn;
                 let _ = tokio::time::timeout(
                     CONNECTION_PATIENCE,
                     server.connection(stream, peer, &listener),
@@ -197,6 +201,34 @@ impl MetricsServer {
         if let Err(error) = answer(&mut stream, &scrape, &self.collector).await {
             tracing::debug!(%error, %peer, "answering a metrics scrape failed");
         }
+    }
+}
+
+/// One connection of a peer at a time, so no peer holds more than one of an
+/// address's slots.
+struct PeerTurn {
+    busy: Arc<Mutex<BTreeSet<Ipv4Addr>>>,
+    peer: Ipv4Addr,
+}
+
+impl PeerTurn {
+    fn take(busy: &Arc<Mutex<BTreeSet<Ipv4Addr>>>, peer: Ipv4Addr) -> Option<Self> {
+        busy.lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(peer)
+            .then(|| Self {
+                busy: Arc::clone(busy),
+                peer,
+            })
+    }
+}
+
+impl Drop for PeerTurn {
+    fn drop(&mut self) {
+        self.busy
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&self.peer);
     }
 }
 
