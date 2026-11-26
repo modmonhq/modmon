@@ -1549,7 +1549,13 @@ The service is reached by its name on a [network that spans the
 nodes](#networks-across-nodes) or through the [ingress](#route-traffic-into-the-cluster);
 neither a client that asks again for each request nor one that keeps its
 connection sees a failed request. Give the service a health check: without one
-a container counts as healthy once it has run for five seconds.
+a container counts as healthy once it has run for five seconds. On Docker
+Engine 25 and later mm probes a starting container's health check every
+second (`start_interval: 1s`, with a `start_period` of `interval` times
+`retries` unless the service sets one), so the new container counts as healthy
+as soon as its check passes; the service's own `interval` applies after that.
+A service that sets `start_interval` keeps its own. The first deployment
+after upgrading mm recreates each service with a health check once.
 
 `start-first` needs two containers of the service on one node for a moment, so
 `mm config validate` refuses it with `MM_UPDATE_ORDER` for a service that

@@ -18,6 +18,7 @@ pub(crate) fn compile_document(
         networks,
         config_files: Path::new(crate::domain::config_file::CONFIG_FILE_DIRECTORY),
         user_ids: None,
+        start_probes: false,
     })
     .map(|(artifacts, _)| artifacts)
 }
@@ -36,6 +37,8 @@ pub(crate) struct DocumentCompilation<'a> {
     /// Set on a host that runs rootful Podman: where each service's own
     /// user ids are kept.
     pub user_ids: Option<&'a dyn crate::app::ports::ServiceUserIds>,
+    /// The engine probes at `start_interval` (Docker Engine 25 and later).
+    pub start_probes: bool,
 }
 
 /// Compiles every stack. On a cluster node the configuration is the node's
@@ -129,6 +132,7 @@ pub(crate) fn compile_document_for(
             shared,
             host: stack_host,
             host_network,
+            start_probes: input.start_probes,
         })?);
     }
     Ok((artifacts, notes))
@@ -352,6 +356,7 @@ struct StackArtifactInput<'a> {
     shared: super::shared_volumes::NodeVolumes,
     host: super::user_namespace::StackHost,
     host_network: super::host_network::HostNetworkServices,
+    start_probes: bool,
 }
 
 fn finish_stack_artifact(input: StackArtifactInput<'_>) -> Result<CompiledStackArtifact, MmError> {
@@ -388,6 +393,11 @@ fn finish_stack_artifact(input: StackArtifactInput<'_>) -> Result<CompiledStackA
         host_userns: &input.host_network.host_userns,
         shared_pid: &input.host.shared_pid,
     })?;
+    let overlay_bytes = if input.start_probes {
+        super::start_probes::with_start_probes(overlay.bytes, &input.source_files)?
+    } else {
+        overlay.bytes
+    };
     let mut manifest = StackArtifactManifest {
         project_id: input.document.config.project.id,
         project_name: input.document.config.project.name.clone(),
@@ -401,7 +411,7 @@ fn finish_stack_artifact(input: StackArtifactInput<'_>) -> Result<CompiledStackA
             .iter()
             .map(|file| file.manifest.clone())
             .collect(),
-        generated_overlay_digest: blake3::hash(&overlay.bytes).to_hex().to_string(),
+        generated_overlay_digest: blake3::hash(&overlay_bytes).to_hex().to_string(),
         services: input.services,
         routes: input.routes,
         middleware_inputs: input.middlewares.inputs.clone(),
@@ -419,7 +429,7 @@ fn finish_stack_artifact(input: StackArtifactInput<'_>) -> Result<CompiledStackA
     Ok(CompiledStackArtifact {
         user_files: input.source_files,
         manifest,
-        generated_overlay: overlay.bytes,
+        generated_overlay: overlay_bytes,
         config_files: input.host.config_files.compiled(masks_a_file),
     })
 }

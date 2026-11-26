@@ -84,6 +84,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   one batch of nodes still rolls out alone. The plan lists the stacks that go
   side by side. With a node whose `mmd` does not know the new steps, stacks
   roll out one at a time, and the plan says so.
+- On Docker Engine 25 and later, mm's generated Compose overlay gives each
+  service with a health check `start_interval: 1s`, and a `start_period` of
+  `interval` times `retries` when the service sets none, so a deploy sees a
+  new container healthy within about a second instead of after the first
+  `interval`. The service's own `interval` applies once the container is
+  healthy. The first deploy after upgrading recreates every service with a
+  health check once, since its configuration changes. Podman hosts and older
+  Docker Engines are left as they are.
 - Every node of a cluster deploy finishes at the same time, and nodes without
   stacks begin at the same time. A node whose finish fails rolls itself back
   as before, but the other nodes may have finished already: the report lists

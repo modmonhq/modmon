@@ -35,13 +35,14 @@ impl DeploymentManager {
     fn compile(
         &self,
         selection: &WorkspaceSelection,
+        start_probes: bool,
     ) -> Result<crate::app::stacks::DeploymentStackCompilation, MmError> {
+        let stacks = self.stacks.clone().with_start_probes(start_probes);
         match &self.local_build {
             Some(build) => {
-                self.stacks
-                    .compile_for_local_build(selection, self.state.as_ref(), build.plan())
+                stacks.compile_for_local_build(selection, self.state.as_ref(), build.plan())
             }
-            None => self.stacks.compile_for_deployment(
+            None => stacks.compile_for_deployment(
                 selection,
                 self.state.as_ref(),
                 self.receipt.as_ref().map(|promoted| &promoted.receipt),
@@ -113,11 +114,22 @@ impl DeploymentManager {
         }
     }
 
+    /// Whether the engine probes health checks at `start_interval`: Docker
+    /// Engine 25 and later, as it reports itself.
+    async fn engine_probes_at_start(&self) -> bool {
+        if self.runtime.kind() != crate::domain::runtime::RuntimeKind::DockerCompose {
+            return false;
+        }
+        (self.runtime.status_probe().await.engine_version.as_deref())
+            .is_some_and(crate::domain::compose_healthcheck::docker_probes_at_start)
+    }
+
     async fn prepare_deployment(
         &self,
         selection: &WorkspaceSelection,
     ) -> Result<DeploymentPreparation, MmError> {
-        let mut compiled = self.compile(selection)?;
+        let start_probes = self.engine_probes_at_start().await;
+        let mut compiled = self.compile(selection, start_probes)?;
         self.keep_split_healthchecks(&mut compiled.healthcheck_arguments)
             .await;
         let environment_review = self

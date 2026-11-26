@@ -125,6 +125,7 @@ environments:
             networks: &active_network_membership(&document, "production")?,
             config_files: std::path::Path::new("config-files"),
             user_ids: None,
+            start_probes: false,
         })
     }
 }
@@ -405,6 +406,7 @@ fn a_node_gives_its_services_a_restart_policy_where_the_compose_file_has_none() 
         networks: &active_network_membership(&document, "production")?,
         config_files: std::path::Path::new("config-files"),
         user_ids: None,
+        start_probes: false,
     })?;
     assert_eq!(restart_of(&artifacts[0], "web")?, None);
     assert!(notes.restart_defaults.is_empty());

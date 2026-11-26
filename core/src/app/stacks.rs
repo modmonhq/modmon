@@ -68,6 +68,7 @@ pub(crate) fn inspect_document(
 mod auto_order;
 mod deploy_policy;
 mod network_overlay;
+mod start_probes;
 
 mod compilation;
 pub mod guardrails;
@@ -141,6 +142,8 @@ pub struct StackManager {
     state: Option<Arc<dyn StateStore>>,
     /// Set on a host that runs rootful Podman: each service's own user ids.
     user_ids: Option<Arc<dyn crate::app::ports::ServiceUserIds>>,
+    /// The engine probes at `start_interval` (`start_probes.rs`).
+    start_probes: bool,
 }
 
 pub(crate) struct DeploymentStackCompilation {
@@ -203,6 +206,7 @@ impl StackManager {
             targets,
             state: None,
             user_ids: None,
+            start_probes: false,
         }
     }
 
@@ -220,12 +224,20 @@ impl StackManager {
             targets,
             state: None,
             user_ids: None,
+            start_probes: false,
         }
     }
 
     #[must_use]
     pub fn with_state(mut self, state: Arc<dyn StateStore>) -> Self {
         self.state = Some(state);
+        self
+    }
+
+    /// Stacks get quick health probes while their containers start.
+    #[must_use]
+    pub fn with_start_probes(mut self, start_probes: bool) -> Self {
+        self.start_probes = start_probes;
         self
     }
 
@@ -424,6 +436,7 @@ impl StackManager {
                 preparation.environment,
             ),
             user_ids: self.user_ids.as_deref(),
+            start_probes: self.start_probes,
         })?;
         placement.outside_host_namespace = user_namespace::files_outside_host_namespace(
             preparation.document,
