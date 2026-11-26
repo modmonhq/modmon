@@ -625,7 +625,10 @@ request(1, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {}, "
 server.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n")
 server.stdin.flush()
 result = request(2, "tools/call", {"name": sys.argv[1], "arguments": json.loads(sys.argv[2])})
-print(json.dumps(result["structuredContent"]))
+if "structuredContent" in result:
+    print(json.dumps(result["structuredContent"]))
+else:
+    print(result["content"][0]["text"])
 server.kill()
 PY
 }
