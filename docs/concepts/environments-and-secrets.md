@@ -99,6 +99,16 @@ reason and the others are still created. The command
 succeeds. Naming one secret, as in `mm secret generate database.password`,
 fails instead.
 
+`mm secret status` shows a secret that is not stored as `unset`, or as
+`default` when every variable that reads it in the selected environment has a
+non-empty default in its `.env.example`, as in
+`REDIS_PASSWORD=devpass # mm:from=CACHE.PASSWORD`. A `default` secret is still
+missing from the store: `mm env status` shows those variables as `defaulted`,
+`generate --missing` still creates it, and deploys use the template default
+until you store a value. An empty default (`KEY=`), or a secret also mounted
+with `secret-files` or read by a registry, TLS certificate or tunnel, stays
+`unset`. In JSON output, `status` stays `unset` and `defaulted` is `true`.
+
 To enter an existing password instead, use `mm secret set database.password`.
 The prompt hides your input. Other stores are described in
 [secret providers](../secret-providers.md).

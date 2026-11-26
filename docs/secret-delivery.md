@@ -170,6 +170,12 @@ mm deploy plan --output json
 These views omit credentials and secret values. Host and container-engine
 administrators can still access secrets used by workloads.
 
+In `mm secret status`, `default` means the secret is not stored, and every
+service that reads it falls back to the default in its `.env.example`. Store a
+value with `mm secret set KEY` before an environment that needs a real one,
+such as production. See
+[environments and secrets](./concepts/environments-and-secrets.md#add-a-secret).
+
 ## Build secrets
 
 For sensitive build inputs, use `modules.<name>.build.secrets` to map a BuildKit
