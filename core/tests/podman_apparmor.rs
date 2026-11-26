@@ -223,6 +223,7 @@ fn node(apparmor: Option<ContainerAppArmor>) -> NodeReport {
         }),
         daemon: None,
         secret_store: None,
+        rollout_steps: Vec::new(),
     }
 }
 

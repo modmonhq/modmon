@@ -1291,9 +1291,12 @@ deployment. The command exits with status 3 when a node is not ready, and
 prints the list either way. `--output json` prints the same facts as
 `{"target": ..., "nodes": [...], "addresses": {...}}`. Each node has `name`,
 `host`, `port`, `mesh_address`, `state`, `reachable`, `problem`,
-`mmd_version`, and `deployed`. `host` and `port` are the address this device
-connected to; when it is [this device's own](#reach-the-nodes-at-another-address),
-`repo_address` holds the one in `targets.yaml`.
+`mmd_version`, and `deployed`. `rollout_steps` lists the newer rollout steps
+the node's `mmd` knows (`pull`, `stacks`); a deploy uses them only when every
+node lists them, and the field is left out for a node that lists none. `host`
+and `port` are the address this device connected to; when it is
+[this device's own](#reach-the-nodes-at-another-address), `repo_address` holds
+the one in `targets.yaml`.
 
 Below the nodes, the command prints the addresses of the
 [networks that span the nodes](#networks-across-nodes), for the environment

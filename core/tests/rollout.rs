@@ -725,6 +725,7 @@ fn small_findings_name_the_place_and_the_next_step() -> TestResult {
         engine: None,
         daemon: None,
         secret_store: None,
+        rollout_steps: Vec::new(),
     };
     assert!(refused_handshake(
         "has no remote protocol in common with this mm. Update mm on this machine"

@@ -585,6 +585,10 @@ pub struct NodeReport {
     /// The node's member of the environment's managed secret store.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub secret_store: Option<crate::domain::secret_store::StoreStatus>,
+    /// The rollout steps the node's `mmd` knows beyond the first ones; a
+    /// deploy uses them only when every node lists them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rollout_steps: Vec<String>,
 }
 
 impl NodeReport {

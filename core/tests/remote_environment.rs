@@ -54,6 +54,8 @@ struct FakeNode {
     networks: Mutex<mm::domain::cluster_network::NodeNetworkStatus>,
     /// What this node's resolver knows.
     names: Mutex<Option<mm::domain::discovery::NameReport>>,
+    /// Its `mmd` lists the newer rollout steps.
+    newer_steps: AtomicBool,
 }
 
 impl FakeNode {
@@ -77,6 +79,7 @@ impl FakeNode {
             silent_peer: Mutex::new(None),
             networks: Mutex::new(mm::domain::cluster_network::NodeNetworkStatus::default()),
             names: Mutex::new(None),
+            newer_steps: AtomicBool::new(false),
         })
     }
 
@@ -453,7 +456,13 @@ impl RemoteTransport for FakeNode {
             engine: None,
             daemon: None,
             secret_store: None,
-            rollout_steps: Vec::new(),
+            rollout_steps: if self.newer_steps.load(Ordering::SeqCst) {
+                mm::domain::rollout::NEWER_ROLLOUT_STEPS
+                    .map(str::to_owned)
+                    .to_vec()
+            } else {
+                Vec::new()
+            },
         })
     }
 
@@ -1350,6 +1359,7 @@ async fn node_reports_cover_every_node_reachable_or_not() -> TestResult {
         FakeNode::answering_as("db-1", "3", Some("app-1")),
     ])?;
     fakes[1].up.store(false, Ordering::SeqCst);
+    fakes[0].newer_steps.store(true, Ordering::SeqCst);
     let mut nodes = environment.nodes().to_vec();
     nodes.push(RemoteNode {
         name: Some("new-1".to_owned()),
@@ -1411,6 +1421,14 @@ async fn node_reports_cover_every_node_reachable_or_not() -> TestResult {
     assert_eq!(json[1]["state"], "unreachable");
     assert_eq!(json[0]["mesh_address"], "10.90.0.1");
     assert_eq!(json[0]["deployed"]["runs_services"], true);
+    assert_eq!(
+        json[0]["rollout_steps"],
+        serde_json::json!(mm::domain::rollout::NEWER_ROLLOUT_STEPS)
+    );
+    assert!(
+        json[2].get("rollout_steps").is_none(),
+        "a node that lists none has no field"
+    );
     Ok(())
 }
 

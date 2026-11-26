@@ -378,6 +378,7 @@ impl RemoteEnvironment {
             engine: None,
             daemon: None,
             secret_store: None,
+            rollout_steps: Vec::new(),
         };
         let failed = |report: &mut NodeReport, state: NodeState, problem: String| {
             report.state = state;
@@ -403,6 +404,7 @@ impl RemoteEnvironment {
                 report.engine = facts.engine;
                 report.daemon = facts.daemon;
                 report.secret_store = facts.secret_store;
+                report.rollout_steps = facts.rollout_steps;
                 if let Some(requested) = &node.name
                     && facts.node.as_ref() != Some(requested)
                 {

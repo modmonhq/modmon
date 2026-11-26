@@ -73,8 +73,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A cluster deploy has every node pull the images it runs, all nodes at the
   same time, before any node is replaced; a pull that fails stops the deploy
   with nothing changed. Unless every node's `mmd` says it knows the new
-  rollout steps (it lists them in its node facts), nodes keep pulling stack by
-  stack, and the plan names the older nodes until
+  rollout steps (`rollout_steps` in `mm target nodes --output json`), nodes
+  keep pulling stack by stack, and the plan names the older nodes until
   `mm target setup plan --upgrade` brings them up to date.
 - A stack whose services that run on several nodes all start first is
   replaced on all its nodes at once when no service sets `update.parallelism`;
