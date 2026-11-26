@@ -362,8 +362,12 @@ fn an_agent_session_is_limited_per_environment_and_hands_the_rest_to_the_user()
     assert_eq!(
         access["environments"],
         serde_json::json!([
-            {"environment": "local", "access": "deploy +exec", "level": "deploy", "exec": true},
-            {"environment": "production", "access": "view", "level": "view", "exec": false},
+            {"environment": "local", "access": "deploy +exec", "level": "deploy", "exec": true,
+             "allows": ["read", "logs", "plan", "job_run", "service_restart", "schedule_manage",
+                        "config_apply", "build_apply", "deploy_apply", "exec",
+                        "development_unit", "development_setup"]},
+            {"environment": "production", "access": "view", "level": "view", "exec": false,
+             "allows": ["read", "logs", "plan"]},
         ])
     );
 
@@ -754,7 +758,13 @@ fn applying_a_deployment_runs_to_its_end_and_every_other_call_keeps_its_bound() 
     // Found integrating: `mm_build_apply` on a local environment ended
     // MM_TIMEOUT after the bound and the build it had begun was dropped, so no
     // image was ever built and the operation stayed recorded as running.
-    for operation in ["deploy_apply", "build_apply", "job_apply", "setup_apply"] {
+    for operation in [
+        "deploy_apply",
+        "build_apply",
+        "job_apply",
+        "setup_apply",
+        "service_restart_apply",
+    ] {
         assert_eq!(config.call_bound(operation), None, "{operation}");
     }
     let bound = Some(std::time::Duration::from_millis(config.request_timeout_ms));
@@ -764,6 +774,7 @@ fn applying_a_deployment_runs_to_its_end_and_every_other_call_keeps_its_bound() 
         "config_apply",
         "read",
         "setup_plan",
+        "service_restart_plan",
     ] {
         assert_eq!(config.call_bound(operation), bound, "{operation}");
     }
@@ -1677,6 +1688,207 @@ fn setup_outside_the_grant_is_handed_to_the_user() -> Result<(), Box<dyn std::er
                 "{refused}"
             );
         }
+    }
+    Ok(())
+}
+
+fn restart(
+    session: &mut Session,
+    environment: &str,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    let hash = "a".repeat(64);
+    session.call(
+        "mm_service_restart_apply",
+        serde_json::json!({
+            "scope": {"environment": environment},
+            "service": "api",
+            "plan_hash": hash,
+            "approval_token": "b".repeat(64),
+            "confirmation": format!("apply:{hash}"),
+        }),
+    )
+}
+
+fn allows(access: &serde_json::Value, environment: &str) -> Vec<String> {
+    access["environments"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|entry| entry["environment"] == environment)
+        .flat_map(|entry| entry["allows"].as_array().cloned().unwrap_or_default())
+        .filter_map(|action| action.as_str().map(str::to_owned))
+        .collect()
+}
+
+/// `operate` lets an agent restart a service and `mm_access` says so; a
+/// device ceiling of `view` takes it back, and the restart is then the
+/// user's `mm service restart`.
+#[test]
+fn restarting_needs_operate_and_a_device_ceiling_of_view_hands_it_to_the_user()
+-> Result<(), Box<dyn std::error::Error>> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let project = Project::new()?;
+    project.edit(|config| config["agents"]["production"] = "operate".into())?;
+    project.trust()?;
+    let mut session = Session::start_with(&project, &engine_off())?;
+    let access = session.call("mm_access", serde_json::json!({}))?;
+    assert!(
+        allows(&access, "production").contains(&"service_restart".to_owned()),
+        "{access}"
+    );
+    let granted = restart(&mut session, "production")?;
+    assert_eq!(granted["error"]["code"], "MM_SECURITY", "{granted}");
+    drop(session);
+
+    let limits = project.home.path().join("mcp.json");
+    fs::write(
+        &limits,
+        br#"{"schema_version":1,"ceiling":{"production":"view"}}"#,
+    )?;
+    fs::set_permissions(&limits, fs::Permissions::from_mode(0o600))?;
+    let mut session = Session::start_with(&project, &engine_off())?;
+    let access = session.call("mm_access", serde_json::json!({}))?;
+    assert_eq!(
+        allows(&access, "production"),
+        ["read", "logs", "plan"],
+        "{access}"
+    );
+    let refused = restart(&mut session, "production")?;
+    assert_eq!(refused["error"]["code"], "MM_AGENT_HANDOFF", "{refused}");
+    assert_eq!(refused["error"]["handoff"]["requires"], "level operate");
+    assert_eq!(
+        refused["error"]["handoff"]["user_commands"],
+        serde_json::json!(["mm --environment production service restart api"])
+    );
+    Ok(())
+}
+
+const VALUE_SENTINEL: &str = "mm-mcp-read-sentinel-5d1e";
+
+/// A project whose `app` service reads a public variable and a secret
+/// that the `env` provider takes from `MM_MCP_READ_TOKEN`.
+fn values_project() -> Result<Project, Box<dyn std::error::Error>> {
+    let root = temp_dirs::tempdir()?;
+    let home = temp_dirs::tempdir()?;
+    mm::adapters::state::MmHome::resolve(Some(home.path()))?;
+    fs::create_dir_all(root.path().join(".config"))?;
+    fs::create_dir_all(root.path().join("app"))?;
+    fs::write(
+        root.path().join(".config/mm.yaml"),
+        r#"schema-version: 1
+project:
+  id: 319c527b-6242-7b43-bfd4-bd60e27c1de3
+  name: values
+default-environment: local
+target: local
+runtime:
+  driver: podman-compose
+stacks:
+  app:
+    files: [compose.yaml]
+modules:
+  app:
+    path: app
+    services:
+      app:
+        stack: app
+    env:
+      template: .env.example
+secrets:
+  app.token:
+    storage:
+      provider: env
+      location: MM_MCP_READ_TOKEN
+environments:
+  local:
+    bindings:
+      APP.HOST:
+        value: app.example.test
+      APP.TOKEN:
+        secret: app.token
+"#,
+    )?;
+    fs::write(
+        root.path().join("compose.yaml"),
+        "services:\n  app:\n    image: docker.io/library/alpine:3.22\n",
+    )?;
+    fs::write(
+        root.path().join("app/.env.example"),
+        "APP_HOST= # mm:from=APP.HOST required\nAPP_TOKEN= # mm:from=APP.TOKEN required\n",
+    )?;
+    FilesystemTargetStore::new(home.path().join("targets.yaml")).insert_target(
+        "local",
+        TargetDefinition::local(TargetId(Uuid::from_u128(92))),
+    )?;
+    Ok(Project { root, home })
+}
+
+/// `mm_read` `env` shows each variable as `mm env status` does, with the
+/// value of a public one and never the value of a sensitive one, and
+/// `secrets` shows the secret's status as `mm secret status` does.
+#[test]
+fn an_agent_reads_variables_and_secrets_without_a_value() -> Result<(), Box<dyn std::error::Error>>
+{
+    let project = values_project()?;
+    let mut session = Session::start_with(
+        &project,
+        &[
+            ("MM_ENGINE_API", "off".to_owned()),
+            ("MM_MCP_READ_TOKEN", VALUE_SENTINEL.to_owned()),
+        ],
+    )?;
+    let read = |session: &mut Session, kind: &str, key: Option<&str>| {
+        let mut arguments = serde_json::json!({"scope": {"environment": "local"}, "kind": kind});
+        if let Some(key) = key {
+            arguments["key"] = key.into();
+        }
+        session.call("mm_read", arguments)
+    };
+
+    let env = read(&mut session, "env", None)?;
+    let variables = env["modules"][0]["services"][0]["variables"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    assert_eq!(variables.len(), 2, "{env}");
+    for variable in &variables {
+        if variable["sensitive"] == true {
+            assert!(variable.get("value").is_none(), "{variable}");
+            assert_eq!(variable["status"], "resolved", "{variable}");
+        } else {
+            assert_eq!(variable["value"], "app.example.test", "{variable}");
+        }
+    }
+    assert!(
+        variables
+            .iter()
+            .any(|variable| variable["sensitive"] == true),
+        "{env}"
+    );
+
+    let explained = read(&mut session, "env", Some("APP.TOKEN"))?;
+    let only = &explained["modules"][0]["services"][0]["variables"];
+    assert_eq!(only.as_array().map(Vec::len), Some(1), "{explained}");
+    assert_eq!(only[0]["name"], "APP_TOKEN", "{explained}");
+    assert!(only[0].get("value").is_none(), "{explained}");
+
+    let secrets = read(&mut session, "secrets", Some("app.token"))?;
+    assert_eq!(secrets["bindings"][0]["key"], "app.token", "{secrets}");
+    assert_eq!(secrets["bindings"][0]["provider"], "env", "{secrets}");
+    assert_eq!(secrets["bindings"][0]["status"], "set", "{secrets}");
+
+    let stray = read(&mut session, "project", Some("APP.TOKEN"))?;
+    assert_eq!(stray["error"]["code"], "MM_ENVIRONMENT", "{stray}");
+    assert!(
+        stray["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("key applies only")),
+        "{stray}"
+    );
+
+    for result in [&env, &explained, &secrets] {
+        assert!(!result.to_string().contains(VALUE_SENTINEL), "{result}");
     }
     Ok(())
 }

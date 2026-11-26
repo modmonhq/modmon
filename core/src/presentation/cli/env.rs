@@ -290,7 +290,7 @@ async fn run_environment_operation(
             no_check_secrets,
         } => {
             let snapshot = manager.status(selection, !no_check_secrets).await?;
-            let snapshot = filter_environment_snapshot(snapshot, &key)?;
+            let snapshot = snapshot.only(&key)?;
             output::write_environment_status(&snapshot, format)?;
             Ok(environment_exit_code(&snapshot))
         }
@@ -367,34 +367,6 @@ async fn run_environment_artifact(
             message: "environment command was routed to the wrong capability".to_owned(),
         }),
     }
-}
-
-pub(super) fn filter_environment_snapshot(
-    mut snapshot: EnvironmentStatusSnapshot,
-    key: &str,
-) -> Result<EnvironmentStatusSnapshot, MmError> {
-    let mut found = false;
-    for module in &mut snapshot.modules {
-        for service in &mut module.services {
-            service.variables.retain(|variable| {
-                let matches = variable.name == key || variable.global_key.as_deref() == Some(key);
-                found |= matches;
-                matches
-            });
-        }
-        module
-            .services
-            .retain(|service| !service.variables.is_empty());
-    }
-    snapshot
-        .modules
-        .retain(|module| !module.services.is_empty());
-    if !found {
-        return Err(MmError::Environment {
-            message: format!("no environment variable or global key matches '{key}'"),
-        });
-    }
-    Ok(snapshot)
 }
 
 pub(super) fn environment_exit_code(snapshot: &EnvironmentStatusSnapshot) -> u8 {

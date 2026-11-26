@@ -84,6 +84,8 @@ pub enum AgentAction {
     Plan,
     /// Run, cancel, or retry a job, or run a schedule now.
     JobRun,
+    /// Restart one service's containers.
+    ServiceRestart,
     /// Reconcile jobs and schedules, or enable and disable a schedule.
     ScheduleManage,
     /// Apply a reviewed configuration edit.
@@ -106,12 +108,29 @@ pub enum AgentAction {
 }
 
 impl AgentAction {
+    pub const ALL: [Self; 14] = [
+        Self::Read,
+        Self::Logs,
+        Self::Plan,
+        Self::JobRun,
+        Self::ServiceRestart,
+        Self::ScheduleManage,
+        Self::ConfigApply,
+        Self::BuildApply,
+        Self::DeployApply,
+        Self::Exec,
+        Self::SetValues,
+        Self::DevelopmentUnit,
+        Self::DevelopmentSetup,
+        Self::SecretSetup,
+    ];
+
     /// The level that includes this action; `None` for the `exec` add-on.
     #[must_use]
     pub const fn required_level(self) -> Option<AccessLevel> {
         match self {
             Self::Read | Self::Logs | Self::Plan => Some(AccessLevel::View),
-            Self::JobRun => Some(AccessLevel::Operate),
+            Self::JobRun | Self::ServiceRestart => Some(AccessLevel::Operate),
             Self::ScheduleManage
             | Self::ConfigApply
             | Self::BuildApply
@@ -158,6 +177,19 @@ impl AgentAccess {
                 }
             },
         }
+    }
+
+    /// Every action this grant covers. `exec` counts when it covers any
+    /// service.
+    #[must_use]
+    pub fn allowed(&self) -> Vec<AgentAction> {
+        AgentAction::ALL
+            .into_iter()
+            .filter(|action| match action {
+                AgentAction::Exec => self.exec.services().is_some(),
+                action => self.permits(*action, None),
+            })
+            .collect()
     }
 
     /// The narrower of this grant and `ceiling`.

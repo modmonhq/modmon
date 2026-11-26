@@ -35,6 +35,7 @@ fn each_action_needs_its_level_and_exec_needs_the_add_on() -> Result<(), Box<dyn
     }
     for action in [
         AgentAction::JobRun,
+        AgentAction::ServiceRestart,
         AgentAction::ScheduleManage,
         AgentAction::ConfigApply,
         AgentAction::BuildApply,
@@ -45,15 +46,44 @@ fn each_action_needs_its_level_and_exec_needs_the_add_on() -> Result<(), Box<dyn
     }
     let operate = agent_access_in(&agents("local: operate\n")?, "local");
     assert!(operate.permits(AgentAction::JobRun, None));
+    assert!(operate.permits(AgentAction::ServiceRestart, None));
     assert!(!operate.permits(AgentAction::DeployApply, None));
+    assert_eq!(AgentAction::ServiceRestart.requirement(), "level operate");
     // Even `deploy` does not include exec, and a list names every service.
     let deploy = agent_access_in(&agents("local: {level: deploy, exec: [api]}\n")?, "local");
     assert!(deploy.permits(AgentAction::DeployApply, None));
     assert!(deploy.permits(AgentAction::Exec, Some("api")));
     assert!(!deploy.permits(AgentAction::Exec, Some("postgres")));
     assert!(!deploy.permits(AgentAction::Exec, None));
+    assert!(deploy.permits(AgentAction::ServiceRestart, None));
     let all = agent_access_in(&agents("local: {level: view, exec: true}\n")?, "local");
     assert!(all.permits(AgentAction::Exec, Some("postgres")));
+    Ok(())
+}
+
+#[test]
+fn allowed_lists_each_action_a_level_covers() -> Result<(), Box<dyn std::error::Error>> {
+    use AgentAction as A;
+    assert_eq!(AgentAccess::VIEW.allowed(), [A::Read, A::Logs, A::Plan]);
+    let operate = agent_access_in(
+        &agents("staging: {level: operate, exec: [api]}\n")?,
+        "staging",
+    );
+    assert_eq!(
+        operate.allowed(),
+        [
+            A::Read,
+            A::Logs,
+            A::Plan,
+            A::JobRun,
+            A::ServiceRestart,
+            A::Exec
+        ]
+    );
+    let deploy = agent_access_in(&agents("local: {level: deploy, secrets: true}\n")?, "local");
+    let allowed = deploy.allowed();
+    assert!(allowed.contains(&A::ServiceRestart) && allowed.contains(&A::SecretSetup));
+    assert!(!allowed.contains(&A::Exec));
     Ok(())
 }
 
@@ -74,6 +104,9 @@ fn a_ceiling_narrows_level_and_exec() -> Result<(), Box<dyn std::error::Error>> 
     let ceiling = agent_access_in(&agents("local: {level: operate, exec: [api]}\n")?, "local");
     assert_eq!(granted.within(&ceiling).summary(), "operate +exec[api]");
     assert_eq!(granted.within(&AgentAccess::VIEW), AgentAccess::VIEW);
+    let restricted = granted.within(&AgentAccess::VIEW);
+    assert!(granted.permits(AgentAction::ServiceRestart, None));
+    assert!(!restricted.permits(AgentAction::ServiceRestart, None));
     // The remote form never carries forward, secrets, or admin.
     let remote = granted.environment_access();
     assert_eq!(remote.level, AccessLevel::Deploy);

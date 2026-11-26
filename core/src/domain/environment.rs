@@ -139,6 +139,46 @@ pub struct EnvironmentStatusSnapshot {
     pub diagnostics: Vec<Diagnostic>,
 }
 
+impl EnvironmentStatusSnapshot {
+    /// Only the variables named `key`, by name or global key, as `mm env
+    /// explain KEY` shows them.
+    pub fn only(mut self, key: &str) -> Result<Self, crate::domain::error::MmError> {
+        let mut found = false;
+        for module in &mut self.modules {
+            for service in &mut module.services {
+                service.variables.retain(|variable| {
+                    let matches =
+                        variable.name == key || variable.global_key.as_deref() == Some(key);
+                    found |= matches;
+                    matches
+                });
+            }
+            module
+                .services
+                .retain(|service| !service.variables.is_empty());
+        }
+        self.modules.retain(|module| !module.services.is_empty());
+        if !found {
+            return Err(crate::domain::error::MmError::Environment {
+                message: format!("no environment variable or global key matches '{key}'"),
+            });
+        }
+        Ok(self)
+    }
+
+    /// The snapshot with no value of a sensitive variable.
+    #[must_use]
+    pub fn without_sensitive_values(mut self) -> Self {
+        self.modules
+            .iter_mut()
+            .flat_map(|module| &mut module.services)
+            .flat_map(|service| &mut service.variables)
+            .filter(|variable| variable.sensitive)
+            .for_each(|variable| variable.value = None);
+        self
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct EnvironmentValueOverride {
     pub key: String,

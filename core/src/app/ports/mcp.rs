@@ -145,6 +145,42 @@ pub trait McpUseCases: Send + Sync {
         plan_hash: &str,
     ) -> Result<serde_json::Value, MmError>;
 
+    /// `mm_read` kinds `env` and `secrets`, of every key or of `key` alone.
+    async fn read_values(
+        &self,
+        _context: &McpRequestContext,
+        _kind: McpReadKind,
+        _key: Option<&str>,
+    ) -> Result<serde_json::Value, MmError> {
+        Err(MmError::Environment {
+            message: "this server cannot read variables or secrets".to_owned(),
+        })
+    }
+
+    /// What restarting `service` touches, with its `plan_hash`.
+    async fn plan_service_restart(
+        &self,
+        _context: &McpRequestContext,
+        _service: &str,
+    ) -> Result<crate::domain::mcp::McpServiceRestartPlan, MmError> {
+        Err(MmError::Environment {
+            message: "this server cannot restart services".to_owned(),
+        })
+    }
+
+    /// Restarts `service` as `mm service restart` does, when its plan is
+    /// still `plan_hash`.
+    async fn apply_service_restart(
+        &self,
+        _context: &McpRequestContext,
+        _service: &str,
+        _plan_hash: &str,
+    ) -> Result<crate::domain::observability::RestartOutcome, MmError> {
+        Err(MmError::Environment {
+            message: "this server cannot restart services".to_owned(),
+        })
+    }
+
     /// The plan of a step that sets up this machine, with its `plan_hash`.
     async fn plan_setup(
         &self,

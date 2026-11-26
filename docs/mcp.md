@@ -8,8 +8,8 @@ server that your coding tool starts. The project's `agents:` block sets what an
 agent may do in each environment. For anything else, the agent gets the exact
 command and asks you to run it.
 
-For example: an agent deploys and runs commands in `local`, restarts jobs in
-`staging`, and only reads status and logs in `production`.
+For example: an agent deploys and runs commands in `local`, restarts services
+and jobs in `staging`, and only reads status and logs in `production`.
 
 ## Connect a coding tool
 
@@ -52,7 +52,7 @@ Each environment takes a level, and optionally `exec`:
 | Setting          | Allows                                                                                                             |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `view`           | status, services, routes, jobs, redacted logs, and plans of any change                                             |
-| `operate`        | `view` plus run, cancel, and retry jobs, and run a schedule now                                                    |
+| `operate`        | `view` plus [restart a service](#restart-a-service), run, cancel, and retry jobs, and run a schedule now          |
 | `deploy`         | `operate` plus apply configuration edits, builds, and deployments, reconcile schedules, and enable or disable them |
 | `exec: true`     | run a command in any service container                                                                             |
 | `exec: [api, …]` | run a command in the listed services only                                                                          |
@@ -218,10 +218,16 @@ a `NAME=value` pair whose name contains `password`, `secret`, `token`,
 password in a URL, a `Bearer` or `Basic` credential, and access tokens of
 well-known forms read `[REDACTED]`.
 
-`mm_read` `health` does not fail when the environment's status cannot be
-read: it returns `runtime: null` and the findings of `mm config validate` for
-the environment, with the error that stopped the status as one more finding
-under its own code.
+`mm_read` `health` returns the environment's `runtime` and `validation`. For
+an environment on this machine it adds `readiness`, the checks `mm doctor`
+lists for this machine and the project (state, targets, configuration, images,
+selection, runtime, local HTTPS, and the shared development services). It
+leaves out what `mm doctor` checks with your own keys or over the network: the
+nodes of a cluster (read `nodes` instead), this device's keys, and updates.
+`health` does not fail when the environment's status cannot be read: it
+returns `runtime: null` and the findings of `mm config validate` for the
+environment, with the error that stopped the status as one more finding under
+its own code.
 
 On a cluster target, the reads `nodes` and `deployments` do not fail when a
 node refuses the agent key or does not answer, and neither does `services`
@@ -265,7 +271,20 @@ you would type into `mm secret set` yourself. A staged change is not live:
 running commit that makes it live, and `mm_deploy_apply` applies it.
 
 `mm_read` kind `secrets` lists, per host, each declared secret and variable
-with its live and staged revision and who changed it.
+with its live and staged revision and who changed it. For an environment on
+this machine it lists what `mm secret status` prints under `bindings`: each
+secret's `key`, `provider`, `location`, `status`, and `revision`. With `key`,
+it lists that one secret. Neither ever has a value.
+
+`mm_read` kind `env` returns what `mm env status` prints: per module and
+service, each variable with its global key, source, and status, and the value
+of a variable that is not sensitive. A sensitive variable, such as one bound to
+a secret, has no `value`. With `"key": "DB.PASSWORD"` (a variable's name or
+global key) it returns that variable alone, as `mm env explain` does. On a
+remote environment `env` reads the configuration in this checkout and does not
+check secrets (their rows say `not_checked`); what the hosts hold, live and
+staged, is in `mm_read` `secrets`, which asks them as the agent. `key` is
+refused with any other kind.
 
 ## Set up this machine
 
@@ -299,6 +318,35 @@ environment the steps are refused: they act on this machine only. Trusting
 mm's local certificate authority, which changes this machine's trust store
 and can ask for `sudo` (`mm dev setup`), and `mm agent trust` stay the
 user's.
+
+## Restart a service
+
+`mm_service_restart_plan` with a `service` reviews a restart as `mm service
+restart SERVICE` makes it. The plan names the service, its stack and module,
+the target and runtime, the containers the restart stops and starts again,
+and on a cluster target the nodes it restarts one at a time. A service the
+environment does not have is refused with the names the agent may use, and a
+service that runs no container is refused too.
+
+`mm_service_restart_apply` takes the same `service`, the plan's token, and
+the confirmation `apply:<plan_hash>`. It restarts the service through the
+same path as `mm service restart`, on a remote environment through the host
+with the agent key, and waits until the service is healthy again. The result
+lists the containers it restarted. If the service's containers changed since
+the plan, for example after a deployment, the apply is refused and the agent
+plans again. One call restarts one service.
+
+Applying needs `operate` in the environment. With `view`, the plan says
+`applied_by: user` and `mm_service_restart_apply` returns `MM_AGENT_HANDOFF`
+with the command for you:
+
+```sh
+mm --environment uat service restart api
+```
+
+The restart is recorded like any other agent change: in the MCP audit
+journal, in `mm history` as `mcp service_restart_apply` run by the agent, and
+on a remote host in its own audit under the agent key.
 
 ## Read what commands printed
 
@@ -367,21 +415,22 @@ The file is optional and can only narrow the project's block. It also accepts
 `principal` (the name in audit records, default `agent`),
 `maximum_page_size`, `maximum_response_bytes`, and `request_timeout_ms`
 (how long a call may take, 15000 by default and at most 30000).
-`mm_deploy_apply`, `mm_build_apply`, and `mm_job_apply` are not bound by it:
-a deployment, a build, or a job runs until it ends, because one stopped half
-way is left unfinished (a build or a job run cut off is killed and builds
-nothing).
+`mm_deploy_apply`, `mm_build_apply`, `mm_job_apply`, `mm_setup_apply`, and
+`mm_service_restart_apply` are not bound by it: a deployment, a build, a job,
+a setup step, or a restart runs until it ends, because one stopped half way is
+left unfinished (a build or a job run cut off is killed and builds nothing).
 
 ## Tools
 
 | Tool                                                               | Needs                  | Does                                                                                                                     |
 | ------------------------------------------------------------------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `mm_access`                                                        | nothing                | Lists environments and what the agent may do in each                                                                     |
-| `mm_read`                                                          | `view`                 | One category: project, environments, targets, plans, services, routes, health, operations, jobs, schedules, gates, nodes, mesh, storage, names, deployments, deploy_logs, commands, secrets, secret_store, optional |
+| `mm_read`                                                          | `view`                 | One category: project, environments, targets, plans, services, routes, health, operations, jobs, schedules, gates, nodes, mesh, storage, names, deployments, deploy_logs, commands, env, secrets, secret_store, optional |
 | `mm_logs`                                                          | `view`                 | Up to 200 redacted log records of one service                                                                            |
 | `mm_exec`                                                          | `exec` for the service | Runs an exact argv in a service container; no shell, TTY, or stdin; up to 300 seconds and 256 KiB of output              |
-| `mm_config_plan`, `mm_build_plan`, `mm_deploy_plan`, `mm_job_plan` | `view`                 | Reviews a change without making it                                                                                       |
+| `mm_config_plan`, `mm_build_plan`, `mm_deploy_plan`, `mm_job_plan`, `mm_service_restart_plan` | `view` | Reviews a change without making it                                                                     |
 | `mm_job_apply`                                                     | `operate` or `deploy`  | Runs, cancels, or retries a job (`operate`); reconciles or toggles schedules (`deploy`)                                  |
+| `mm_service_restart_apply`                                         | `operate`              | [Restarts the service](#restart-a-service) just reviewed                                                                 |
 | `mm_config_apply`, `mm_build_apply`, `mm_deploy_apply`             | `deploy`               | Applies the plan just reviewed                                                                                           |
 | `mm_stage_value`                                                   | `secrets`              | Stages a secret or variable on a remote environment's hosts for the next deployment                                      |
 | `mm_setup_plan`                                                    | `view`                 | Reviews a step that [sets up this machine](#set-up-this-machine)                                                         |
@@ -390,6 +439,10 @@ nothing).
 
 Only the environment is required in a tool's `scope`; the target and runtime
 default to what the project and your machine select.
+
+`mm_access` lists, per environment, the `level`, the services the agent may
+`exec` in, and under `allows` every action the grant covers, such as
+`job_run` and `service_restart`.
 
 On a remote environment, `mm_read` `jobs` returns the declared jobs and the
 recent runs from every host (`recent_runs`, each with its `node`), and

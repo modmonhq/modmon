@@ -144,7 +144,7 @@ show the relevant settings and are not complete projects unless noted.
 | `schedules`            | no       | Map of durable five-field cron triggers referring to jobs.                                                    |
 | `gates`                | no       | Map of declarative provider and ingress references.                                                           |
 | `users`                | no       | Who may reach each remote environment. See [remote access](../remote-access.md).                              |
-| `agents`               | no       | What an AI agent may do, per environment or `*`. Default `view`. See [agents](../mcp.md).                     |
+| `agents`               | no       | What an AI agent may do, per environment or `*`: `view`, `operate` (also run jobs and restart a service), or `deploy`, with optional `exec` and `secrets`. Default `view`. See [agents](../mcp.md#set-what-agents-may-do). |
 | `targets`              | no       | Remote targets: `{host, port?, host-key, daemon-fingerprint, providers?}` or `{nodes, cluster?, setup?, providers?}`, each with an optional `delivery`. See the [remote daemon guide](../remote-daemon.md#connect-a-client) and [cluster targets](#cluster-targets). |
 | `hardening`            | no       | `strict`: every deployed service gets a read-only root, no capabilities, no new privileges, the engine's seccomp profile, and a tmpfs at `/tmp`. See [harden services](../hardening.md). |
 | `registries`           | no       | Image registry logins by host: `{username, password: {secret}}`. See [prepare a deployment environment](../how-to/deploy-production.md#pull-from-a-private-registry). |

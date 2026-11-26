@@ -312,7 +312,9 @@ impl McpUseCases for McpApplicationAdapter {
             McpReadKind::Nodes | McpReadKind::Mesh | McpReadKind::Deployments => {
                 self.read_cluster(context, kind, &selection).await
             }
-            McpReadKind::Secrets => self.read_secrets(context, &selection, &runtime).await,
+            McpReadKind::Secrets | McpReadKind::Env => {
+                self.read_variables(context, kind, None).await
+            }
             McpReadKind::Optional => self.read_optional(context),
             McpReadKind::SecretStore => self.read_secret_store(context, &selection).await,
             // The same read as `mm target storage status`, as the agent.
@@ -568,6 +570,32 @@ impl McpUseCases for McpApplicationAdapter {
         json_value(report.nodes.pop().and_then(|node| node.result))
     }
 
+    async fn read_values(
+        &self,
+        context: &McpRequestContext,
+        kind: McpReadKind,
+        key: Option<&str>,
+    ) -> Result<serde_json::Value, MmError> {
+        self.read_variables(context, kind, key).await
+    }
+
+    async fn plan_service_restart(
+        &self,
+        context: &McpRequestContext,
+        service: &str,
+    ) -> Result<crate::domain::mcp::McpServiceRestartPlan, MmError> {
+        self.plan_restart(context, service).await
+    }
+
+    async fn apply_service_restart(
+        &self,
+        context: &McpRequestContext,
+        service: &str,
+        plan_hash: &str,
+    ) -> Result<crate::domain::observability::RestartOutcome, MmError> {
+        self.apply_restart(context, service, plan_hash).await
+    }
+
     async fn plan_setup(
         &self,
         context: &McpRequestContext,
@@ -739,10 +767,14 @@ mod jobs;
 mod plans;
 #[path = "mcp/reads.rs"]
 mod reads;
+#[path = "mcp/restart.rs"]
+mod restart;
 #[path = "mcp/setup.rs"]
 mod setup;
 #[path = "mcp/values.rs"]
 mod values;
+#[path = "mcp/variables.rs"]
+mod variables;
 
 #[cfg(test)]
 #[path = "mcp_tests.rs"]

@@ -224,6 +224,10 @@ pub(super) fn job_commands(environment: &str, action: &McpJobAction) -> UserComm
     UserCommands::of([mm_command(environment, &words)])
 }
 
+pub(super) fn restart_commands(environment: &str, service: &str) -> UserCommands {
+    UserCommands::of([mm_command(environment, &["service", "restart", service])])
+}
+
 pub(super) fn exec_commands(request: &McpExecRequest) -> UserCommands {
     let timeout;
     let mut words = vec!["service", "exec"];
