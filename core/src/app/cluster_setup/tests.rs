@@ -399,6 +399,7 @@ break-glass:
             },
             access_commit: "e".repeat(40),
             steps: ClusterSetupStep::ALL.to_vec(),
+            flags: crate::domain::cluster_setup::ClusterSetupFlags::default(),
             plan_hash: String::new(),
         };
         plan.plan_hash = plan.canonical_hash()?;

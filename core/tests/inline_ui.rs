@@ -363,6 +363,54 @@ fn nothing_to_change_folds_into_one_line() -> TestResult {
     Ok(())
 }
 
+fn apply_line(plan: &ClusterSetupPlan) -> Result<String, Box<dyn std::error::Error>> {
+    Ok(lines_of(&setup_plan_card(plan).lines(Palette::plain(), 80))
+        .last()
+        .ok_or("no command")?
+        .trim()
+        .to_owned())
+}
+
+#[test]
+fn the_apply_command_repeats_every_flag_the_plan_was_made_with() -> TestResult {
+    let plain = plan()?;
+    let hash = &plain.plan_hash;
+    assert_eq!(
+        apply_line(&plain)?,
+        format!("mm --environment integration target setup apply --plan {hash} --yes")
+    );
+    assert!(!plain.apply_command().contains("--upgrade"));
+    assert!(
+        !serde_json::to_value(&plain)?
+            .as_object()
+            .ok_or("not an object")?
+            .contains_key("flags")
+    );
+
+    let mut upgrade = plain.clone();
+    upgrade.flags.release.upgrade = true;
+    assert_eq!(
+        apply_line(&upgrade)?,
+        format!("mm --environment integration target setup apply --plan {hash} --upgrade --yes")
+    );
+    assert_eq!(upgrade.canonical_hash()?, plain.canonical_hash()?);
+    let read: ClusterSetupPlan = serde_json::from_value(serde_json::to_value(&upgrade)?)?;
+    assert_eq!(read.flags, upgrade.flags);
+
+    let mut every = upgrade;
+    every.flags.release.downgrade = true;
+    every.flags.commit = Some("4c1e9a2b7d10f00dbeefcafe0123456789abcdef".to_owned());
+    every.nodes[0].host_key_origin = mm::domain::cluster_setup::HostKeyOrigin::Replaced;
+    every.host_binaries = Some(std::path::PathBuf::from("/opt/mm builds"));
+    assert_eq!(
+        every.apply_command(),
+        format!(
+            "mm --environment integration target setup apply --plan {hash} --host-binaries '/opt/mm builds' --trust-new-host-keys --commit 4c1e9a2b7d10f00dbeefcafe0123456789abcdef --upgrade --downgrade"
+        )
+    );
+    Ok(())
+}
+
 #[test]
 fn the_setup_result_card_names_each_node_and_the_record_command() -> TestResult {
     let result: ClusterSetupResult = serde_json::from_value(serde_json::json!({

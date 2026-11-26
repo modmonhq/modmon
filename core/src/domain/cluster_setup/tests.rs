@@ -50,6 +50,7 @@ fn plan() -> Result<ClusterSetupPlan, Box<dyn std::error::Error>> {
         },
         access_commit: "d".repeat(40),
         steps: ClusterSetupStep::ALL.to_vec(),
+        flags: ClusterSetupFlags::default(),
         plan_hash: String::new(),
     };
     plan.plan_hash = plan.canonical_hash()?;

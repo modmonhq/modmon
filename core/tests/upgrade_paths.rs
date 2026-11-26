@@ -421,6 +421,7 @@ async fn a_target_without_nodes_reads_its_host_release_as_a_cluster_reads_each_n
         )]
     );
     assert_ne!(same.plan_hash, fresh.plan_hash);
+    assert!(!same.apply_command().contains("grade"));
 
     for earlier in [
         release("0.1.0", 19, Some('b')),
@@ -463,6 +464,26 @@ async fn a_target_without_nodes_reads_its_host_release_as_a_cluster_reads_each_n
     );
     assert!(downgrade.apply_command().ends_with(" --downgrade"));
     Ok(())
+}
+
+#[test]
+fn a_setup_command_carries_the_release_flags_to_plan_and_apply() {
+    use mm::domain::target::SetupCommandLine;
+    let plain = SetupCommandLine::new("uat");
+    assert_eq!(plain.plan(), "mm --environment uat target setup plan");
+    assert_eq!(
+        plain.apply("97d8abb4ef35"),
+        "mm --environment uat target setup apply --plan 97d8abb4ef35"
+    );
+    let upgrade = plain.with("--nodes", "app-1,app-2").with_release(ASKED);
+    assert_eq!(
+        upgrade.plan(),
+        "mm --environment uat target setup plan --nodes app-1,app-2 --upgrade"
+    );
+    assert_eq!(
+        upgrade.apply("97d8abb4ef35"),
+        "mm --environment uat target setup apply --plan 97d8abb4ef35 --nodes app-1,app-2 --upgrade"
+    );
 }
 
 /// `payload` behind the ELF header of an x86-64 Linux executable.

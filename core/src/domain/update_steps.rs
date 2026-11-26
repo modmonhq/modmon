@@ -7,7 +7,9 @@ use std::path::PathBuf;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::domain::cluster_setup::ReleaseConsent;
 use crate::domain::release::stable_version;
+use crate::domain::target::SetupCommandLine;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
@@ -186,7 +188,12 @@ const CLUSTER_NOTE: &str = "then run the apply command that plan prints";
 /// The commands that upgrade the hosts of `environment`, and what to add.
 #[must_use]
 pub fn upgrade_commands(environment: &str, cluster: bool) -> (Vec<String>, String) {
-    let plan = format!("mm --environment {environment} target setup plan --upgrade");
+    let plan = SetupCommandLine::new(environment)
+        .with_release(ReleaseConsent {
+            downgrade: false,
+            upgrade: true,
+        })
+        .plan();
     let note = if cluster {
         CLUSTER_NOTE
     } else {

@@ -9,7 +9,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::host_binaries::{HostBinaries, is_lower_hex_digest, validate_host_binaries};
+use super::setup_command::SetupCommandLine;
 use super::{BootstrapCapability, hash_field};
+use crate::domain::cluster_setup::ReleaseConsent;
 use crate::domain::host_policy::{BreakGlassKey, parse_public_key, valid_user_name};
 
 /// At most this many break-glass keys per setup run.
@@ -174,35 +176,27 @@ impl BootstrapAccess {
         Ok(())
     }
 
-    /// The setup flags that request this access step again.
+    /// `command` with the setup flags that request this access step again.
     #[must_use]
-    pub fn arguments(&self) -> Vec<String> {
-        let mut arguments = if self.pushes() {
-            vec!["--delivery".to_owned(), "push".to_owned()]
+    pub fn setup_flags(&self, command: SetupCommandLine) -> SetupCommandLine {
+        let mut command = if self.pushes() {
+            command.with("--delivery", "push")
         } else {
-            vec!["--origin".to_owned(), shell_word(&self.origin)]
+            command.with("--origin", &self.origin)
         };
         if let Some(key) = &self.origin_host_key {
-            arguments.extend(["--origin-host-key".to_owned(), shell_word(key)]);
+            command = command.with("--origin-host-key", key);
         }
         for entry in &self.break_glass {
-            arguments.extend([
-                "--break-glass".to_owned(),
-                shell_word(&format!("{}={}", entry.name, entry.key)),
-            ]);
+            command = command.with("--break-glass", &format!("{}={}", entry.name, entry.key));
         }
         if let Some(given) = &self.host_binaries {
-            arguments.extend([
-                "--host-binaries".to_owned(),
-                shell_word(&given.display().to_string()),
-            ]);
+            command = command.with("--host-binaries", &given.display().to_string());
         }
-        for (set, flag) in [(self.upgrade, "--upgrade"), (self.downgrade, "--downgrade")] {
-            if set {
-                arguments.push(flag.to_owned());
-            }
-        }
-        arguments
+        command.with_release(ReleaseConsent {
+            downgrade: self.downgrade,
+            upgrade: self.upgrade,
+        })
     }
 }
 
@@ -257,21 +251,4 @@ impl BootstrapAccessReport {
 pub struct BootstrapExecution {
     pub capabilities: Vec<BootstrapCapability>,
     pub access: Option<BootstrapAccessReport>,
-}
-
-/// Quotes `value` for a POSIX shell when it is not a plain word.
-fn shell_word(value: &str) -> String {
-    if !value.is_empty()
-        && value.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric()
-                || matches!(
-                    byte,
-                    b'/' | b'.' | b'_' | b'-' | b':' | b'@' | b'=' | b'+' | b','
-                )
-        })
-    {
-        value.to_owned()
-    } else {
-        format!("'{}'", value.replace('\'', "'\\''"))
-    }
 }
