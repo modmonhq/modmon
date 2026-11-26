@@ -111,8 +111,9 @@ To keep one Prometheus with all the data, run the per-node ones in agent mode
 
 ## Require a token
 
-The host's admin can make every scrape carry a bearer token. Put the token in
-a file only root can read, and name it in `/etc/mm/host.yaml`:
+The host's admin can make every scrape of a project's network carry a bearer
+token. Put the token in a file only root can read, and name it in
+`/etc/mm/host.yaml`:
 
 ```sh
 openssl rand -hex 32 | sudo tee /etc/mm/metrics-token >/dev/null
@@ -126,8 +127,10 @@ metrics:
 ```
 
 `mmd` reads the file again within ten seconds of a change, and never logs it.
-A scrape without the token gets `401 Unauthorized`. Give the collector the same
-token, for example as a [secret file](../secret-delivery.md), and send it:
+A scrape without the token gets `401 Unauthorized`. The projects on the host
+share this token, and it shows each of them only its own services. Give the
+collector the token, for example as a [secret file](../secret-delivery.md),
+and send it:
 
 ```text
 prometheus.scrape "mmd" {
@@ -147,17 +150,20 @@ under the job.
 
 All keys are optional, under `metrics:` in `/etc/mm/host.yaml`:
 
-| Key          | Default | What it does                                                                                                     |
-| ------------ | ------- | ---------------------------------------------------------------------------------------------------------------- |
-| `enabled`    | `true`  | `false` serves no metrics on this host, whatever a project's `metrics: true` asks for.                         |
-| `token-file` | none    | A root-owned file, mode `0600`, whose content every scrape sends as `Authorization: Bearer <content>`.          |
-| `mesh`       | `false` | Also serve every project's metrics on the node's mesh address, port 9753, to the other nodes. Needs `token-file`. |
+| Key               | Default | What it does                                                                                                        |
+| ----------------- | ------- | ------------------------------------------------------------------------------------------------------------------- |
+| `enabled`         | `true`  | `false` serves no metrics on this host, whatever a project's `metrics: true` asks for.                            |
+| `token-file`      | none    | A root-owned file, mode `0600`, whose content every scrape of a project's network sends as `Authorization: Bearer <content>`. |
+| `mesh`            | `false` | Also serve every project's metrics on the node's mesh address, port 9753, to the other nodes. Needs `mesh-token-file`. |
+| `mesh-token-file` | none    | The token scrapes on the mesh address send: a file of its own, never the projects' `token-file`.                  |
 
 With `mesh: true` a Prometheus that runs on a node's host, outside any
-container, can scrape every node at its mesh address, such as `10.90.0.2:9753`
-(`mm target nodes` lists them). Only the hosts of the cluster reach that
-address. A container never does: it reaches only its own node, through
-`mmd.internal`.
+container, can scrape the other nodes at their mesh addresses, such as
+`10.90.0.2:9753` (`mm target nodes` lists them), with the mesh token, which no
+project holds. Only the other nodes of the cluster reach that address: the
+node's own host and its containers never do, because a service of any project
+with `network_mode: host` runs there too. A container reaches only its own
+node, through `mmd.internal`.
 
 `mmd access validate` checks the file. A setting takes effect within ten
 seconds, without a restart.
@@ -210,8 +216,9 @@ of `mm_service_running_containers` against `mm_service_desired_containers` by
   interval does not load the node. Each part has a deadline, and the answer is
   at most 4 MiB.
 - `mmd` listens on the node's address on the network and nowhere else, and
-  answers only containers of that network. It answers `GET /metrics` only, at
-  most 16 scrapes at a time.
+  answers only containers of that network: never the node's own addresses,
+  which any process on the host reaches. Anyone else is closed at once. It
+  answers `GET /metrics` only, at most four scrapes at a time on each address.
 
 ## Limits
 
@@ -219,7 +226,8 @@ of `mm_service_running_containers` against `mm_service_desired_containers` by
   which it does while it runs a service on it. Place the collector with
   `placement: all` to cover every node.
 - A container reaches only its own node's metrics. To scrape every node from
-  one place without a collector on each, use `mesh: true` from the hosts.
+  one place without a collector on each, use `mesh: true` from the hosts; a
+  host's Prometheus then reads every node but its own.
 - `role: job` services have no desired count: their containers come and go with
   their runs.
 - Shared storage usage and reachability, and the latency between nodes, are not
