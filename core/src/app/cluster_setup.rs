@@ -66,6 +66,8 @@ pub struct ClusterSetupRequest {
     pub binaries: Option<PathBuf>,
     /// The commit every node syncs the users file from.
     pub access_commit: String,
+    /// `--commit` named `access_commit`, rather than `HEAD`.
+    pub explicit_commit: bool,
     /// `--nodes`: set up only these nodes; empty means every node. The
     /// others are not contacted and keep the version they run.
     pub nodes: Vec<String>,
@@ -74,6 +76,18 @@ pub struct ClusterSetupRequest {
     /// `--upgrade`: install this mm and mmd on nodes that run another build
     /// or an older release.
     pub upgrade: bool,
+}
+
+impl ClusterSetupRequest {
+    fn flags(&self) -> crate::domain::cluster_setup::ClusterSetupFlags {
+        crate::domain::cluster_setup::ClusterSetupFlags {
+            release: crate::domain::cluster_setup::ReleaseConsent {
+                downgrade: self.downgrade,
+                upgrade: self.upgrade,
+            },
+            commit: self.explicit_commit.then(|| self.access_commit.clone()),
+        }
+    }
 }
 
 pub struct ClusterSetupDependencies {
@@ -318,6 +332,7 @@ impl ClusterSetupService {
             deploy_key: secrets.deploy_key,
             access_commit: request.access_commit.clone(),
             steps: reading.steps,
+            flags: request.flags(),
             plan_hash: String::new(),
         };
         plan.plan_hash = plan

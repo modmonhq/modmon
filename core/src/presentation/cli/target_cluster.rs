@@ -130,6 +130,7 @@ fn request(
             environment,
             args.commit.as_deref(),
         )?,
+        explicit_commit: args.commit.is_some(),
         nodes: args.nodes.clone(),
         downgrade: args.release.downgrade,
         upgrade: args.release.upgrade,

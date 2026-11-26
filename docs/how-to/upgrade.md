@@ -65,7 +65,9 @@ mm target setup apply --plan PLAN_HASH --upgrade --yes
 mm target nodes
 ```
 
-The plan has a line for each node that says what setup replaces, such as:
+The plan ends with the apply command to run, with the flags it was made with,
+`--upgrade` among them. The plan has a line for each node that says what setup
+replaces, such as:
 
 ```text
 app-1: replaces mm and mmd 0.1.0 (remote protocol 18, build 3f9a1c2e7b4d) with 0.1.1 (remote protocol 1, build 7d0e5a91c2f3)

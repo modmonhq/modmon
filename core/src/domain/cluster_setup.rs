@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::repo_target::{RepoClusterConfig, RepoTargetSetup};
 use crate::domain::runtime::RuntimeKind;
-use crate::domain::target::BootstrapInputFile;
+use crate::domain::target::{BootstrapInputFile, SetupCommand};
 use crate::domain::workspace::ProjectId;
 
 /// The release of mm a node's `mmd` reports.
@@ -81,13 +81,34 @@ pub fn build_digest(executable: &[u8]) -> String {
 }
 
 /// What setup was told it may install over what the nodes run.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
 pub struct ReleaseConsent {
     /// `--downgrade`: an older release over a newer one.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub downgrade: bool,
     /// `--upgrade`, or `deploy.mm-version` names this release: another
     /// build, or a later release, over what the nodes run.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub upgrade: bool,
+}
+
+/// The flags `plan` was given that `apply` must be given again.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub struct ClusterSetupFlags {
+    #[serde(flatten)]
+    pub release: ReleaseConsent,
+    /// `--commit`, resolved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commit: Option<String>,
+}
+
+impl ClusterSetupFlags {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 /// Per node, what setup replaces with `this`. A newer release is refused
@@ -333,6 +354,9 @@ pub struct ClusterSetupPlan {
     /// The commit every node syncs the users file from.
     pub access_commit: String,
     pub steps: Vec<ClusterSetupStep>,
+    /// Outside the hash: applying without them refuses on its own.
+    #[serde(default, skip_serializing_if = "ClusterSetupFlags::is_empty")]
+    pub flags: ClusterSetupFlags,
     pub plan_hash: String,
 }
 
@@ -348,6 +372,7 @@ impl ClusterSetupPlan {
     pub fn canonical_hash(&self) -> Result<String, String> {
         let mut unhashed = self.clone();
         unhashed.plan_hash.clear();
+        unhashed.flags = ClusterSetupFlags::default();
         let bytes = serde_json::to_vec(&unhashed)
             .map_err(|error| format!("serializing cluster setup plan: {error}"))?;
         let mut hasher = blake3::Hasher::new();
@@ -379,26 +404,36 @@ impl ClusterSetupPlan {
 
     #[must_use]
     pub fn apply_command(&self) -> String {
-        let mut command = format!(
-            "mm --environment {} target setup apply --plan {}",
-            self.environment, self.plan_hash
-        );
+        self.setup_command().apply(&self.plan_hash)
+    }
+
+    /// The `mm target setup` command this plan was made with.
+    #[must_use]
+    pub fn setup_command(&self) -> SetupCommand {
+        let mut command = SetupCommand::new(&self.environment);
         if !self.skipped.is_empty() {
-            command.push_str(" --nodes ");
-            command.push_str(
-                &self
-                    .nodes
-                    .iter()
-                    .map(|node| node.name.as_str())
-                    .collect::<Vec<_>>()
-                    .join(","),
-            );
+            let nodes = self
+                .nodes
+                .iter()
+                .map(|node| node.name.as_str())
+                .collect::<Vec<_>>()
+                .join(",");
+            command = command.with("--nodes", &nodes);
         }
         if let Some(given) = &self.host_binaries {
-            command.push_str(" --host-binaries ");
-            command.push_str(&given.display().to_string());
+            command = command.with("--host-binaries", &given.display().to_string());
         }
-        command
+        if self
+            .nodes
+            .iter()
+            .any(|node| node.host_key_origin == HostKeyOrigin::Replaced)
+        {
+            command = command.with_flag("--trust-new-host-keys");
+        }
+        if let Some(commit) = &self.flags.commit {
+            command = command.with("--commit", commit);
+        }
+        command.with_release(self.flags.release)
     }
 
     /// Every node's private address in the target's declared order, the

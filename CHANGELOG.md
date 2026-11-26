@@ -24,6 +24,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Traefik no longer makes `mm dev up` fail or ask for sudo. `mm ingress status`
   reports that state and Traefik's loopback ports.
 
+- The apply command a cluster `mm target setup plan` prints carries every
+  flag the plan was made with that `apply` needs again: `--upgrade`,
+  `--downgrade`, `--commit`, and `--trust-new-host-keys` when the plan
+  replaces a host key. A `--format json` plan lists them under `flags`.
+
 ## [0.1.2] - 2026-11-23
 
 Remote protocol: 1. Every change in this release is additive: `mm` 0.1.2

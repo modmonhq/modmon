@@ -387,20 +387,19 @@ impl TargetBootstrapPlan {
     /// The command that applies this plan, with the selection it was made for.
     #[must_use]
     pub fn apply_command(&self) -> String {
-        let mut command = format!(
-            "mm --environment {} --target {} --runtime {} target setup apply --plan {}",
-            self.environment,
-            self.target.name,
-            runtime_kind_name(self.selected_runtime),
-            self.plan_hash
-        );
-        if let Some(access) = &self.access {
-            for argument in access.arguments() {
-                command.push(' ');
-                command.push_str(&argument);
-            }
+        self.setup_command().apply(&self.plan_hash)
+    }
+
+    /// The `mm target setup` command this plan was made with.
+    #[must_use]
+    pub fn setup_command(&self) -> SetupCommand {
+        let command = SetupCommand::new(&self.environment)
+            .selecting("--target", &self.target.name)
+            .selecting("--runtime", runtime_kind_name(self.selected_runtime));
+        match &self.access {
+            Some(access) => access.setup_flags(command),
+            None => command,
         }
-        command
     }
 
     pub fn validate(&self) -> Result<(), String> {
@@ -752,6 +751,10 @@ pub use host_binaries::{
     HOST_ARCHITECTURES, HostBinaries, HostFacts, binaries_for, host_cpu, linux_architecture,
     split_machine, validate_host_binaries,
 };
+
+#[path = "target/setup_command.rs"]
+mod setup_command;
+pub use setup_command::SetupCommand;
 
 #[path = "target/node_address.rs"]
 mod node_address;
