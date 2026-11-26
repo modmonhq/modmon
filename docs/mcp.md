@@ -280,7 +280,11 @@ it lists that one secret. Neither ever has a value.
 service, each variable with its global key, source, and status, and the value
 of a variable that is not sensitive. A sensitive variable, such as one bound to
 a secret, has no `value`. With `"key": "DB.PASSWORD"` (a variable's name or
-global key) it returns that variable alone, as `mm env explain` does.
+global key) it returns that variable alone, as `mm env explain` does. On a
+remote environment `env` reads the configuration in this checkout and does not
+check secrets (their rows say `not_checked`); what the hosts hold, live and
+staged, is in `mm_read` `secrets`, which asks them as the agent. `key` is
+refused with any other kind.
 
 ## Set up this machine
 

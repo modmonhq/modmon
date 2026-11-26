@@ -24,7 +24,7 @@ impl McpApplicationAdapter {
         };
         match kind {
             McpReadKind::Env => {
-                let snapshot = manager()?.status(&selection, true).await?;
+                let snapshot = manager()?.status(&selection, !context.remote).await?;
                 let snapshot = match key {
                     Some(key) => snapshot.only(key).map_err(MmError::in_own_words)?,
                     None => snapshot,
@@ -37,6 +37,12 @@ impl McpApplicationAdapter {
                     if let Some(key) = key {
                         for node in &mut values.nodes {
                             node.values.retain(|value| value.key == key);
+                        }
+                        if values.nodes.iter().all(|node| node.values.is_empty()) {
+                            return Err(MmError::Environment {
+                                message: format!("secret '{key}' is not configured"),
+                            }
+                            .in_own_words());
                         }
                     }
                     json_value(values)

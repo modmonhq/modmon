@@ -88,7 +88,7 @@ impl McpServiceRestartPlan {
                 scope.environment
             )));
         }
-        Ok(Self::new(scope, remote, &snapshot.config_hash, found))
+        Self::new(scope, remote, &snapshot.config_hash, found)
     }
 
     fn new(
@@ -96,7 +96,7 @@ impl McpServiceRestartPlan {
         remote: bool,
         config_hash: &str,
         service: &ServiceSnapshot,
-    ) -> Self {
+    ) -> Result<Self, MmError> {
         let mut containers = service
             .containers
             .iter()
@@ -119,8 +119,10 @@ impl McpServiceRestartPlan {
             &containers,
             &nodes,
         ))
-        .unwrap_or_default();
-        Self {
+        .map_err(|error| MmError::State {
+            message: format!("canonicalizing an MCP restart plan: {error}"),
+        })?;
+        Ok(Self {
             plan_hash: blake3::hash(&bytes).to_hex().to_string(),
             environment: scope.environment.clone(),
             target: scope.target.clone(),
@@ -132,7 +134,7 @@ impl McpServiceRestartPlan {
             state: service.state,
             containers: containers.into_iter().map(|(name, _)| name).collect(),
             nodes,
-        }
+        })
     }
 }
 

@@ -1878,6 +1878,15 @@ fn an_agent_reads_variables_and_secrets_without_a_value() -> Result<(), Box<dyn 
     assert_eq!(secrets["bindings"][0]["provider"], "env", "{secrets}");
     assert_eq!(secrets["bindings"][0]["status"], "set", "{secrets}");
 
+    let stray = read(&mut session, "project", Some("APP.TOKEN"))?;
+    assert_eq!(stray["error"]["code"], "MM_ENVIRONMENT", "{stray}");
+    assert!(
+        stray["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("key applies only")),
+        "{stray}"
+    );
+
     for result in [&env, &explained, &secrets] {
         assert!(!result.to_string().contains(VALUE_SENTINEL), "{result}");
     }

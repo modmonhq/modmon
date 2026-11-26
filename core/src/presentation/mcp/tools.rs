@@ -75,13 +75,26 @@ impl McpServer {
                 .in_own_words()),
             );
         }
+        let keyed = matches!(
+            request.kind,
+            crate::domain::mcp::McpReadKind::Env | crate::domain::mcp::McpReadKind::Secrets
+        );
+        if request.key.is_some() && !keyed {
+            return self.complete(
+                &context,
+                &operation,
+                false,
+                None,
+                Err(MmError::Environment {
+                    message: "key applies only to the kinds env and secrets".to_owned(),
+                }
+                .in_own_words()),
+            );
+        }
         let result = if request.kind == crate::domain::mcp::McpReadKind::Commands {
             self.bounded(self.use_cases.commands(&context, &request))
                 .await
-        } else if matches!(
-            request.kind,
-            crate::domain::mcp::McpReadKind::Env | crate::domain::mcp::McpReadKind::Secrets
-        ) {
+        } else if keyed {
             self.bounded(
                 self.use_cases
                     .read_values(&context, request.kind, request.key.as_deref()),
