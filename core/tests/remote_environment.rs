@@ -982,7 +982,7 @@ async fn a_subset_plan_leaves_the_other_nodes_alone_and_says_so() -> TestResult 
 }
 
 #[tokio::test]
-async fn a_node_that_cannot_begin_rolls_the_earlier_ones_back_and_spares_the_later() -> TestResult {
+async fn a_node_that_cannot_begin_rolls_back_every_node_that_began() -> TestResult {
     let (environment, fakes) = cluster()?;
     let plan = environment.plan_deployment(COMMIT, None, None).await?;
     fakes[1].fail_apply.store(true, Ordering::SeqCst);
@@ -998,9 +998,12 @@ async fn a_node_that_cannot_begin_rolls_the_earlier_ones_back_and_spares_the_lat
         [
             "app-1: preparing",
             "app-2: preparing",
+            "db-1: preparing",
+            "db-1: rolling back",
             "app-2: rolling back",
             "app-1: rolling back"
-        ]
+        ],
+        "the nodes without stacks begin together"
     );
     assert_eq!(
         report
@@ -1011,7 +1014,7 @@ async fn a_node_that_cannot_begin_rolls_the_earlier_ones_back_and_spares_the_lat
         [
             ("app-1", NodeApplyState::RolledBack),
             ("app-2", NodeApplyState::Failed),
-            ("db-1", NodeApplyState::NotStarted),
+            ("db-1", NodeApplyState::RolledBack),
         ]
     );
     assert!(
@@ -1027,17 +1030,20 @@ async fn a_node_that_cannot_begin_rolls_the_earlier_ones_back_and_spares_the_lat
             .into_iter()
             .filter(|call| call.starts_with("rollout:"))
             .collect::<Vec<_>>(),
-        ["rollout:hold", "rollout:networks", "rollout:release"],
-        "a node after the failure took the lock and the plan's addresses, and gave the lock up"
+        [
+            "rollout:hold",
+            "rollout:networks",
+            "rollout:begin",
+            "rollout:rollback"
+        ],
+        "a node that began beside the failed one is rolled back"
     );
-    assert!(!fakes[2].calls().contains(&"rollout:begin".to_owned()));
     let failure = report.failure("mm deploy plan").unwrap_or_default();
     assert!(failure.contains("failed on node 'app-2'"), "{failure}");
     assert!(
-        failure.contains("Rolled back to what they ran before: app-1, app-2."),
+        failure.contains("Rolled back to what they ran before: app-1, app-2, db-1."),
         "{failure}"
     );
-    assert!(failure.contains("Not changed: db-1."), "{failure}");
     Ok(())
 }
 

@@ -83,6 +83,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   one batch of nodes still rolls out alone. The plan lists the stacks that go
   side by side. Nodes whose `mmd` is older than the client's release roll
   stacks out one at a time, and the plan says so.
+- Every node of a cluster deploy finishes at the same time, and nodes without
+  stacks begin at the same time. A node whose finish fails rolls itself back
+  as before, but the other nodes may have finished already: the report lists
+  them as applied instead of rolling them back.
 
 ### Fixed
 

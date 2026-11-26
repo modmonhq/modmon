@@ -50,6 +50,8 @@ struct Script {
     cut_off_from_storage: bool,
     /// The node cannot pull an image.
     cannot_pull: bool,
+    /// The node's finish fails, and it undoes its own part.
+    cannot_finish: bool,
     cannot_roll_back: bool,
     /// The address the node's new container gets.
     address: Option<Ipv4Addr>,
@@ -206,6 +208,11 @@ impl RemoteTransport for Node {
             }
             RolloutStep::Job { job, .. } => Ok(RolloutAnswer::JobRan(Box::new(ran(&job)))),
             RolloutStep::Ahead { .. } => Ok(RolloutAnswer::Applied { addresses }),
+            RolloutStep::Finish if script.cannot_finish => Err(MmError::Remote {
+                code: "MM_INGRESS",
+                message: "the routes could not be published; rolled back to what it ran before"
+                    .to_owned(),
+            }),
             RolloutStep::Finish => Ok(RolloutAnswer::Finished(None::<Box<DeploymentResult>>)),
             RolloutStep::Rollback if script.cannot_roll_back => Err(MmError::RuntimeResponse {
                 message: "the engine does not answer".to_owned(),
@@ -1837,5 +1844,25 @@ async fn a_stack_that_fails_in_a_shared_wave_rolls_back_every_node_the_wave_bega
             "{node}"
         );
     }
+    Ok(())
+}
+
+#[tokio::test]
+async fn every_node_finishes_at_once_and_a_failed_finish_leaves_the_others_applied() -> TestResult {
+    let cluster = cluster()?;
+    locked(&cluster.nodes[1].script).cannot_finish = true;
+    let hash = cluster.reviewed(vec![stage("app", &[&["app-1", "app-2"]])])?;
+    let report = cluster.environment.apply_deployment(&hash, &|_| {}).await?;
+    assert_eq!(
+        states(&report),
+        [
+            ("app-1", NodeApplyState::Applied),
+            ("app-2", NodeApplyState::Failed),
+            ("db-1", NodeApplyState::Applied),
+        ]
+    );
+    assert!(report.nodes[1].rolled_back, "the node undid its own part");
+    assert_eq!(cluster.steps_of("db-1"), ["hold", "begin", "finish"]);
+    assert!(!cluster.steps_of("app-1").contains(&"rollback".to_owned()));
     Ok(())
 }

@@ -637,9 +637,10 @@ impl Walk<'_> {
     }
 
     /// Every stack is healthy on every node. First every node the plan
-    /// gives no stack begins, so that nothing is final while a node can
-    /// still refuse; then each node removes what it no longer runs and
-    /// records the deployment.
+    /// gives no stack begins, all at once, so that nothing is final while a
+    /// node can still refuse; then every node at once removes what it no
+    /// longer runs and records the deployment. A node whose finish fails
+    /// undoes its own part; the others may have finished already.
     async fn finish(&mut self, outcomes: &mut [Outcome]) -> Option<Fault> {
         let fault = |index: usize, text: String, undone: bool| Fault {
             index,
@@ -651,24 +652,37 @@ impl Walk<'_> {
             preparing: false,
             code: None,
         };
-        for index in 0..self.nodes.len() {
-            if self.begun.contains(&index) {
-                continue;
-            }
-            self.say(index, ProgressStep::Preparing);
-            self.begun.push(index);
-            if let Err(error) = self.step(index, RolloutStep::Begin, SETUP_PATIENCE).await {
-                let mut stopped = fault(index, error.to_string(), false);
-                stopped.code = Some(error.code().to_owned());
-                return Some(stopped);
-            }
+        let waiting = (0..self.nodes.len())
+            .filter(|index| !self.begun.contains(index))
+            .collect::<Vec<_>>();
+        for index in &waiting {
+            self.say(*index, ProgressStep::Preparing);
+        }
+        self.begun.extend(&waiting);
+        let begun = join_all(
+            (waiting.iter()).map(|index| self.step(*index, RolloutStep::Begin, SETUP_PATIENCE)),
+        )
+        .await;
+        if let Some((index, error)) = waiting
+            .iter()
+            .zip(begun)
+            .find_map(|(index, begun)| begun.err().map(|error| (*index, error)))
+        {
+            let mut stopped = fault(index, error.to_string(), false);
+            stopped.code = Some(error.code().to_owned());
+            return Some(stopped);
         }
         for index in 0..self.nodes.len() {
             self.say(index, ProgressStep::Finishing);
-            match self
-                .step(index, RolloutStep::Finish, self.undo_patience())
-                .await
-            {
+        }
+        let finished = join_all(
+            (0..self.nodes.len())
+                .map(|index| self.step(index, RolloutStep::Finish, self.undo_patience())),
+        )
+        .await;
+        let mut stopped = None;
+        for (index, finished) in finished.into_iter().enumerate() {
+            match finished {
                 Ok(RolloutAnswer::Finished(result)) => {
                     if let Some(outcome) = outcomes.get_mut(index) {
                         outcome.state = NodeApplyState::Applied;
@@ -676,21 +690,21 @@ impl Walk<'_> {
                     }
                 }
                 Ok(_) => {
-                    return Some(fault(
+                    stopped = stopped.or(Some(fault(
                         index,
                         "the node gave another answer than a finished deployment".to_owned(),
                         false,
-                    ));
+                    )));
                 }
                 // A node whose finish failed has undone its own part.
                 Err(error) => {
-                    let mut stopped = fault(index, error.to_string(), true);
-                    stopped.code = Some(error.code().to_owned());
-                    return Some(stopped);
+                    let mut failed = fault(index, error.to_string(), true);
+                    failed.code = Some(error.code().to_owned());
+                    stopped = stopped.or(Some(failed));
                 }
             }
         }
-        None
+        stopped
     }
 
     /// After a fault: the nodes that were changed return to what they ran

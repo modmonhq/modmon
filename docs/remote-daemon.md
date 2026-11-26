@@ -1511,6 +1511,14 @@ commands to read its log and deploy again, and the next deployment applies
 over what runs. Once any node has finished a deployment, a failure rolls the
 changed nodes back as described above, a node that joined since included.
 
+Once every stack is healthy, every node finishes at the same time: it
+publishes its routes, removes what the plan no longer runs, and records the
+deployment. A node whose finish fails returns to what it ran before by
+itself, and the report says so; the nodes that finished already keep the new
+deployment and are reported as applied. Run `mm deploy plan` again to bring
+the failed node up to date, or `mm deploy rollback` to return every node to
+the deployment before.
+
 #### Replace a container without a gap
 
 With `update.order: start-first`, a node starts the new container of the
