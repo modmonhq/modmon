@@ -448,7 +448,9 @@ fn detail_height(row: &EnvironmentRow<'_>, remote: bool, width: u16) -> u16 {
     let value = 10 + variable_value(row.variable).width();
     let action = Line::raw(variable_action(row.variable, remote)).width();
     let wrapped = value.div_ceil(width) + action.div_ceil(width);
-    DETAIL_HEIGHT + u16::try_from(wrapped.saturating_sub(2)).unwrap_or(0)
+    DETAIL_HEIGHT
+        + u16::from(row.variable.source == ValueSource::Secret)
+        + u16::try_from(wrapped.saturating_sub(2)).unwrap_or(0)
 }
 
 /// What the selected variable is, where it comes from, and what pressing enter does.
@@ -478,16 +480,29 @@ fn render_variable_detail(
         ));
     }
     let location = &variable.location;
-    let lines = vec![
+    let mut lines = vec![
         kv("Value", vec![variable_value(variable)], width),
         kv("Key", key, width),
+    ];
+    if variable.source == ValueSource::Secret {
+        lines.push(kv_text(
+            "Set",
+            &crate::presentation::output::set_summary(
+                variable.set_at_unix_ms,
+                variable.set_by.as_deref(),
+                chrono::Utc::now().timestamp_millis(),
+            ),
+            width,
+        ));
+    }
+    lines.extend([
         kv_text(
             "Template",
             &format!("{}:{}", location.path.display(), location.line),
             width,
         ),
         Line::styled(variable_action(variable, remote), theme.muted()),
-    ];
+    ]);
     let title = format!(
         "{} · {}",
         terminal_safe(&variable.name),
