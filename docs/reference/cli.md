@@ -2172,7 +2172,7 @@ Usage: ingress <COMMAND>
 
 Commands:
   start    Ensure ingress is installed and healthy, then start public forwarding on ports 80 and 443
-  stop     Stop global public forwarding to free ports 80 and 443; keep project containers running
+  stop     Stop global public forwarding and keep it stopped across reboots and deploys; keep project containers running
   status   Show public forwarding state and the health of the services it depends on (read-only)
   restart  Reconcile ingress prerequisites, then restart public forwarding on ports 80 and 443
   help     Print this message or the help of the given subcommand(s)
@@ -2206,7 +2206,7 @@ Options:
 ### `mm ingress stop`
 
 ```text
-Stop global public forwarding to free ports 80 and 443; keep project containers running
+Stop global public forwarding and keep it stopped across reboots and deploys; keep project containers running
 
 Usage: stop
 

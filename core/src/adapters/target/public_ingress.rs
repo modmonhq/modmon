@@ -3,7 +3,27 @@ use std::time::Duration;
 
 use crate::app::ports::{CommandSpec, ProcessRunner, PublicIngressControl};
 use crate::domain::error::MmError;
-use crate::domain::host_ingress::PublicIngressState;
+use crate::domain::host_ingress::{PublicIngressState, PublicIngressStatus};
+
+pub(crate) const FORWARDER_UNIT: &str = "mm-ingress-forwarder.service";
+pub(crate) const FORWARDER_SHOW_ARGUMENTS: [&str; 5] = [
+    "show",
+    "--property=LoadState",
+    "--property=ActiveState",
+    "--property=UnitFileState",
+    FORWARDER_UNIT,
+];
+
+pub(crate) fn forwarder_status_from_show(stdout: &str) -> PublicIngressStatus {
+    let has = |expected: &str| stdout.lines().any(|line| line.trim_end() == expected);
+    let installed = has("LoadState=loaded");
+    PublicIngressStatus {
+        installed,
+        running: has("ActiveState=active"),
+        failed: has("ActiveState=failed"),
+        disabled: installed && has("UnitFileState=disabled"),
+    }
+}
 
 /// Fixed system-service operations only. The CLI never elevates itself and
 /// cannot substitute an arbitrary unit, executable, or systemctl argument.
@@ -19,7 +39,7 @@ impl SystemdPublicIngressControl {
 
 #[async_trait::async_trait]
 impl PublicIngressControl for SystemdPublicIngressControl {
-    async fn inspect(&self) -> Result<crate::domain::host_ingress::PublicIngressStatus, MmError> {
+    async fn inspect(&self) -> Result<PublicIngressStatus, MmError> {
         if !cfg!(target_os = "linux") {
             return Err(MmError::Target {
                 message: "global public ingress control requires Linux with systemd".to_owned(),
@@ -27,12 +47,7 @@ impl PublicIngressControl for SystemdPublicIngressControl {
         }
         let output = self
             .process
-            .run(CommandSpec::new("/usr/bin/systemctl").args([
-                "show",
-                "--property=LoadState",
-                "--property=ActiveState",
-                "mm-ingress-forwarder.service",
-            ]))
+            .run(CommandSpec::new("/usr/bin/systemctl").args(FORWARDER_SHOW_ARGUMENTS))
             .await?;
         if !output.success()
             && !output
@@ -46,17 +61,7 @@ impl PublicIngressControl for SystemdPublicIngressControl {
                 stderr: output.stderr.trim().to_owned(),
             });
         }
-        Ok(crate::domain::host_ingress::PublicIngressStatus {
-            installed: output.stdout.lines().any(|line| line == "LoadState=loaded"),
-            running: output
-                .stdout
-                .lines()
-                .any(|line| line == "ActiveState=active"),
-            failed: output
-                .stdout
-                .lines()
-                .any(|line| line == "ActiveState=failed"),
-        })
+        Ok(forwarder_status_from_show(&output.stdout))
     }
 
     async fn set_state(
@@ -77,8 +82,12 @@ impl PublicIngressControl for SystemdPublicIngressControl {
             .args_append([
                 "--",
                 "/usr/bin/systemctl",
-                state.command(),
-                "mm-ingress-forwarder.service",
+                match state {
+                    PublicIngressState::Running => "enable",
+                    PublicIngressState::Stopped => "disable",
+                },
+                "--now",
+                FORWARDER_UNIT,
             ])
             .inherit_environment(&["PATH", "HOME", "USER", "LOGNAME", "TERM"])
             .timeout(Duration::from_secs(120));
@@ -147,7 +156,8 @@ mod tests {
                 "-n",
                 "--",
                 "/usr/bin/systemctl",
-                "stop",
+                "disable",
+                "--now",
                 "mm-ingress-forwarder.service"
             ]
         );
@@ -156,7 +166,8 @@ mod tests {
             [
                 "--",
                 "/usr/bin/systemctl",
-                "start",
+                "enable",
+                "--now",
                 "mm-ingress-forwarder.service"
             ]
         );

@@ -408,6 +408,7 @@ impl PublicIngressControl for LaunchdPublicIngressControl {
             installed,
             running: installed && state == LaunchdJobState::Running,
             failed: installed && state.failed(),
+            disabled: false,
         })
     }
 

@@ -19,6 +19,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A plan whose config-file template reads a release input it was not given
   fails with `MM_RELEASE_INPUT`, as one whose environment file does, instead
   of `MM_ENVIRONMENT`.
+- On Linux, `mm ingress stop` keeps the public forwarder stopped across reboots
+  and deploys, so a reverse proxy you run on ports 80 and 443 in front of mm's
+  Traefik no longer makes `mm dev up` fail or ask for sudo. `mm ingress status`
+  reports that state and Traefik's loopback ports.
 
 ## [0.1.2] - 2026-11-23
 
