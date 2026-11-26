@@ -3029,7 +3029,7 @@ Usage: secret <COMMAND>
 Commands:
   providers  List available provider capabilities
   init       Initialize a secret provider for this project
-  status     Show secret set/unset state without revealing values. On a remote environment: what each host holds and has staged
+  status     Show secret set/unset/default state without revealing values. On a remote environment: what each host holds and has staged
   set        Set a configured secret using a hidden prompt or stdin. On a remote environment the value is staged on every host for the next deployment
   unset      Remove a configured secret. On a remote environment the removal is staged for the next deployment
   discard    Drop a change staged on a remote environment's hosts before it is deployed
@@ -3076,7 +3076,7 @@ Options:
 ### `mm secret status`
 
 ```text
-Show secret set/unset state without revealing values. On a remote environment: what each host holds and has staged
+Show secret set/unset/default state without revealing values. On a remote environment: what each host holds and has staged
 
 Usage: status [OPTIONS] [KEY]
 

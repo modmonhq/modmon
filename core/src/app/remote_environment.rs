@@ -147,6 +147,8 @@ pub struct RemoteEnvironment {
     /// networks from another's (`domain::cluster_network::environment_network`).
     /// Empty: a plan takes no network away.
     environments: Vec<String>,
+    /// `crate::app::template_defaulted_secrets` for this environment.
+    template_defaults: std::collections::BTreeSet<String>,
 }
 
 impl RemoteEnvironment {
@@ -168,6 +170,7 @@ impl RemoteEnvironment {
             compose_wait: std::time::Duration::ZERO,
             version_pin: None,
             environments: Vec::new(),
+            template_defaults: std::collections::BTreeSet::new(),
         })
     }
 

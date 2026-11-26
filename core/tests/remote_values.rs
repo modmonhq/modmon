@@ -184,6 +184,7 @@ impl RemoteTransport for Node {
                 required: true,
                 active: report.active,
                 staged: report.staged,
+                defaulted: false,
             }],
         })
     }
@@ -702,5 +703,45 @@ async fn a_host_holds_no_file_secret_and_refuses_to_stage_one() -> TestResult {
         refused.contains("mm -e local secret set NAME --stdin"),
         "{refused}"
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_secret_its_templates_default_reads_as_default_until_a_value_is_live() -> TestResult {
+    let defaulted = |values: &mm::domain::staged::RemoteValues| {
+        values
+            .nodes
+            .iter()
+            .flat_map(|node| &node.values)
+            .map(|value| value.defaulted)
+            .collect::<Vec<_>>()
+    };
+    let directory = temp_dirs::tempdir()?;
+    let (environment, nodes) = cluster(directory.path(), None, None)?;
+    assert_eq!(defaulted(&environment.host_values().await?), [false; 3]);
+
+    let environment = environment
+        .with_template_defaults(std::collections::BTreeSet::from(["web.app-key".to_owned()]));
+    let values = environment.host_values().await?;
+    assert_eq!(defaulted(&values), [true; 3]);
+    assert!(serde_json::to_string(&values)?.contains("\"defaulted\":true"));
+
+    let report = environment
+        .stage_values(set(VALUE), &AgeValueSealer)
+        .await?;
+    assert_eq!(
+        defaulted(&environment.host_values().await?),
+        [true; 3],
+        "a staged value is not live yet"
+    );
+    let revision = report.changes[0]
+        .action
+        .revision()
+        .ok_or("a set has a revision")?
+        .to_owned();
+    for node in &nodes {
+        assert_eq!(node.store.go_live(&[(slot()?, revision.clone())], 11)?, 1);
+    }
+    assert_eq!(defaulted(&environment.host_values().await?), [false; 3]);
     Ok(())
 }

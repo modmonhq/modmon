@@ -445,7 +445,7 @@ async fn unset_optional_secrets_use_fallbacks_without_resolving_material()
     let manager = environment_manager(
         state,
         values,
-        secrets,
+        secrets.clone(),
         Arc::new(FixedClock { unix_ms: 10_000 }),
     )?;
     let selection = WorkspaceSelection::new(project.path(), None);
@@ -465,6 +465,43 @@ async fn unset_optional_secrets_use_fallbacks_without_resolving_material()
     assert_eq!(
         std::str::from_utf8(bundle.services[0].bytes())?,
         "DB_HOST=database\nDB_PASSWORD=fallback\nOPTIONAL=\n"
+    );
+
+    let defaulted = |snapshot: &mm::domain::secret::SecretStatusSnapshot| {
+        snapshot
+            .secrets
+            .iter()
+            .map(|secret| (secret.key.clone(), (secret.status, secret.defaulted)))
+            .collect::<BTreeMap<_, _>>()
+    };
+    let secret_status = manager.secret_status(&selection, None).await?;
+    assert_eq!(
+        defaulted(&secret_status),
+        BTreeMap::from([
+            ("database.optional".to_owned(), (SecretStatus::Unset, false)),
+            ("database.password".to_owned(), (SecretStatus::Unset, true)),
+        ])
+    );
+    let requested = manager
+        .secret_status(&selection, Some("database.password"))
+        .await?;
+    assert!(requested.secrets[0].defaulted);
+
+    let reference: SecretReference = "age://local/db-password".parse()?;
+    secrets
+        .create(
+            &SecretScope::new("local"),
+            &reference,
+            SecretMaterial::new("stored".to_owned())?,
+            10_000,
+        )
+        .await?;
+    let stored = manager
+        .secret_status(&selection, Some("database.password"))
+        .await?;
+    assert_eq!(
+        defaulted(&stored)["database.password"],
+        (SecretStatus::Set, false)
     );
     Ok(())
 }

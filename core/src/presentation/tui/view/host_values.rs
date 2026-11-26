@@ -14,6 +14,7 @@ fn live(value: &HostValue) -> Span<'static> {
             theme.muted(),
         ),
         (Some(active), _) => Span::styled(short(&active.revision), theme.text()),
+        (None, _) if value.defaulted => Span::styled("default", theme.muted()),
         (None, _) if value.required => Span::styled("unset", theme.tone(Tone::Bad)),
         (None, _) => Span::styled("unset", theme.muted()),
     }

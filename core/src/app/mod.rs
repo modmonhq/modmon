@@ -80,6 +80,7 @@ pub use deployment_apply::{DeploymentExecutionPorts, DeploymentService, StackOut
 pub use development_mount::{DevelopmentMountManager, DevelopmentMountPlanRequest};
 pub use environment::{
     EnvironmentDependencies, EnvironmentManager, SECRET_STORE_UNAVAILABLE, refused_at_apply,
+    template_defaulted_secrets,
 };
 pub use gate::{
     AddGatePolicyRequest, ApplyGateRouteRequest, ApplyGateUserRequest, GateDriverRegistry,

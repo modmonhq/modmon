@@ -12,7 +12,7 @@ pub enum SecretCommand {
         provider: SecretProvider,
     },
 
-    /// Show secret set/unset state without revealing values. On a remote
+    /// Show secret set/unset/default state without revealing values. On a remote
     /// environment: what each host holds and has staged.
     Status {
         #[arg(value_name = "KEY")]

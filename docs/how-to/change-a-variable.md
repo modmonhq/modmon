@@ -112,7 +112,10 @@ Secrets and variables of uat on uat
 ```
 
 Each line is one key on one host: the live revision and who changed it, and
-what is staged. The terminal UI's Variables view shows the same, and lets you
+what is staged. `live: default` marks a secret with no live value whose
+services all fall back to a non-empty default in their `.env.example`, judged
+by the templates in your checkout; `live: unset` means at least one of them has
+no default. JSON output marks such a row `"defaulted": true`. The terminal UI's Variables view shows the same, and lets you
 set (`enter`), stage a removal (`x`) or discard (`X`) the selected key.
 
 ## Make staged changes live

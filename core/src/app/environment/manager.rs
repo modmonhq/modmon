@@ -156,8 +156,10 @@ impl EnvironmentManager {
                 location: Some(reference.locator().to_owned()),
                 status: metadata.status,
                 revision: metadata.revision,
+                defaulted: false,
             });
         }
+        self.mark_defaults(&document, &environment, &runtime_metadata, &mut secrets);
         let runtime = selection
             .runtime
             .or_else(|| {

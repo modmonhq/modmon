@@ -430,6 +430,7 @@ pub fn staged_value() -> mm::domain::staged::HostValue {
             staged_by: "alice".to_owned(),
             staged_at_unix_ms: 2,
         }),
+        defaulted: false,
     }
 }
 

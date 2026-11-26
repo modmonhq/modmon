@@ -1113,6 +1113,59 @@ fn age_secret_cli_never_prints_or_stores_plaintext_in_sqlite()
     Ok(())
 }
 
+#[cfg(unix)]
+#[test]
+fn secret_status_labels_an_unset_secret_its_services_default()
+-> Result<(), Box<dyn std::error::Error>> {
+    let project = temp_dirs::tempdir()?;
+    let home = temp_dirs::tempdir()?;
+    copy_fixture(project.path())?;
+    std::fs::write(
+        project.path().join("api/.env.example"),
+        "DB_HOST= # mm:from=DB.HOST required\nDB_PASSWORD=devpass # mm:from=DB.PASSWORD\n",
+    )?;
+    let mm = |arguments: &[&str]| {
+        let mut command = temp_dirs::mm();
+        command
+            .arg("--root")
+            .arg(project.path())
+            .arg("--mm-home")
+            .arg(home.path())
+            .args(arguments);
+        command
+    };
+    mm(&["secret", "init", "age"]).assert().success();
+
+    mm(&["secret", "status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::is_match(
+            r"database\.password +age +default ",
+        )?)
+        .stdout(predicate::str::contains(
+            "default: not stored; services use their .env.example default.",
+        ))
+        .stdout(predicate::str::contains("devpass").not());
+    mm(&["--output", "json", "secret", "status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"status\": \"unset\""))
+        .stdout(predicate::str::contains("\"defaulted\": true"));
+
+    std::fs::write(
+        project.path().join("api/.env.example"),
+        "DB_HOST= # mm:from=DB.HOST required\nDB_PASSWORD= # mm:from=DB.PASSWORD\n",
+    )?;
+    mm(&["secret", "status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::is_match(
+            r"database\.password +age +unset ",
+        )?)
+        .stdout(predicate::str::contains("default:").not());
+    Ok(())
+}
+
 #[test]
 fn secret_status_reports_runtime_delivery_metadata_without_runtime_names_or_plaintext()
 -> Result<(), Box<dyn std::error::Error>> {

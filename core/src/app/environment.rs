@@ -41,11 +41,13 @@ use crate::domain::workspace::{WorkspaceRecord, WorkspaceRegistration};
 mod status;
 use status::*;
 mod compilation;
+mod secret_defaults;
 use compilation::*;
 mod store_outage;
 use store_outage::StoreOutage;
 mod release;
 use release::{check_release_keys, refuse_release_override};
+pub use secret_defaults::template_defaulted_secrets;
 pub use store_outage::{SECRET_STORE_UNAVAILABLE, refused_at_apply};
 
 #[derive(Clone)]
