@@ -1418,7 +1418,8 @@ that node.
 A stack that did not change is left alone: when every container of it on a
 node already runs what the deployment would start (the same Compose
 configuration, environment and secrets, the image its tag names on the node,
-healthy, and as many containers as the node runs), the node answers at once
+healthy, and as many containers as the node runs, not counting containers
+that still drain from an earlier deploy), the node answers at once
 without stopping, starting or waiting for anything, and a rollback does not
 touch it. A tag pushed again under the same name is only picked up once the
 node pulls it. Podman hosts apply every stack, changed or not.
@@ -1532,9 +1533,11 @@ no node answers with it or sends it requests any more, it finishes what it
 has during the service's `drain` (`1m` by default), and then it stops. The
 deployment goes on as soon as every node confirmed that it sends the old
 container nothing new; the drain and the stop happen in the background, and
-`mm deploy status` lists the container as leaving until it is gone. A new
-container that never becomes healthy is removed and the old one keeps serving.
-A rollback during the drain takes the old container back.
+`mm deploy status` lists the container as leaving until it is gone. A deploy
+started meanwhile treats a leaving container as already gone: deploying its
+image again starts a new container of it. A new container that never becomes
+healthy is removed and the old one keeps serving. A rollback during the drain
+takes the old container back.
 
 A service placed on more than one node that sets no `update.order` is
 `start-first` by default, unless something ties it to one container per node:

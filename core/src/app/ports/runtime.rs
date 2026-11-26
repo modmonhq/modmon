@@ -399,11 +399,13 @@ pub trait LocalDeploymentRuntime: Send + Sync {
     /// would replace: starts one more container from those files next to
     /// it and leaves every other container alone. Returns the services it
     /// did that for (also those a start that was interrupted left with two
-    /// containers).
+    /// containers). `leaving` are the ids of containers an earlier step had
+    /// leave, which count as neither.
     async fn start_beside(
         &self,
         _target: &RuntimeTarget,
         _services: &[String],
+        _leaving: &[String],
     ) -> Result<Vec<String>, MmError> {
         Err(MmError::RuntimeResponse {
             message: "this runtime cannot start a service's new container next to the old one; use `update.order: stop-first`".to_owned(),
@@ -421,12 +423,13 @@ pub trait LocalDeploymentRuntime: Send + Sync {
     /// Whether the target's project runs exactly what applying its files
     /// would start, `counts[service]` containers of each service it names
     /// and one of every other, so a deployment leaves it as it is
-    /// (`domain::rollout::stack_unchanged`). A runtime that cannot tell
-    /// says no.
+    /// (`domain::rollout::stack_unchanged`); the containers `leaving` names
+    /// do not count. A runtime that cannot tell says no.
     async fn stack_unchanged(
         &self,
         _target: &RuntimeTarget,
         _counts: &std::collections::BTreeMap<String, u32>,
+        _leaving: &[String],
     ) -> Result<bool, MmError> {
         Ok(false)
     }

@@ -39,6 +39,11 @@ pub trait ContainerLeaving: Send + Sync {
         self.leave(containers, drain).await
     }
 
+    /// The engine ids of the containers leaving now to be removed.
+    fn leaving_now(&self) -> Result<Vec<String>, MmError> {
+        Ok(Vec::new())
+    }
+
     /// Takes back the leaves of the containers of Compose project `project`
     /// that have not been stopped: those containers are given out for
     /// their names and routed to again. A leave whose container is being

@@ -20,9 +20,10 @@ impl DeploymentService {
         let runtime_target = stack_runtime_target(plan, target, stack, environments, false);
         let looked = async {
             let counts = self.apply_counts(plan, &runtime_target).await?;
+            let leaving = self.leaving_now()?;
             self.ports
                 .runtime
-                .stack_unchanged(&runtime_target, &counts)
+                .stack_unchanged(&runtime_target, &counts, &leaving)
                 .await
         };
         match looked.await {
@@ -32,5 +33,12 @@ impl DeploymentService {
                 false
             }
         }
+    }
+
+    /// The containers this node is removing once they drained.
+    pub(super) fn leaving_now(&self) -> Result<Vec<String>, MmError> {
+        self.planner
+            .leaving()
+            .map_or_else(|| Ok(Vec::new()), |leaving| leaving.leaving_now())
     }
 }

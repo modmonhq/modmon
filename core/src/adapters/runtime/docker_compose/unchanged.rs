@@ -6,6 +6,7 @@ impl DockerComposeRuntime {
         &self,
         target: &RuntimeTarget,
         counts: &BTreeMap<String, u32>,
+        leaving: &[String],
     ) -> Result<bool, MmError> {
         use crate::domain::rollout::{WantedService, service_images, stack_unchanged};
 
@@ -51,6 +52,7 @@ impl DockerComposeRuntime {
         let running = crate::adapters::runtime::project_services::stack_containers(
             self,
             &target.project_name,
+            leaving,
         )
         .await?;
         Ok(stack_unchanged(&wanted, &running))

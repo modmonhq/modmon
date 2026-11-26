@@ -491,8 +491,9 @@ impl LocalDeploymentRuntime for PodmanComposeRuntime {
         &self,
         target: &RuntimeTarget,
         services: &[String],
+        leaving: &[String],
     ) -> Result<Vec<String>, MmError> {
-        self.start_beside_old(target, services).await
+        self.start_beside_old(target, services, leaving).await
     }
 
     async fn replaced_containers(

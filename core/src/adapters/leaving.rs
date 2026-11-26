@@ -490,4 +490,13 @@ impl ContainerLeaving for LeaveKeeper {
         self.gone(&ids).await;
         Ok(())
     }
+
+    fn leaving_now(&self) -> Result<Vec<String>, MmError> {
+        Ok(self
+            .records()?
+            .into_iter()
+            .filter(|record| !record.restart)
+            .map(|record| record.id)
+            .collect())
+    }
 }

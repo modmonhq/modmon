@@ -103,34 +103,38 @@ impl PodmanComposeRuntime {
         &self,
         target: &RuntimeTarget,
         services: &[String],
+        leaving: &[String],
     ) -> Result<Vec<String>, MmError> {
-        use crate::adapters::runtime::project_services::service_containers;
+        use crate::domain::rollout::{Beside, beside};
 
         require_local_target(target)?;
         self.require_local_engine_environment()?;
         self.preflight_project(target).await?;
         crate::adapters::runtime::podman_apparmor::require_shared_pid_confined(target)?;
         let hashes = self.config_hashes(target).await?;
+        let containers = crate::adapters::runtime::project_services::stack_containers(
+            self,
+            &target.project_name,
+            leaving,
+        )
+        .await?;
         let mut started = Vec::new();
         for service in services {
             let Some(wanted) = hashes.get(service) else {
                 continue;
             };
-            let containers = service_containers(self, &target.project_name, service).await?;
-            let running = containers.iter().filter(|container| container.running).count();
-            let current = |container: &crate::adapters::runtime::project_services::ServiceContainer| {
-                container.config_hash.as_ref() == Some(wanted)
+            let own = (containers.iter())
+                .filter(|container| &container.service == service)
+                .cloned()
+                .collect::<Vec<_>>();
+            let scale = match beside(wanted, &own) {
+                Beside::Nothing => continue,
+                Beside::Started => {
+                    started.push(service.clone());
+                    continue;
+                }
+                Beside::Start { scale } => scale,
             };
-            // Nothing runs, or what runs is what the files say: the
-            // ordinary apply has nothing to replace.
-            if running == 0 || containers.iter().all(current) {
-                continue;
-            }
-            // A start that was interrupted already left the new container.
-            if containers.iter().any(current) {
-                started.push(service.clone());
-                continue;
-            }
             let auth = crate::adapters::runtime::registry_auth::RegistryAuth::prepare(
                 &target.registry_credentials,
             )?;
@@ -142,7 +146,7 @@ impl PodmanComposeRuntime {
                 "--no-recreate".to_owned(),
                 "--no-build".to_owned(),
                 "--scale".to_owned(),
-                format!("{service}={}", containers.len() + 1),
+                format!("{service}={scale}"),
                 service.clone(),
             ]);
             let output = self

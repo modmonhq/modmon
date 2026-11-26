@@ -61,12 +61,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `update.order: stop-first` keeps the old order. A deployment goes on as soon
   as every node stops sending a replaced container new requests, and the
   container drains and stops in the background, so `drain` no longer adds to
-  deploy time.
+  deploy time. The next deploy counts a container that still drains as
+  neither the old nor the new one, so going back to the image it runs starts
+  a new container of that image.
 - A cluster node leaves a stack alone when its containers already run what
   the deployment would start: the same Compose configuration, environment and
   secrets, the image its tag names on the node, healthy, and as many as the
-  node runs. Nothing is stopped, started or waited for. Docker hosts only; a
-  Podman host applies every stack as before.
+  node runs, not counting containers that still drain from the deploy before.
+  Nothing is stopped, started or waited for. Docker hosts only; a Podman host
+  applies every stack as before.
 - A cluster deploy has every node pull the images it runs, all nodes at the
   same time, before any node is replaced; a pull that fails stops the deploy
   with nothing changed. Unless every node's `mmd` says it knows the new

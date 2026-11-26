@@ -40,7 +40,9 @@ mod auto_order;
 pub use auto_order::{HostTies, starts_first_by_default};
 #[path = "rollout/unchanged.rs"]
 mod unchanged;
-pub use unchanged::{RunningContainer, WantedService, service_images, stack_unchanged};
+pub use unchanged::{
+    Beside, RunningContainer, WantedService, beside, service_images, stack_unchanged,
+};
 #[path = "rollout/waves.rs"]
 mod waves;
 pub use waves::{STACKS_AT_ONCE, check_waves, shares_a_wave, waves_of};

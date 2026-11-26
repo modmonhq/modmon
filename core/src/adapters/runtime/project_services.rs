@@ -151,10 +151,12 @@ pub(crate) async fn service_containers(
 }
 
 /// Every container of `project` but jobs' one-off ones, as a deployment
-/// compares it with what the files ask for.
+/// compares it with what the files ask for; `leaving` are the ids of the
+/// containers that are leaving the node.
 pub(crate) async fn stack_containers(
     engine: &dyn ContainerEngine,
     project: &str,
+    leaving: &[String],
 ) -> Result<Vec<crate::domain::rollout::RunningContainer>, MmError> {
     let ids = container_ids(engine, project, None).await?;
     if ids.is_empty() {
@@ -193,6 +195,9 @@ pub(crate) async fn stack_containers(
                     .as_str()
                     .filter(|health| !health.is_empty() && *health != "none")
                     .map(str::to_owned),
+                leaving: row["Id"]
+                    .as_str()
+                    .is_some_and(|id| leaving.iter().any(|left| left == id)),
             })
         })
         .collect())

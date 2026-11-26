@@ -138,10 +138,11 @@ impl DeploymentService {
         let runtime_target = stack_runtime_target(plan, target, stack, environments, false);
         self.pull_images(plan, &runtime_target, Some(&services))
             .await?;
+        let leaving = self.leaving_now()?;
         let started = self
             .ports
             .runtime
-            .start_beside(&runtime_target, &services)
+            .start_beside(&runtime_target, &services, &leaving)
             .await?;
         if started.is_empty() {
             return Ok(Ok(started));

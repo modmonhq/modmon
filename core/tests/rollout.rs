@@ -876,6 +876,7 @@ fn a_stack_is_left_alone_only_when_every_container_is_what_the_files_start() {
         image_id: format!("sha256:{service}"),
         running: true,
         health: Some("healthy".to_owned()),
+        leaving: false,
     };
     let services = [wanted("web", 2), wanted("worker", 1), wanted("idle", 0)];
     let same = vec![running("web"), running("web"), running("worker")];
@@ -981,6 +982,69 @@ fn a_stack_is_left_alone_only_when_every_container_is_what_the_files_start() {
         "the tag is not on the node"
     );
     assert!(!stack_unchanged(&[], &[]), "nothing to compare");
+}
+
+#[test]
+fn a_container_that_drains_from_an_earlier_deploy_is_neither_old_nor_new() {
+    use mm::domain::rollout::{Beside, RunningContainer, WantedService, beside, stack_unchanged};
+
+    let container = |hash: &str, leaving: bool| RunningContainer {
+        service: "whoami".to_owned(),
+        config_hash: Some(hash.to_owned()),
+        image_id: format!("sha256:{hash}"),
+        running: true,
+        health: None,
+        leaving,
+    };
+    let wanted = |hash: &str| WantedService {
+        service: "whoami".to_owned(),
+        config_hash: hash.to_owned(),
+        count: 1,
+        image_id: Some(format!("sha256:{hash}")),
+        always_pulled: false,
+    };
+
+    let back_to_older = [container("v1.11", false), container("v1.10", true)];
+    assert_eq!(
+        beside("v1.10", &back_to_older),
+        Beside::Start { scale: 3 },
+        "the draining v1.10 is not the new container: a new one starts, and Compose counts the draining one"
+    );
+    assert!(!stack_unchanged(&[wanted("v1.10")], &back_to_older));
+
+    let same_again = [container("v1.11", false), container("v1.10", true)];
+    assert_eq!(beside("v1.11", &same_again), Beside::Nothing);
+    assert!(
+        stack_unchanged(&[wanted("v1.11")], &same_again),
+        "the stack runs what the files start once the old container is gone"
+    );
+
+    assert_eq!(
+        beside("v1.11", &[container("v1.10", false)]),
+        Beside::Start { scale: 2 }
+    );
+    assert_eq!(
+        beside(
+            "v1.11",
+            &[container("v1.11", false), container("v1.10", false)]
+        ),
+        Beside::Started,
+        "an interrupted start left the new container next to the old"
+    );
+    assert_eq!(
+        beside("v1.11", &[container("v1.10", true)]),
+        Beside::Nothing
+    );
+    assert_eq!(
+        beside(
+            "v1.11",
+            &[RunningContainer {
+                running: false,
+                ..container("v1.10", false)
+            }]
+        ),
+        Beside::Nothing
+    );
 }
 
 #[test]

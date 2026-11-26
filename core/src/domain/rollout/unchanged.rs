@@ -35,15 +35,21 @@ pub struct RunningContainer {
     pub running: bool,
     /// The engine's health status; `None` without a health check.
     pub health: Option<String>,
+    /// An earlier step had it leave: it drains, then it is removed.
+    pub leaving: bool,
 }
 
 /// Whether the stack runs exactly what `wanted` asks for, so a deployment
-/// leaves it alone.
+/// leaves it alone. Containers that are leaving do not count.
 #[must_use]
 pub fn stack_unchanged(wanted: &[WantedService], running: &[RunningContainer]) -> bool {
     if wanted.is_empty() || wanted.iter().any(|service| service.always_pulled) {
         return false;
     }
+    let running = running
+        .iter()
+        .filter(|container| !container.leaving)
+        .collect::<Vec<_>>();
     if running.iter().any(|container| {
         !wanted
             .iter()
@@ -67,6 +73,39 @@ pub fn stack_unchanged(wanted: &[WantedService], running: &[RunningContainer]) -
                         .is_none_or(|health| health == "healthy")
             })
     })
+}
+
+/// What starting a service's new container next to its old one takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Beside {
+    /// Nothing runs, or what runs is what the files say.
+    Nothing,
+    /// A start that was interrupted left the new container already.
+    Started,
+    /// One more container, so that the service counts `scale`.
+    Start { scale: usize },
+}
+
+/// What a `start-first` step does for a service whose containers on the
+/// node are `containers` and whose files hash to `wanted`. A container that
+/// is leaving is neither the old one nor the new one; Compose still counts
+/// it.
+#[must_use]
+pub fn beside(wanted: &str, containers: &[RunningContainer]) -> Beside {
+    let staying = containers
+        .iter()
+        .filter(|container| !container.leaving)
+        .collect::<Vec<_>>();
+    let current = |container: &&RunningContainer| container.config_hash.as_deref() == Some(wanted);
+    if !staying.iter().any(|container| container.running) || staying.iter().all(current) {
+        return Beside::Nothing;
+    }
+    if staying.iter().any(current) {
+        return Beside::Started;
+    }
+    Beside::Start {
+        scale: containers.len() + 1,
+    }
 }
 
 /// Each service's image and whether its `pull_policy` pulls it always, from
