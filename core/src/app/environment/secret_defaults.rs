@@ -39,6 +39,7 @@ pub fn template_defaulted_secrets(
                 revision: None,
                 created_at_unix_ms: None,
                 candidate_revision: None,
+                set_by: None,
             };
             (name.clone(), metadata)
         })

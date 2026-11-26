@@ -496,6 +496,7 @@ async fn unset_optional_secrets_use_fallbacks_without_resolving_material()
             &reference,
             SecretMaterial::new("stored".to_owned())?,
             10_000,
+            None,
         )
         .await?;
     let stored = manager
