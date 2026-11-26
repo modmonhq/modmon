@@ -66,6 +66,8 @@ mod route_adoption;
 
 #[path = "deployment/first_failure.rs"]
 mod first_failure;
+#[path = "deployment/rollback_routes.rs"]
+mod rollback_routes;
 
 const PROJECT_ID: &str = "019c527b-6242-7b43-bfd4-bd60e27c1de3";
 const TARGET_ID: &str = "319c527b-6242-7b43-bfd4-bd60e27c1de3";

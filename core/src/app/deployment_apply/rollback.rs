@@ -67,7 +67,8 @@ impl DeploymentService {
         }
         // A plan that published no routes left none to restore.
         if super::mutation::manages_ingress(plan) {
-            self.restore_routes(plan, target, &mut failures).await;
+            self.restore_routes(plan, target, changes, &mut failures)
+                .await;
         }
         if !installation_owns_ingress && let Some(ingress) = &previous.static_ingress {
             if let Err(error) = self.ports.rootless.install(ingress).await {
@@ -168,11 +169,12 @@ impl DeploymentService {
     }
 
     /// Puts the previous route configuration back and checks that the
-    /// proxy serves the previous routes.
+    /// proxy serves the previous routes of the stacks it put back.
     async fn restore_routes(
         &self,
         plan: &DeploymentPlan,
         target: &NamedTarget,
+        changes: Option<&RolloutChanges>,
         failures: &mut Vec<MmError>,
     ) {
         let volume = ingress_dynamic_config_volume_name(plan.target_id);
@@ -195,7 +197,9 @@ impl DeploymentService {
         if let Err(error) = self.ports.verifier.verify_listener(verify_port).await {
             failures.push(error);
         }
-        for claim in &plan.previous_owner_claims {
+        for claim in (plan.previous_owner_claims.iter())
+            .filter(|claim| put_back(plan, changes, &claim.stack))
+        {
             if let Err(error) = self
                 .ports
                 .verifier
@@ -329,6 +333,13 @@ impl DeploymentService {
             }
         }
     }
+}
+
+/// Whether a rollback put `stack` of the previous deployment back: a stack
+/// the plan drops always, any other only when a step had changed it.
+fn put_back(plan: &DeploymentPlan, changes: Option<&RolloutChanges>, stack: &str) -> bool {
+    let kept = plan.stacks.iter().any(|kept| kept.stack == stack);
+    !kept || changes.is_none_or(|changes| changes.begun().contains(&stack))
 }
 
 fn rollback_result(failures: Vec<MmError>) -> Result<(), MmError> {
