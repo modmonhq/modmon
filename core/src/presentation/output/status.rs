@@ -327,6 +327,9 @@ pub(crate) fn container_health(container: &ContainerObservation) -> String {
     if container.is_leaving() {
         return "leaving".to_owned();
     }
+    if container.healthcheck_off() {
+        return "check off".to_owned();
+    }
     terminal_safe(container.health.as_deref().unwrap_or("running"))
 }
 

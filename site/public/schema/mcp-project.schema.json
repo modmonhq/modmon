@@ -730,6 +730,13 @@
             }
           ]
         },
+        "healthchecks": {
+          "description": "Whether the services' Compose health checks run. Default `true`,\nexcept `false` for the development environment on this machine.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "ingress": {
           "anyOf": [
             {

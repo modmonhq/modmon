@@ -43,7 +43,9 @@ mod registry;
 pub use registry::{RegistryCredential, registry_auth_config};
 #[path = "runtime/tally.rs"]
 mod tally;
-pub use tally::{ServiceTally, current_containers, state_across_nodes, tally_service};
+pub use tally::{
+    HEALTHCHECKS_LABEL, ServiceTally, current_containers, state_across_nodes, tally_service,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]

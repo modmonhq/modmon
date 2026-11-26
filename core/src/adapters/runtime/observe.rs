@@ -225,7 +225,9 @@ fn normalize_service_semantics(value: &serde_yaml_ng::Value) -> RenderedServiceS
         environment_names,
         networks,
         aliases,
-        healthcheck: value.get("healthcheck").is_some(),
+        healthcheck: value.get("healthcheck").is_some_and(|check| {
+            check.get("disable").and_then(serde_yaml_ng::Value::as_bool) != Some(true)
+        }),
         replicas: deploy
             .and_then(|deploy| deploy.get("replicas"))
             .and_then(serde_yaml_ng::Value::as_u64)
@@ -440,19 +442,18 @@ fn container_from_json(value: &Value) -> Option<ContainerObservation> {
 }
 
 fn labels_from_value(value: &Value) -> BTreeMap<String, String> {
-    value
-        .get("Labels")
-        .or_else(|| value.get("labels"))
-        .and_then(Value::as_object)
-        .map(|labels| {
-            labels
-                .iter()
-                .filter_map(|(key, value)| {
-                    value.as_str().map(|value| (key.clone(), value.to_owned()))
-                })
-                .collect()
-        })
-        .unwrap_or_default()
+    match value.get("Labels").or_else(|| value.get("labels")) {
+        Some(Value::Object(labels)) => labels
+            .iter()
+            .filter_map(|(key, value)| value.as_str().map(|value| (key.clone(), value.to_owned())))
+            .collect(),
+        Some(Value::String(labels)) => labels
+            .split(',')
+            .filter_map(|pair| pair.split_once('='))
+            .map(|(key, value)| (key.to_owned(), value.to_owned()))
+            .collect(),
+        _ => BTreeMap::new(),
+    }
 }
 
 pub(crate) fn allowlisted_labels(labels: BTreeMap<String, String>) -> BTreeMap<String, String> {
@@ -467,6 +468,7 @@ pub(crate) fn allowlisted_labels(labels: BTreeMap<String, String>) -> BTreeMap<S
                     | "com.docker.compose.oneoff"
                     | "io.podman.compose.project"
                     | "io.podman.compose.service"
+                    | crate::domain::runtime::HEALTHCHECKS_LABEL
             )
         })
         .collect()

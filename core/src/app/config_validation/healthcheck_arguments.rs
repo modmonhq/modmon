@@ -53,6 +53,10 @@ pub(crate) fn healthcheck_arguments(
     environment: &str,
 ) -> Vec<HealthcheckArgumentNote> {
     let mut notes = Vec::new();
+    let config = &document.config;
+    if !config.healthchecks_on(environment, config.on_local_target(environment)) {
+        return notes;
+    }
     for (stack_name, stack) in &document.config.stacks {
         let Some(models) = super::shared_volumes::compose_models(document, stack) else {
             continue;

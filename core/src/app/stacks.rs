@@ -116,6 +116,7 @@ pub(crate) use user_namespace::{
 };
 mod compose_environment;
 mod hardening;
+mod healthchecks;
 pub(crate) use compose_environment::compose_environment_refusals;
 mod config_files;
 pub(crate) use config_files::{config_file_entries, resolve_config_file};

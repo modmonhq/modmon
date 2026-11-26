@@ -10,6 +10,9 @@ use super::{ContainerObservation, ServiceSnapshot, ServiceState};
 /// The label Compose puts on a container started with `compose run`.
 const ONE_OFF_LABEL: &str = "com.docker.compose.oneoff";
 
+/// The label of a container whose environment turns health checks off.
+pub const HEALTHCHECKS_LABEL: &str = "io.mm.healthchecks";
+
 /// Counts and state of one service on one host.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServiceTally {
@@ -28,6 +31,16 @@ impl ContainerObservation {
     pub fn is_leaving(&self) -> bool {
         self.labels
             .contains_key(crate::domain::leaving::LEAVING_LABEL)
+    }
+
+    /// Whether the container's environment turns health checks off.
+    #[must_use]
+    pub fn healthcheck_off(&self) -> bool {
+        self.health.is_none()
+            && self
+                .labels
+                .get(HEALTHCHECKS_LABEL)
+                .is_some_and(|value| value == "off")
     }
 
     /// Whether the engine runs the container now.
