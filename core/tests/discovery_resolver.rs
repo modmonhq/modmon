@@ -1219,3 +1219,115 @@ async fn a_rollback_takes_a_leaving_container_back_into_the_answers() -> TestRes
     becomes(API_A, server, "api", &[API_A]).await?;
     Ok(())
 }
+
+/// An engine whose `stop` waits until the test lets it go, and that counts
+/// the stops under way.
+struct HeldStops {
+    ids: Vec<String>,
+    under_way: std::sync::atomic::AtomicUsize,
+    most: std::sync::atomic::AtomicUsize,
+    go: tokio::sync::Semaphore,
+}
+
+#[async_trait]
+impl mm::app::ports::ProcessRunner for HeldStops {
+    async fn run(
+        &self,
+        specification: mm::app::ports::CommandSpec,
+    ) -> Result<mm::app::ports::CommandOutput, MmError> {
+        use std::sync::atomic::Ordering;
+        let command = specification.redacted_display();
+        let mut stdout = String::new();
+        if command.contains(" stop ") {
+            let now = self.under_way.fetch_add(1, Ordering::SeqCst) + 1;
+            self.most.fetch_max(now, Ordering::SeqCst);
+            let permit = self.go.acquire().await.map_err(|_| MmError::State {
+                message: "the stops were never let go".to_owned(),
+            })?;
+            permit.forget();
+            self.under_way.fetch_sub(1, Ordering::SeqCst);
+        } else if command.contains(" ps ") {
+            stdout = self.ids.join("\n");
+        }
+        Ok(mm::app::ports::CommandOutput {
+            code: Some(0),
+            stdout: zeroize::Zeroizing::new(stdout),
+            stderr: zeroize::Zeroizing::new(String::new()),
+            truncated: false,
+        })
+    }
+}
+
+/// Drained containers stop side by side instead of one after another,
+/// and a rollback that comes while a stop is under way waits for it
+/// instead of taking the container back half stopped.
+#[tokio::test]
+async fn drained_containers_stop_together_and_a_take_back_waits_for_their_stops() -> TestResult {
+    use mm::app::ports::ContainerLeaving;
+    use std::sync::atomic::Ordering;
+
+    let directory = temp_dirs::tempdir()?;
+    let options = ResolverOptions {
+        lookup_port: free_port(GATEWAY_A).await?,
+        exchange_port: free_port(MESH_A).await?,
+        upstream_port: free_port(UPSTREAM).await?,
+        resolv_conf: directory.path().join("resolv.conf"),
+        address_patience: Duration::from_secs(30),
+    };
+    let node = NameResolver::with_options(
+        Arc::new(Networks(networks("a")?)),
+        Arc::new(Mesh(mesh(MESH_A, "b", MESH_B))),
+        Engine::new(Vec::new()),
+        options,
+    );
+    let ids = ["a", "b"].map(|digit| digit.repeat(64)).to_vec();
+    let leaving = directory
+        .path()
+        .join(mm::adapters::leaving::LEAVING_DIRECTORY);
+    std::fs::create_dir_all(&leaving)?;
+    for (number, id) in ids.iter().enumerate() {
+        let mut record =
+            mm::domain::leaving::LeaveRecord::new(id, &format!("api-{number}"), Duration::ZERO, 1);
+        record.confirmed_unix_ms = Some(1);
+        std::fs::write(
+            leaving.join(record.file_name()),
+            serde_json::to_vec(&record)?,
+        )?;
+    }
+    let engine = Arc::new(HeldStops {
+        ids: ids.clone(),
+        under_way: std::sync::atomic::AtomicUsize::new(0),
+        most: std::sync::atomic::AtomicUsize::new(0),
+        go: tokio::sync::Semaphore::new(0),
+    });
+    let keeper = mm::adapters::leaving::LeaveKeeper::new(
+        directory.path(),
+        node,
+        engine.clone(),
+        RuntimeKind::DockerCompose,
+    );
+    tokio::spawn(Arc::clone(&keeper).run());
+    for _ in 0..100 {
+        if engine.most.load(Ordering::SeqCst) == 2 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert_eq!(
+        engine.most.load(Ordering::SeqCst),
+        2,
+        "both stops run at once"
+    );
+
+    let taking_back = tokio::spawn({
+        let keeper = Arc::clone(&keeper);
+        async move { keeper.recall("mm-shop-production-app").await }
+    });
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(!taking_back.is_finished(), "a stop under way is waited for");
+    engine.go.add_permits(2);
+    let recalled = taking_back.await??;
+    assert!(recalled.is_empty(), "stopped containers are not taken back");
+    assert!(mm::adapters::leaving::leaving_ids(directory.path()).is_empty());
+    Ok(())
+}

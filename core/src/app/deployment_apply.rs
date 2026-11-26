@@ -34,9 +34,11 @@ mod lifecycle;
 mod moves;
 mod mutation;
 mod preflight;
+mod prepared;
 mod rollback;
 mod rollout;
 mod scaling;
+pub use prepared::{EnvironmentMaterial, PreparedEnvironments};
 pub use rollout::{StackOutcome, StackStep};
 
 fn managed_network_resource(logical: &str) -> String {
@@ -76,6 +78,7 @@ pub struct DeploymentService {
     ports: DeploymentExecutionPorts,
     /// Runs the jobs a deployment runs, and cleans up after cut-off runs.
     jobs: Option<Arc<dyn crate::app::ports::DeploymentJobs>>,
+    prepared: Option<Arc<prepared::PreparedEnvironments>>,
 }
 
 impl std::fmt::Debug for DeploymentService {

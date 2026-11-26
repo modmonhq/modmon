@@ -203,6 +203,7 @@ pub struct DaemonUseCaseAdapter {
     engine: super::engine_facts::HostEngine,
     node_host: Option<daemon_host::NodeHost>,
     job_pulls: Arc<crate::app::JobPullSlots>,
+    prepared: Arc<crate::app::PreparedEnvironments>,
 }
 
 #[path = "remote_clients.rs"]
@@ -222,7 +223,9 @@ impl DaemonUseCaseAdapter {
         receipt: Option<&crate::domain::build::BuildReceipt>,
     ) -> Result<crate::app::DeploymentService, MmError> {
         let composition = RuntimeComposition::new();
-        let mut service = composition.deployment_service(selection, Some(&self.mm_home))?;
+        let mut service = composition
+            .deployment_service(selection, Some(&self.mm_home))?
+            .with_prepared_environments(Arc::clone(&self.prepared));
         if let (Some(networks), Some(_)) = (&self.networks, &selection.node) {
             service = service.with_cluster_networks(Arc::clone(networks));
         }

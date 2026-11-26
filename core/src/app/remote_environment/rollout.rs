@@ -37,7 +37,7 @@ const SETUP_PATIENCE: Duration = Duration::from_secs(30 * 60);
 /// its pull limit: stopping, draining and starting containers.
 const STACK_OVERHEAD: Duration = Duration::from_secs(20 * 60);
 const LOCK_PATIENCE: Duration = Duration::from_secs(30);
-const DISCOVERY_LOOK: Duration = Duration::from_secs(1);
+const DISCOVERY_LOOK: Duration = Duration::from_millis(250);
 
 type Outcome = NodeApplyOutcome<DeploymentResult>;
 

@@ -48,6 +48,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Vault custom metadata; the terminal UI shows the same for a selected
   secret variable. mm 0.1.2 still reads an Age store this release wrote.
 
+- Cluster deploys spend less time waiting on each node: a rollout prepares
+  its environment once instead of for every stack, a health wait renders the
+  Compose project once and looks again within a second, a node checks every
+  image of a stack in one look and pulls up to three at once, drained
+  containers stop side by side, and the client checks every 250 ms that the
+  other nodes resolve new containers.
+
 ### Fixed
 
 - `mm_read` kind `secrets` for an environment on this machine returned every

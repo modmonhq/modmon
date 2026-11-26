@@ -113,7 +113,7 @@ impl DeploymentService {
                 message: format!("plan {plan_hash} has no stack '{stack}' on this host"),
             })?;
         let mut environment = self
-            .prepare_environment(selection, plan, running.operation_id)
+            .prepare_rollout_environment(selection, plan, running.operation_id)
             .await?;
         let bundle = environment.bundle();
         // What the node answered with before a start: the new containers
@@ -177,6 +177,7 @@ impl DeploymentService {
         let settled = self.settle(&running.plan, &running.target).await;
         match settled {
             Ok(result) => {
+                self.forget_environment(running.operation_id);
                 let closed = self.close_operation(
                     selection,
                     &running.plan,
@@ -321,7 +322,7 @@ impl DeploymentService {
             }
         };
         match self
-            .prepare_environment(selection, plan, operation_id)
+            .prepare_rollout_environment(selection, plan, operation_id)
             .await
         {
             Ok(mut environment) => {
@@ -343,6 +344,7 @@ impl DeploymentService {
             }
             Err(error) => failures.push(error.to_string()),
         }
+        self.forget_environment(operation_id);
         if let Err(journal) =
             self.finish_operation(operation_id, OperationState::Failed, Some(code))
         {

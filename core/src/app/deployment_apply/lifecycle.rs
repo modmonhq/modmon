@@ -7,6 +7,7 @@ impl DeploymentService {
             planner,
             ports,
             jobs: None,
+            prepared: None,
         }
     }
 
@@ -110,6 +111,7 @@ impl DeploymentService {
             Ok(result)
         }
         .await;
+        self.forget_environment(operation_id);
         let closed = self.close_operation(selection, &plan, operation_id, result);
         if closed.is_ok() {
             self.prune_superseded_versions(&plan).await;

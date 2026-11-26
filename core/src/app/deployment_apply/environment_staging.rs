@@ -59,30 +59,34 @@ impl DeploymentService {
         plan: &DeploymentPlan,
         operation_id: OperationId,
     ) -> Result<EnvironmentArtifactGuard, MmError> {
-        let selection = &selection.with_release(plan.release.clone());
-        let review = self.ports.environments.review(selection).await?;
-        if review.digest() != plan.environment_review.digest() {
-            return Err(MmError::State {
-                message: "environment metadata changed after the reviewed deployment plan"
-                    .to_owned(),
-            });
-        }
-        let compiled = if review.services.is_empty() {
-            None
-        } else {
-            Some(self.ports.environments.compile(selection).await?)
-        };
-        let registry_credentials = self
-            .ports
-            .environments
-            .registry_credentials(selection)
+        self.stage_environment(selection, plan, operation_id, false)
+            .await
+    }
+
+    /// `prepare_environment` for a step of a rollout: the steps after it
+    /// reuse what it compiled.
+    pub(super) async fn prepare_rollout_environment(
+        &self,
+        selection: &WorkspaceSelection,
+        plan: &DeploymentPlan,
+        operation_id: OperationId,
+    ) -> Result<EnvironmentArtifactGuard, MmError> {
+        self.stage_environment(selection, plan, operation_id, true)
+            .await
+    }
+
+    async fn stage_environment(
+        &self,
+        selection: &WorkspaceSelection,
+        plan: &DeploymentPlan,
+        operation_id: OperationId,
+        keep: bool,
+    ) -> Result<EnvironmentArtifactGuard, MmError> {
+        let material = self
+            .environment_material(selection, plan, operation_id, keep)
             .await?;
-        if !registry_credentials.is_empty() && compiled.is_none() {
-            return Err(MmError::Environment {
-                message: "registries: needs at least one service with a compiled environment to carry its logins".to_owned(),
-            });
-        }
-        let mut prepared = if let Some(compiled) = &compiled {
+        let compiled = &material.compiled;
+        let mut prepared = if let Some(compiled) = compiled {
             let mut bundle = self.ports.environment_artifacts.publish(
                 crate::app::ports::EnvironmentArtifactRequest {
                     operation_id,
@@ -90,7 +94,9 @@ impl DeploymentService {
                     bundle: compiled,
                 },
             )?;
-            bundle.registry_credentials = registry_credentials;
+            bundle
+                .registry_credentials
+                .clone_from(&material.registry_credentials);
             Some(bundle)
         } else {
             None
