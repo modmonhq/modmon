@@ -56,12 +56,7 @@ pub(super) fn secrets_covered_by_defaults(
 ) -> BTreeSet<String> {
     let mut by_reference = BTreeMap::new();
     for (name, metadata) in metadata {
-        if let Some(reference) = document.config.secrets.get(name).and_then(|declaration| {
-            match configured_reference(declaration) {
-                Ok(reference) => Some(reference),
-                Err(_) => None,
-            }
-        }) {
+        if let Some(Ok(reference)) = document.config.secrets.get(name).map(configured_reference) {
             by_reference.insert(reference.canonical(), metadata.clone());
         }
     }
@@ -124,11 +119,12 @@ pub(super) fn secrets_covered_by_defaults(
                     .config
                     .secrets
                     .get(name)
-                    .and_then(|declaration| match configured_reference(declaration) {
-                        Ok(reference) => Some(reference),
-                        Err(_) => None,
+                    .map(configured_reference)
+                    .is_some_and(|reference| {
+                        reference.is_ok_and(|reference| {
+                            !other_consumers.contains_key(&reference.canonical())
+                        })
                     })
-                    .is_some_and(|reference| !other_consumers.contains_key(&reference.canonical()))
         })
         .map(|(name, _)| name)
         .collect()
