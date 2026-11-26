@@ -96,8 +96,13 @@ impl NodeMetricsCollector {
     ) -> Option<Vec<crate::domain::node_metrics::DeployedEnvironment>> {
         let deployed = Arc::clone(&self.sources.deployed);
         let read = blocking(busy, RECORDS_PATIENCE, move || deployed.deployed()).await?;
-        read.inspect_err(|error| tracing::debug!(%error, "cannot read what the node's deployments run, for its metrics"))
-            .ok()
+        match read {
+            Ok(deployed) => Some(deployed),
+            Err(error) => {
+                tracing::debug!(%error, "cannot read what the node's deployments run, for its metrics");
+                None
+            }
+        }
     }
 
     async fn collect(&self) -> NodeSnapshot {
@@ -177,7 +182,17 @@ async fn blocking<T: Send + 'static>(
         let _done = done;
         read()
     });
-    tokio::time::timeout(patience, task).await.ok()?.ok()
+    match tokio::time::timeout(patience, task).await {
+        Ok(Ok(value)) => Some(value),
+        Ok(Err(error)) => {
+            tracing::debug!(%error, "a metrics read stopped before it finished");
+            None
+        }
+        Err(_) => {
+            tracing::debug!(?patience, "a metrics read ran past its deadline");
+            None
+        }
+    }
 }
 
 struct Free(Arc<AtomicBool>);

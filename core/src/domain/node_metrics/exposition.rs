@@ -1,8 +1,6 @@
 //! The Prometheus text exposition format, version 0.0.4, with a limit on
 //! the size of what it writes.
 
-use std::fmt::Write as _;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
     Gauge,
@@ -66,11 +64,11 @@ impl Exposition {
                 if index > 0 {
                     line.push(',');
                 }
-                let _ = write!(line, "{label}=\"{}\"", escape(value));
+                line.push_str(&format!("{label}=\"{}\"", escape(value)));
             }
             line.push('}');
         }
-        let _ = writeln!(line, " {}", number(value));
+        line.push_str(&format!(" {}\n", number(value)));
         self.push(&line);
     }
 

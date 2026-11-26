@@ -171,11 +171,15 @@ impl MetricsServer {
             tokio::spawn(async move {
                 let _permit = permit;
                 let _peer_turn = peer_turn;
-                let _ = tokio::time::timeout(
+                if tokio::time::timeout(
                     CONNECTION_PATIENCE,
                     server.connection(stream, peer, &listener),
                 )
-                .await;
+                .await
+                .is_err()
+                {
+                    tracing::debug!(%peer, "closed a metrics connection that ran past its deadline");
+                }
             });
         }
     }
