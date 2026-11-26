@@ -46,7 +46,7 @@ mod waves;
 pub use waves::{STACKS_AT_ONCE, check_waves, shares_a_wave, waves_of};
 #[path = "rollout/versions.rs"]
 mod versions;
-pub use versions::{PULL_STEP_SINCE, knows_steps_since};
+pub use versions::{NEWER_ROLLOUT_STEPS, NodeSteps, knows_newer_steps};
 #[path = "rollout/steps.rs"]
 mod steps;
 pub use steps::{
@@ -655,21 +655,19 @@ impl ClusterRollout {
         pull_timeout(self.pull_timeout_seconds)
     }
 
-    /// Plans the newer steps when the `mmd` of every node of `versions`
-    /// (node, release) knows them, and otherwise notes the nodes that do
-    /// not. `client` is this client's release; `after` maps a stack to the
-    /// stacks it follows.
+    /// Plans the newer steps when every node of `nodes` says its `mmd`
+    /// knows them, and otherwise notes the nodes that do not; `after` maps
+    /// a stack to the stacks it follows.
     #[must_use]
     pub fn for_daemons(
         mut self,
-        versions: &[(String, String)],
-        client: &str,
+        nodes: &[NodeSteps],
         after: &BTreeMap<String, BTreeSet<String>>,
     ) -> Self {
-        self.older_nodes = versions
+        self.older_nodes = nodes
             .iter()
-            .filter(|(_, version)| !knows_steps_since(version, client, PULL_STEP_SINCE))
-            .cloned()
+            .filter(|node| !knows_newer_steps(&node.steps))
+            .map(|node| (node.node.clone(), node.daemon_version.clone()))
             .collect();
         let newer = self.older_nodes.is_empty();
         self.pull_first = newer && !self.stages.is_empty();

@@ -523,6 +523,7 @@ impl RemoteDaemon {
             engine: self.use_cases.engine(runtime).await,
             daemon: Some(self.daemon_health()?),
             secret_store: self.use_cases.secret_store(scope).await,
+            rollout_steps: crate::domain::rollout::NEWER_ROLLOUT_STEPS.map(str::to_owned).to_vec(),
         };
         send_result(writer, context, RemoteResult::Node(Box::new(facts))).await
     }

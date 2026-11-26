@@ -21,7 +21,7 @@ use crate::domain::remote::{
     RemotePlanBinding, RemotePlanKind, SealCarried, UnfinishedRollout, check_moves_are_planned,
     service_moves,
 };
-use crate::domain::rollout::{ClusterRollout, NodeRolloutInput, ProgressStep, RolloutProgress};
+use crate::domain::rollout::{ClusterRollout, ProgressStep, RolloutProgress};
 use crate::domain::shared_storage::{ClusterStoragePlan, SealedStorage};
 use crate::domain::users::AccessChange;
 
@@ -176,7 +176,7 @@ impl RemoteEnvironment {
         // while the nodes plan: planning changes nothing on a node, so the
         // answer is the same before, during, and after it. So is the
         // release each one runs, which a pinned environment checks.
-        let (answers, stored, pinned) = tokio::join!(
+        let (answers, stored, pinned, steps) = tokio::join!(
             self.ask_all(
                 (reporting::PLAN, "planning"),
                 selected,
@@ -193,7 +193,8 @@ impl RemoteEnvironment {
                 }
             ),
             self.stored_networks(),
-            self.check_pinned_hosts(selected)
+            self.check_pinned_hosts(selected),
+            self.rollout_steps(selected)
         );
         let plans = self.all_or_explain(selected, answers)?;
         pinned?;
@@ -213,7 +214,9 @@ impl RemoteEnvironment {
         let networks = self.plan_cluster_networks(selected, &nodes, stored)?;
         let storage = self.plan_storage(&nodes, skipped)?;
         let ingress = self.plan_ingress(&nodes, skipped)?;
-        let rollout = self.is_cluster().then(|| cluster_rollout(&nodes));
+        let rollout = self
+            .is_cluster()
+            .then(|| super::rollout_plan::cluster_rollout(&nodes, &steps));
         Ok(PlannedSections {
             nodes,
             moves,
@@ -557,56 +560,6 @@ pub(super) struct Reviewed<'a> {
     pub rollout: Option<ClusterRollout>,
     /// The plan's shared volumes, when it has any.
     pub storage: Option<SealedStorage>,
-}
-
-/// The stages of a deployment plan over `nodes`: what each node renders,
-/// with its own policy.
-fn cluster_rollout(nodes: &[NodeDeploymentPlan]) -> ClusterRollout {
-    let rendered = nodes
-        .iter()
-        .filter_map(|node| {
-            let plan = node.plan.plan.as_ref()?;
-            let stacks = plan
-                .stacks
-                .iter()
-                .map(|stack| stack.stack.clone())
-                .collect::<Vec<_>>();
-            let services = plan
-                .node
-                .as_ref()
-                .map_or(&[][..], |node| &node.services[..]);
-            Some((node.node.as_deref()?, stacks, &plan.rollout, services))
-        })
-        .collect::<Vec<_>>();
-    ClusterRollout::of(
-        &rendered
-            .iter()
-            .map(|(node, stacks, policy, services)| NodeRolloutInput {
-                node,
-                stacks,
-                policy,
-                services,
-            })
-            .collect::<Vec<_>>(),
-    )
-    .knowing_ran_once(nodes.iter().flat_map(|node| node.plan.once.clone()))
-    .for_daemons(
-        &nodes
-            .iter()
-            .map(|node| {
-                (
-                    node.node.clone().unwrap_or_default(),
-                    node.plan.binding.daemon_version.clone(),
-                )
-            })
-            .collect::<Vec<_>>(),
-        env!("CARGO_PKG_VERSION"),
-        &nodes
-            .iter()
-            .filter_map(|node| node.plan.plan.as_ref())
-            .flat_map(|plan| plan.stack_after.clone())
-            .collect(),
-    )
 }
 
 /// Applies each node's section in declared order and stops at the first

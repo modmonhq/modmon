@@ -69,8 +69,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Podman host applies every stack as before.
 - A cluster deploy has every node pull the images it runs, all nodes at the
   same time, before any node is replaced; a pull that fails stops the deploy
-  with nothing changed. Nodes whose `mmd` is older than the client's release
-  keep pulling stack by stack, and the plan names them until
+  with nothing changed. Unless every node's `mmd` says it knows the new
+  rollout steps (it lists them in its node facts), nodes keep pulling stack by
+  stack, and the plan names the older nodes until
   `mm target setup plan --upgrade` brings them up to date.
 - A stack whose services that run on several nodes all start first is
   replaced on all its nodes at once when no service sets `update.parallelism`;
@@ -81,8 +82,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   next layer of `after:` starts once every node resolves what they started. A
   stack with `before-deploy` jobs, services that pause on failure, or more than
   one batch of nodes still rolls out alone. The plan lists the stacks that go
-  side by side. Nodes whose `mmd` is older than the client's release roll
-  stacks out one at a time, and the plan says so.
+  side by side. With a node whose `mmd` does not know the new steps, stacks
+  roll out one at a time, and the plan says so.
 - Every node of a cluster deploy finishes at the same time, and nodes without
   stacks begin at the same time. A node whose finish fails rolls itself back
   as before, but the other nodes may have finished already: the report lists

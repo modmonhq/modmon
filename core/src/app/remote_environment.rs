@@ -39,6 +39,8 @@ mod reporting;
 mod rollback;
 #[path = "remote_environment/rollout.rs"]
 mod rollout;
+#[path = "remote_environment/rollout_plan.rs"]
+mod rollout_plan;
 #[path = "remote_environment/runtimes.rs"]
 mod runtimes;
 #[path = "remote_environment/services.rs"]

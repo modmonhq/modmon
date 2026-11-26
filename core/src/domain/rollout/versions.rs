@@ -1,19 +1,25 @@
 //! Which rollout steps a node's `mmd` knows. A step a node does not know
 //! would be refused whole, so the client only plans the newer steps when
-//! every node of the plan runs a release that has them.
+//! every node of the plan says it knows them (`NodeFacts::rollout_steps`).
 
-/// The first release whose `mmd` knows the `pull` step.
-pub const PULL_STEP_SINCE: (u64, u64, u64) = (0, 1, 3);
+/// The rollout steps this release adds, as a node lists them.
+pub const NEWER_ROLLOUT_STEPS: [&str; 2] = ["pull", "stacks"];
 
-/// Whether an `mmd` of release `daemon` knows the steps of release
-/// `since`. A daemon of this client's own release `client` knows them too:
-/// a build between releases carries the release before.
+/// Whether a node that lists `steps` knows every newer step.
 #[must_use]
-pub fn knows_steps_since(daemon: &str, client: &str, since: (u64, u64, u64)) -> bool {
-    let parse = |version: &str| semver::Version::parse(version.trim().trim_start_matches('v')).ok();
-    let Some(daemon) = parse(daemon) else {
-        return false;
-    };
-    let (major, minor, patch) = since;
-    daemon >= semver::Version::new(major, minor, patch) || parse(client) == Some(daemon)
+pub fn knows_newer_steps(steps: &[String]) -> bool {
+    NEWER_ROLLOUT_STEPS
+        .iter()
+        .all(|wanted| steps.iter().any(|step| step == wanted))
+}
+
+/// What a node says about its rollout steps, as the client plans with it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeSteps {
+    pub node: String,
+    /// Its `mmd`'s release, for the plan to name; empty when unknown.
+    pub daemon_version: String,
+    /// The steps beyond the first ones it lists; empty for an `mmd` that
+    /// lists none or did not answer.
+    pub steps: Vec<String>,
 }

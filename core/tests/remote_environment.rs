@@ -82,6 +82,12 @@ impl FakeNode {
 
     fn call(&self, method: &str, scope: &RemoteScope) -> Result<(), MmError> {
         locked(&self.calls).push(method.to_owned());
+        self.answer(scope)
+    }
+
+    /// Whether the node answers, for a look that changes nothing and that
+    /// the tests do not count.
+    fn answer(&self, scope: &RemoteScope) -> Result<(), MmError> {
         assert_eq!(
             scope.node.as_deref(),
             Some(self.name.as_str()),
@@ -432,7 +438,7 @@ impl RemoteTransport for FakeNode {
     }
 
     async fn node(&self, scope: RemoteScope) -> Result<NodeFacts, MmError> {
-        self.call("node", &scope)?;
+        self.answer(&scope)?;
         Ok(NodeFacts {
             node: Some(self.answers_as.clone().unwrap_or_else(|| self.name.clone())),
             daemon_version: format!("0.{}.0", self.digit),
@@ -447,6 +453,7 @@ impl RemoteTransport for FakeNode {
             engine: None,
             daemon: None,
             secret_store: None,
+            rollout_steps: Vec::new(),
         })
     }
 

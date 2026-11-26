@@ -529,6 +529,10 @@ pub struct NodeFacts {
     /// The node's member of the environment's managed secret store.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub secret_store: Option<crate::domain::secret_store::StoreStatus>,
+    /// The rollout steps the node's `mmd` knows beyond the first ones
+    /// (`domain::rollout::NEWER_ROLLOUT_STEPS`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rollout_steps: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

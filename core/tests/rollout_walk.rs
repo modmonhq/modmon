@@ -1728,42 +1728,45 @@ async fn a_node_that_cannot_pull_stops_the_rollout_before_anything_changed() -> 
 }
 
 #[test]
-fn the_newer_steps_are_planned_only_when_every_node_knows_them() {
-    use mm::domain::rollout::{PULL_STEP_SINCE, knows_steps_since};
+fn the_newer_steps_are_planned_only_when_every_node_says_it_knows_them() {
+    use mm::domain::rollout::{NEWER_ROLLOUT_STEPS, NodeSteps, knows_newer_steps};
 
-    assert!(knows_steps_since("0.1.3", "0.1.3", PULL_STEP_SINCE));
-    assert!(knows_steps_since("0.2.0", "0.1.3", PULL_STEP_SINCE));
-    assert!(!knows_steps_since("0.1.2", "0.1.3", PULL_STEP_SINCE));
-    assert!(
-        knows_steps_since("0.1.2", "0.1.2", PULL_STEP_SINCE),
-        "a build of this release"
-    );
-    assert!(!knows_steps_since("", "0.1.3", PULL_STEP_SINCE));
+    let knows = NEWER_ROLLOUT_STEPS.map(str::to_owned).to_vec();
+    assert!(knows_newer_steps(&knows));
+    assert!(!knows_newer_steps(&[]), "a released 0.1.2 mmd lists none");
+    assert!(!knows_newer_steps(&["pull".to_owned()]));
 
+    let node = |name: &str, version: &str, steps: &[String]| NodeSteps {
+        node: name.to_owned(),
+        daemon_version: version.to_owned(),
+        steps: steps.to_vec(),
+    };
     let rollout = ClusterRollout {
         stages: vec![stage("app", &[&["app-1"]])],
         ..ClusterRollout::default()
     };
     let new = rollout.clone().for_daemons(
         &[
-            ("app-1".to_owned(), "0.1.3".to_owned()),
-            ("db-1".to_owned(), "0.1.4".to_owned()),
+            node("app-1", "0.1.3", &knows),
+            node("db-1", "0.1.3", &knows),
         ],
-        "0.1.3",
         &Default::default(),
     );
     assert!(new.pull_first);
     assert!(new.older_nodes.is_empty());
-    let mixed = rollout.for_daemons(
-        &[
-            ("app-1".to_owned(), "0.1.3".to_owned()),
-            ("db-1".to_owned(), "0.1.2".to_owned()),
-        ],
-        "0.1.3",
+    let released = rollout.for_daemons(
+        &[node("app-1", "0.1.3", &knows), node("db-1", "0.1.2", &[])],
         &Default::default(),
     );
-    assert!(!mixed.pull_first);
-    assert_eq!(mixed.older_nodes, [("db-1".to_owned(), "0.1.2".to_owned())]);
+    assert!(
+        !released.pull_first,
+        "a node on released 0.1.2 gets the old steps"
+    );
+    assert!(released.waves.is_empty());
+    assert_eq!(
+        released.older_nodes,
+        [("db-1".to_owned(), "0.1.2".to_owned())]
+    );
 }
 
 #[tokio::test]

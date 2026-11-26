@@ -60,8 +60,13 @@ pub(crate) fn plan_lines(plan: &ClusterDeploymentPlan) -> Vec<String> {
             ));
         }
         for (node, version) in &rollout.older_nodes {
+            let runs = if version.is_empty() {
+                "did not say which rollout steps its mmd knows".to_owned()
+            } else {
+                format!("runs mmd {version}")
+            };
             lines.push(format!(
-                "{label}node '{node}' runs mmd {version}: images are pulled stack by stack and stacks roll out one at a time until `mm target setup plan --upgrade` brings it up to date"
+                "{label}node '{node}' {runs}: images are pulled stack by stack and stacks roll out one at a time until `mm target setup plan --upgrade` brings it up to date"
             ));
         }
         for stage in &rollout.stages {
