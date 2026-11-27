@@ -66,12 +66,10 @@ pub(crate) async fn waiting_containers(
     if ids.is_empty() {
         return Ok(Vec::new());
     }
-    let mut arguments = ["container", "inspect", "--format", "json"]
-        .map(str::to_owned)
-        .to_vec();
-    arguments.extend(ids);
-    let inspected = engine.engine(arguments, TIMEOUT).await?;
-    parse_waiting(inspected.stdout.trim(), label, engine.engine_name())
+    let inspected =
+        crate::adapters::runtime::project_services::inspect_containers(engine, &ids, TIMEOUT)
+            .await?;
+    parse_waiting(inspected.trim(), label, engine.engine_name())
 }
 
 /// Reads the engine's inspect output: one JSON array, or one array per line.

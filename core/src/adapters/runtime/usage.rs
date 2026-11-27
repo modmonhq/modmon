@@ -25,12 +25,10 @@ pub(crate) async fn container_usage(
     if containers.is_empty() {
         return Ok(Vec::new());
     }
-    let mut arguments = ["container", "inspect", "--format", "json"]
-        .map(str::to_owned)
-        .to_vec();
-    arguments.extend(containers.iter().cloned());
-    let inspected = engine.engine(arguments, TIMEOUT).await?;
-    let limits = parse_limits(inspected.stdout.trim(), engine.engine_name())?;
+    let inspected =
+        crate::adapters::runtime::project_services::inspect_containers(engine, containers, TIMEOUT)
+            .await?;
+    let limits = parse_limits(inspected.trim(), engine.engine_name())?;
     let mut arguments = [
         "stats",
         "--no-stream",

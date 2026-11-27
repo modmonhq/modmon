@@ -91,6 +91,17 @@ impl
 }
 
 impl ClusterPlanSeal {
+    /// The seal as a node keeps and returns it: without what only the
+    /// client's own plan output reads.
+    #[must_use]
+    pub fn as_kept(&self) -> Self {
+        let mut kept = self.clone();
+        if let Some(rollout) = kept.rollout.as_mut() {
+            rollout.older_nodes.clear();
+        }
+        kept
+    }
+
     /// Builds the seal and computes its hash.
     pub fn new(
         kind: RemotePlanKind,
