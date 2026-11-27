@@ -369,3 +369,26 @@ fn the_subset_hint_names_the_nodes_to_pass() {
     );
     assert!(unreachable_help(&["app-1"], &[]).contains("No other node"));
 }
+
+#[test]
+fn a_node_returns_the_seal_it_was_sent_without_the_older_daemons_note()
+-> Result<(), Box<dyn std::error::Error>> {
+    let rollout = crate::domain::rollout::ClusterRollout {
+        convergence_timeout_seconds: 300,
+        older_nodes: vec![("app-1".to_owned(), "0.1.2".to_owned())],
+        ..crate::domain::rollout::ClusterRollout::default()
+    };
+    let sent = ClusterPlanSeal::new(
+        RemotePlanKind::Deployment,
+        &scope(),
+        &"c".repeat(40),
+        sections(&THREE),
+        Vec::new(),
+        (None, Some(rollout)),
+    )?;
+    let returned = serde_json::from_str::<ClusterPlanSeal>(&serde_json::to_string(&sent)?)?;
+    assert_ne!(returned, sent);
+    assert_eq!(returned, sent.as_kept());
+    assert_eq!(returned.cluster_plan_hash, sent.cluster_plan_hash);
+    Ok(())
+}

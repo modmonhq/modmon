@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A cluster deploy on Podman no longer fails, and rolls back every node, when
+  a replaced container is removed while the node reads its containers. Podman
+  answers 500 "no such container" for a container removed between its lookup
+  and its inspect; `mmd` now treats that like Docker's 404, and a container
+  `inspect` of several containers leaves out the ones removed since they were
+  listed instead of failing on both engines.
+- `mm` 0.1.3 can deploy to a cluster again while one of its nodes still runs
+  `mmd` 0.1.2. The plan named the older nodes in the seal it sent, the nodes
+  returned it without that note, and `mm` stopped with "the node did not keep
+  the cluster plan it was sent". `mm` 0.1.3 needs every node on 0.1.3 for a
+  cluster deploy; upgrade `mm` to 0.1.4, or the nodes with
+  `mm target setup plan --upgrade`.
+
 ## [0.1.3] - 2026-11-26
 
 Remote protocol: 1. Every change in this release is additive: `mm` 0.1.3

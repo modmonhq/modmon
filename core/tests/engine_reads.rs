@@ -74,6 +74,9 @@ struct Container {
     /// Sent after `log` when the read follows, one piece every few
     /// milliseconds; the answer then stays open.
     live: Vec<Vec<u8>>,
+    /// Inspected, the engine answers with this status and error document
+    /// instead.
+    failure: Option<(&'static str, &'static str)>,
 }
 
 fn container(id: &'static str, service: &'static str, number: u32) -> Container {
@@ -88,6 +91,7 @@ fn container(id: &'static str, service: &'static str, number: u32) -> Container 
         tty: false,
         log: Vec::new(),
         live: Vec::new(),
+        failure: None,
     }
 }
 
@@ -206,6 +210,16 @@ async fn serve(
             writer.write_all(&json(serde_json::Value::Array(rows))).await
         }
         ["containers", id, "json"] => match found(id) {
+            Some(Container {
+                failure: Some((status, body)),
+                ..
+            }) => {
+                let answer = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+                    body.len()
+                );
+                writer.write_all(answer.as_bytes()).await
+            }
             Some(container) => writer.write_all(&json(inspect(container))).await,
             None => {
                 writer
@@ -416,6 +430,40 @@ async fn a_projects_containers_are_read_from_the_api_with_no_process() -> TestRe
             .any(|request| request.contains("com.docker.compose.service%3Dweb")),
         "{requests:?}"
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_container_podman_removes_while_it_is_inspected_is_left_out() -> TestResult {
+    let mut removed = container("d".repeat(64).leak(), "web", 2);
+    removed.failure = Some((
+        "500 Internal Server Error",
+        r#"{"cause":"no such container","message":"no container with ID dddd found in database: no such container","response":500}"#,
+    ));
+    let engine = start_engine(vec![container("a".repeat(64).leak(), "web", 1), removed])?;
+    let containers = project_containers(&engine.api(), "shop-app", None).await?;
+    assert_eq!(
+        containers
+            .iter()
+            .map(|container| container.observation.name.as_str())
+            .collect::<Vec<_>>(),
+        ["shop-app-web-1"]
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn any_other_engine_failure_while_inspecting_is_an_error() -> TestResult {
+    let mut broken = container("e".repeat(64).leak(), "web", 2);
+    broken.failure = Some((
+        "500 Internal Server Error",
+        r#"{"cause":"input/output error","message":"reading container state: input/output error","response":500}"#,
+    ));
+    let engine = start_engine(vec![container("a".repeat(64).leak(), "web", 1), broken])?;
+    let Err(error) = project_containers(&engine.api(), "shop-app", None).await else {
+        return Err("an engine failure was taken for a removed container".into());
+    };
+    assert!(error.to_string().contains("input/output error"), "{error}");
     Ok(())
 }
 
@@ -778,4 +826,59 @@ fn a_health_wait_looks_again_within_a_second() {
     let policy = mm::domain::runtime::ConvergencePolicy::default();
     assert_eq!(policy.initial_backoff, Duration::from_millis(250));
     assert_eq!(policy.maximum_backoff, Duration::from_secs(1));
+}
+
+#[tokio::test]
+#[ignore = "needs a real Podman socket in MM_LIVE_PODMAN_SOCKET and the podman command"]
+async fn live_podman_containers_removed_while_they_are_read_are_left_out() -> TestResult {
+    let socket = std::env::var("MM_LIVE_PODMAN_SOCKET")?;
+    let rounds = std::env::var("MM_LIVE_ROUNDS")
+        .ok()
+        .and_then(|rounds| rounds.parse::<u32>().ok())
+        .unwrap_or(60);
+    let project = "mm-live-race";
+    let podman = |args: &[&str]| -> Result<String, String> {
+        let output = std::process::Command::new("podman")
+            .args(args)
+            .output()
+            .map_err(|error| error.to_string())?;
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+        } else {
+            Err(String::from_utf8_lossy(&output.stderr).into_owned())
+        }
+    };
+    podman(&["pull", "-q", "docker.io/library/alpine:3.20"])?;
+    let churn = std::thread::spawn(move || -> Result<(), String> {
+        for _ in 0..rounds {
+            let mut ids = Vec::new();
+            for _ in 0..6 {
+                let id = podman(&[
+                    "create",
+                    "--label",
+                    &format!("com.docker.compose.project={project}"),
+                    "--label",
+                    "com.docker.compose.service=web",
+                    "docker.io/library/alpine:3.20",
+                    "sleep",
+                    "600",
+                ])?;
+                ids.push(id.trim().to_owned());
+            }
+            let mut remove = vec!["rm", "-f"];
+            remove.extend(ids.iter().map(String::as_str));
+            podman(&remove)?;
+        }
+        Ok(())
+    });
+    let api = EngineApi::at(socket);
+    let mut reads = 0_u32;
+    while !churn.is_finished() {
+        project_containers(&api, project, None).await?;
+        reads += 1;
+    }
+    churn.join().map_err(|_| "the churn thread panicked")??;
+    println!("{reads} reads of {project} while {rounds} rounds of containers came and went");
+    assert!(reads > 0);
+    Ok(())
 }

@@ -254,3 +254,81 @@ async fn a_log_line_reaches_redaction_whole() -> TestResult {
     assert!(!kept[0].contains("runtime"), "{}", kept[0]);
     Ok(())
 }
+
+struct Vanishing {
+    present: Vec<&'static str>,
+    failure: &'static str,
+}
+
+#[async_trait]
+impl ContainerEngine for Vanishing {
+    fn engine_name(&self) -> &'static str {
+        "Podman"
+    }
+
+    async fn engine(
+        &self,
+        args: Vec<String>,
+        _timeout: Duration,
+    ) -> Result<CommandOutput, MmError> {
+        let asked = &args[4..];
+        let missing = asked
+            .iter()
+            .filter(|id| !self.present.contains(&id.as_str()))
+            .map(|id| self.failure.replace("{id}", id))
+            .collect::<Vec<_>>();
+        if missing.is_empty() {
+            let rows = asked
+                .iter()
+                .map(|id| format!("{{\"Id\":\"{id}\"}}"))
+                .collect::<Vec<_>>();
+            return Ok(Engine::output(format!("[{}]", rows.join(","))));
+        }
+        Err(MmError::ProcessFailed {
+            program: "podman".to_owned(),
+            code: Some(125),
+            stderr: missing.join("\n"),
+        })
+    }
+}
+
+#[tokio::test]
+async fn an_inspect_leaves_out_the_containers_removed_since_they_were_listed() -> TestResult {
+    let ids = ["c1", "c2", "c3"].map(str::to_owned);
+    for failure in [
+        "Error: no such container {id}",
+        "Error response from daemon: No such container: {id}",
+    ] {
+        let engine = Vanishing {
+            present: vec!["c1", "c3"],
+            failure,
+        };
+        let inspected = inspect_containers(&engine, &ids, Duration::from_secs(1)).await?;
+        let rows = serde_json::from_str::<Vec<Value>>(&inspected)?;
+        assert_eq!(
+            rows.iter()
+                .map(|row| row["Id"].as_str())
+                .collect::<Vec<_>>(),
+            [Some("c1"), Some("c3")],
+            "{failure}"
+        );
+    }
+    let gone = Vanishing {
+        present: Vec::new(),
+        failure: "Error: no such container {id}",
+    };
+    assert_eq!(
+        inspect_containers(&gone, &ids, Duration::from_secs(1)).await?,
+        "[]"
+    );
+    let broken = Vanishing {
+        present: vec!["c1"],
+        failure: "Error: inspecting {id}: input/output error",
+    };
+    assert!(
+        inspect_containers(&broken, &ids, Duration::from_secs(1))
+            .await
+            .is_err()
+    );
+    Ok(())
+}

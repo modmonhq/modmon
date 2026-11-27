@@ -157,15 +157,10 @@ async fn attached_to(
     if ids.is_empty() {
         return Ok(Vec::new());
     }
-    let mut arguments = vec![
-        "container".to_owned(),
-        "inspect".to_owned(),
-        "--format".to_owned(),
-        "json".to_owned(),
-    ];
-    arguments.extend(ids);
-    let inspected = engine.engine(arguments, TIMEOUT).await?;
-    parse_containers(inspected.stdout.trim(), engine.engine_name())
+    let inspected =
+        crate::adapters::runtime::project_services::inspect_containers(engine, &ids, TIMEOUT)
+            .await?;
+    parse_containers(inspected.trim(), engine.engine_name())
 }
 
 /// Reads the engine's inspect output: one JSON array, or one array per line.

@@ -180,12 +180,16 @@ impl EngineApi {
             return Ok(None);
         }
         // The engine says why in a small JSON document.
-        let reason = match response.into_body().collect().await {
-            Ok(body) => serde_json::from_slice::<serde_json::Value>(&body.to_bytes())
-                .map(|document| document["message"].as_str().unwrap_or_default().to_owned())
-                .unwrap_or_default(),
-            Err(_) => String::new(),
+        let document = match response.into_body().collect().await {
+            Ok(body) => {
+                serde_json::from_slice::<serde_json::Value>(&body.to_bytes()).unwrap_or_default()
+            }
+            Err(_) => serde_json::Value::Null,
         };
+        if vanished(&document) {
+            return Ok(None);
+        }
+        let reason = document["message"].as_str().unwrap_or_default().to_owned();
         Err(MmError::RuntimeResponse {
             message: format!(
                 "the engine answered {} with {status}: {reason}",
@@ -193,6 +197,17 @@ impl EngineApi {
             ),
         })
     }
+}
+
+/// Whether the engine's error document says the container is gone: Podman
+/// answers 500 for a container removed between its lookup and its inspect.
+fn vanished(document: &serde_json::Value) -> bool {
+    ["cause", "message"].iter().any(|key| {
+        document[*key].as_str().is_some_and(|text| {
+            let text = text.to_ascii_lowercase();
+            text.contains("no such container") || text.contains("has already been removed")
+        })
+    })
 }
 
 /// An answer that is read piece by piece.

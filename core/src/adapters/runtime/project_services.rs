@@ -53,6 +53,62 @@ async fn container_ids(
     parse_resource_ids(&output, engine.engine_name(), "container")
 }
 
+/// `container inspect` of `ids` as one JSON array, without the containers
+/// removed since they were listed.
+pub(crate) async fn inspect_containers(
+    engine: &dyn ContainerEngine,
+    ids: &[String],
+    timeout: Duration,
+) -> Result<String, MmError> {
+    let arguments = |ids: &[String]| {
+        let mut arguments = ["container", "inspect", "--format", "json"]
+            .map(str::to_owned)
+            .to_vec();
+        arguments.extend(ids.iter().cloned());
+        arguments
+    };
+    match engine.engine(arguments(ids), timeout).await {
+        Ok(output) => Ok(output.stdout.to_string()),
+        Err(error) if only_vanished(&error) => {
+            let mut rows = Vec::new();
+            for id in ids {
+                match engine
+                    .engine(arguments(std::slice::from_ref(id)), timeout)
+                    .await
+                {
+                    Ok(output) => rows.extend(
+                        serde_json::Deserializer::from_str(output.stdout.trim())
+                            .into_iter::<Value>()
+                            .filter_map(Result::ok)
+                            .flat_map(|document| match document {
+                                Value::Array(rows) => rows,
+                                row => vec![row],
+                            }),
+                    ),
+                    Err(error) if only_vanished(&error) => {}
+                    Err(error) => return Err(error),
+                }
+            }
+            Ok(Value::Array(rows).to_string())
+        }
+        Err(error) => Err(error),
+    }
+}
+
+/// Whether the engine failed only because containers it was asked about
+/// are gone.
+pub(crate) fn only_vanished(error: &MmError) -> bool {
+    let MmError::ProcessFailed { stderr, .. } = error else {
+        return false;
+    };
+    let mut lines = stderr
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty());
+    lines.clone().next().is_some()
+        && lines.all(|line| line.to_ascii_lowercase().contains("no such container"))
+}
+
 /// The services that have a container in `project`, running or not.
 pub(crate) async fn project_services(
     engine: &dyn ContainerEngine,
@@ -60,19 +116,9 @@ pub(crate) async fn project_services(
 ) -> Result<BTreeSet<String>, MmError> {
     let mut services = BTreeSet::new();
     for id in container_ids(engine, project, None).await? {
-        let output = engine
-            .engine(
-                vec![
-                    "container".to_owned(),
-                    "inspect".to_owned(),
-                    "--format".to_owned(),
-                    "json".to_owned(),
-                    id,
-                ],
-                Duration::from_secs(30),
-            )
-            .await?;
-        let rows = serde_json::from_str::<Vec<Value>>(output.stdout.trim()).map_err(|error| {
+        let output =
+            inspect_containers(engine, std::slice::from_ref(&id), Duration::from_secs(30)).await?;
+        let rows = serde_json::from_str::<Vec<Value>>(output.trim()).map_err(|error| {
             MmError::RuntimeResponse {
                 message: format!(
                     "{} returned invalid container inspect JSON: {error}",
@@ -114,15 +160,8 @@ pub(crate) async fn service_containers(
     if ids.is_empty() {
         return Ok(Vec::new());
     }
-    let mut args = vec![
-        "container".to_owned(),
-        "inspect".to_owned(),
-        "--format".to_owned(),
-        "json".to_owned(),
-    ];
-    args.extend(ids);
-    let output = engine.engine(args, Duration::from_secs(30)).await?;
-    let rows = serde_json::from_str::<Vec<Value>>(output.stdout.trim()).map_err(|error| {
+    let output = inspect_containers(engine, &ids, Duration::from_secs(30)).await?;
+    let rows = serde_json::from_str::<Vec<Value>>(output.trim()).map_err(|error| {
         MmError::RuntimeResponse {
             message: format!(
                 "{} returned invalid container inspect JSON: {error}",
@@ -162,15 +201,8 @@ pub(crate) async fn stack_containers(
     if ids.is_empty() {
         return Ok(Vec::new());
     }
-    let mut args = vec![
-        "container".to_owned(),
-        "inspect".to_owned(),
-        "--format".to_owned(),
-        "json".to_owned(),
-    ];
-    args.extend(ids);
-    let output = engine.engine(args, Duration::from_secs(30)).await?;
-    let rows = serde_json::from_str::<Vec<Value>>(output.stdout.trim()).map_err(|error| {
+    let output = inspect_containers(engine, &ids, Duration::from_secs(30)).await?;
+    let rows = serde_json::from_str::<Vec<Value>>(output.trim()).map_err(|error| {
         MmError::RuntimeResponse {
             message: format!(
                 "{} returned invalid container inspect JSON: {error}",

@@ -268,7 +268,7 @@ impl RemoteTransport for SshRemoteTransport {
         scope: RemoteScope,
         seal: crate::domain::remote::ClusterPlanSeal,
     ) -> Result<crate::domain::remote::ClusterPlanSeal, MmError> {
-        let sent = seal.clone();
+        let sent = seal.as_kept();
         match self
             .unary(
                 scope,
