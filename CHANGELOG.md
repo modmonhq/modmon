@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-11-26
+
+Remote protocol: 1. `mm` 0.1.4 works with hosts on 0.1.2 and 0.1.3, and
+hosts on 0.1.4 keep serving `mm` 0.1.2 and 0.1.3. Contrary to the 0.1.3
+notes, `mm` 0.1.3 could not deploy to a cluster while any node still ran
+`mmd` 0.1.2; 0.1.4 can. Upgrade the nodes of a Podman cluster
+(`mm target setup plan --upgrade`) to get the fix for rollouts that failed on
+a removed container.
+
 ### Fixed
 
 - A cluster deploy on Podman no longer fails, and rolls back every node, when
